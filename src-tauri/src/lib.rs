@@ -1,5 +1,11 @@
 pub mod domain {
+    pub mod repo;
     pub mod status;
+}
+
+pub mod git {
+    pub mod commands;
+    pub mod discovery;
 }
 
 pub fn run() {
