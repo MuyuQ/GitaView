@@ -1,15 +1,91 @@
 use crate::domain::repo::RepoStatusDto;
 use crate::domain::settings::AppSettings;
-use crate::domain::status::RemoteRelation;
+use crate::git::commands::{branch_state, change_label, relation_hint, run_git};
+use tauri::Manager;
 
-#[tauri::command]
-pub async fn get_settings() -> Result<AppSettings, String> {
-    Ok(AppSettings::default())
+fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    Ok(app
+        .path()
+        .app_data_dir()
+        .map_err(|err| err.to_string())?
+        .join("settings.json"))
+}
+
+fn load_app_settings(app: &tauri::AppHandle) -> Result<AppSettings, String> {
+    crate::storage::store::load_settings(&settings_path(app)?)
+}
+
+fn save_app_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
+    crate::storage::store::save_settings(&settings_path(app)?, settings)
+}
+
+fn repo_id_from_path(path: &std::path::Path, settings: &AppSettings) -> String {
+    let base = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("repo")
+        .chars()
+        .map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+    let base = if base.is_empty() { "repo".to_string() } else { base };
+    if !settings.repos.iter().any(|repo| repo.id == base) {
+        return base;
+    }
+    let mut suffix = 2;
+    loop {
+        let candidate = format!("{base}-{suffix}");
+        if !settings.repos.iter().any(|repo| repo.id == candidate) {
+            return candidate;
+        }
+        suffix += 1;
+    }
+}
+
+fn find_repo<'a>(settings: &'a AppSettings, repo_id: &str) -> Result<&'a crate::domain::repo::RepoRecord, String> {
+    settings
+        .repos
+        .iter()
+        .find(|repo| repo.id == repo_id)
+        .ok_or_else(|| format!("未找到仓库：{repo_id}"))
+}
+
+fn open_path(target: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut cmd = std::process::Command::new("cmd");
+        cmd.args(["/C", "start", "", target]);
+        cmd
+    };
+
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut cmd = std::process::Command::new("open");
+        cmd.arg(target);
+        cmd
+    };
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = {
+        let mut cmd = std::process::Command::new("xdg-open");
+        cmd.arg(target);
+        cmd
+    };
+
+    command.spawn().map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
-pub async fn save_settings(_settings: AppSettings) -> Result<AppSettings, String> {
-    Ok(AppSettings::default())
+pub async fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
+    load_app_settings(&app)
+}
+
+#[tauri::command]
+pub async fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<AppSettings, String> {
+    save_app_settings(&app, &settings)?;
+    Ok(settings)
 }
 
 #[tauri::command]
@@ -19,73 +95,116 @@ pub async fn scan_directory(path: String) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub async fn add_repository(path: String) -> Result<serde_json::Value, String> {
+pub async fn add_repository(app: tauri::AppHandle, path: String) -> Result<crate::domain::repo::RepoRecord, String> {
     use crate::domain::repo::RepoRecord;
-    let name = path.replace('\\', "/").split('/').last().unwrap_or("unknown").to_string();
+    let repo_path = std::path::PathBuf::from(&path);
+    if !crate::git::discovery::is_git_repo(&repo_path) {
+        return Err("请选择有效的 Git 仓库目录".to_string());
+    }
+    let repo_path = repo_path.canonicalize().map_err(|err| err.to_string())?;
+    let mut settings = load_app_settings(&app)?;
+    if let Some(existing) = settings
+        .repos
+        .iter()
+        .find(|repo| repo.path.as_path() == repo_path.as_path())
+    {
+        return Ok(existing.clone());
+    }
+    let name = repo_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("unknown")
+        .to_string();
     let record = RepoRecord {
-        id: name.clone(),
+        id: repo_id_from_path(&repo_path, &settings),
         name,
-        path: std::path::PathBuf::from(&path),
+        path: repo_path,
         group: "全部分组".to_string(),
     };
-    Ok(serde_json::to_value(record).unwrap())
+    settings.repos.push(record.clone());
+    save_app_settings(&app, &settings)?;
+    Ok(record)
 }
 
 #[tauri::command]
-pub async fn remove_repository(_repo_id: String) -> Result<(), String> {
+pub async fn remove_repository(app: tauri::AppHandle, repo_id: String) -> Result<(), String> {
+    let mut settings = load_app_settings(&app)?;
+    settings.repos.retain(|repo| repo.id != repo_id);
+    for group in &mut settings.groups {
+        group.repo_ids.retain(|id| id != &repo_id);
+    }
+    save_app_settings(&app, &settings)?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn list_repo_statuses() -> Result<Vec<RepoStatusDto>, String> {
-    // Return fixture data for demonstration until full backend integration
-    Ok(vec![
-        RepoStatusDto {
-            id: "api".into(), name: "接口服务".into(), path: "E:/Git_Repositories/api".into(),
-            group: "后端".into(), branch: "dev".into(), relation: RemoteRelation::Diverged,
-            change_label: "⇕ 3".into(), hint: "需要人工处理".into(),
-            remote_url: Some("https://github.com/example/api".into()),
-        },
-        RepoStatusDto {
-            id: "web".into(), name: "前端".into(), path: "E:/Git_Repositories/web".into(),
-            group: "Web".into(), branch: "main".into(), relation: RemoteRelation::RemoteAhead,
-            change_label: "↓ 2".into(), hint: "可 Pull".into(),
-            remote_url: Some("https://github.com/example/web".into()),
-        },
-        RepoStatusDto {
-            id: "docs".into(), name: "文档".into(), path: "E:/Git_Repositories/docs".into(),
-            group: "文档".into(), branch: "main".into(), relation: RemoteRelation::Synced,
-            change_label: "✓".into(), hint: "无需操作".into(),
-            remote_url: Some("https://github.com/example/docs".into()),
-        },
-        RepoStatusDto {
-            id: "lab".into(), name: "实验仓库".into(), path: "E:/Git_Repositories/lab".into(),
-            group: "实验".into(), branch: "topic".into(), relation: RemoteRelation::NoRemote,
-            change_label: "∅".into(), hint: "未设置 upstream".into(),
-            remote_url: None,
-        },
-    ])
+pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusDto>, String> {
+    let settings = load_app_settings(&app)?;
+    let mut statuses = Vec::new();
+    for repo in settings.repos {
+        let state = branch_state(&repo.path)?;
+        statuses.push(RepoStatusDto {
+            id: repo.id,
+            name: repo.name,
+            path: repo.path.to_string_lossy().to_string(),
+            group: repo.group,
+            branch: state.branch.clone(),
+            relation: state.relation,
+            change_label: change_label(&state),
+            hint: relation_hint(state.relation).to_string(),
+            remote_url: state.remote_url,
+        });
+    }
+    statuses.sort_by_key(|repo| repo.relation.sort_rank());
+    Ok(statuses)
 }
 
 #[tauri::command]
-pub async fn fetch_repo(_repo_id: String) -> Result<String, String> {
+pub async fn fetch_repo(app: tauri::AppHandle, repo_id: String) -> Result<String, String> {
+    let settings = load_app_settings(&app)?;
+    let repo = find_repo(&settings, &repo_id)?;
+    run_git(&repo.path, &["fetch"])?;
     Ok("Fetch 已完成".to_string())
 }
 
 #[tauri::command]
-pub async fn pull_repo(_repo_id: String, confirmed: bool) -> Result<String, String> {
-    if !confirmed {
+pub async fn pull_repo(app: tauri::AppHandle, repo_id: String, confirmed: bool) -> Result<String, String> {
+    let settings = load_app_settings(&app)?;
+    if settings.safety.confirm_pull && !confirmed {
         return Err("Pull 需要确认".to_string());
     }
+    let repo = find_repo(&settings, &repo_id)?;
+    run_git(&repo.path, &["pull"])?;
     Ok("Pull 已完成".to_string())
 }
 
 #[tauri::command]
-pub async fn open_repo_directory(_repo_id: String) -> Result<(), String> {
+pub async fn push_repo(app: tauri::AppHandle, repo_id: String, confirmed: bool) -> Result<String, String> {
+    let settings = load_app_settings(&app)?;
+    if settings.safety.confirm_push && !confirmed {
+        return Err("Push 需要确认".to_string());
+    }
+    let repo = find_repo(&settings, &repo_id)?;
+    run_git(&repo.path, &["push"])?;
+    Ok("Push 已完成".to_string())
+}
+
+#[tauri::command]
+pub async fn open_repo_directory(app: tauri::AppHandle, repo_id: String) -> Result<(), String> {
+    let settings = load_app_settings(&app)?;
+    let repo = find_repo(&settings, &repo_id)?;
+    let target = repo.path.to_string_lossy().to_string();
+    open_path(&target)?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn open_repo_remote(_repo_id: String) -> Result<(), String> {
+pub async fn open_repo_remote(app: tauri::AppHandle, repo_id: String) -> Result<(), String> {
+    let settings = load_app_settings(&app)?;
+    let repo = find_repo(&settings, &repo_id)?;
+    let remote = run_git(&repo.path, &["config", "--get", "remote.origin.url"])?;
+    let remote = crate::git::commands::normalize_remote_url(&remote)
+        .ok_or_else(|| "当前仓库没有远端地址".to_string())?;
+    open_path(&remote)?;
     Ok(())
 }

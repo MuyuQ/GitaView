@@ -20,6 +20,21 @@ pub struct RefreshSettings {
 #[serde(rename_all = "camelCase")]
 pub struct SafetySettings {
     pub confirm_pull: bool,
+    pub confirm_push: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearanceSettings {
+    pub compact_mode: bool,
+}
+
+impl Default for AppearanceSettings {
+    fn default() -> Self {
+        Self {
+            compact_mode: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +45,8 @@ pub struct AppSettings {
     pub default_group: String,
     pub refresh: RefreshSettings,
     pub safety: SafetySettings,
+    #[serde(default)]
+    pub appearance: AppearanceSettings,
 }
 
 impl Default for AppSettings {
@@ -45,7 +62,8 @@ impl Default for AppSettings {
                 lightweight_refresh_enabled: true,
                 interval_minutes: 5,
             },
-            safety: SafetySettings { confirm_pull: true },
+            safety: SafetySettings { confirm_pull: true, confirm_push: true },
+            appearance: AppearanceSettings::default(),
         }
     }
 }

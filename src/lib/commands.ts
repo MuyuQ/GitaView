@@ -33,6 +33,10 @@ export function pullRepo(repoId: string, confirmed: boolean): Promise<string> {
   return invoke<string>("pull_repo", { repoId, confirmed });
 }
 
+export function pushRepo(repoId: string, confirmed: boolean): Promise<string> {
+  return invoke<string>("push_repo", { repoId, confirmed });
+}
+
 export function openRepoDirectory(repoId: string): Promise<void> {
   return invoke<void>("open_repo_directory", { repoId });
 }

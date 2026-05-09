@@ -45,5 +45,9 @@ export interface AppSettings {
   };
   safety: {
     confirmPull: boolean;
+    confirmPush: boolean;
+  };
+  appearance: {
+    compactMode: boolean;
   };
 }

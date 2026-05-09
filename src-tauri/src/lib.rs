@@ -34,6 +34,7 @@ pub fn run() {
             app_commands::list_repo_statuses,
             app_commands::fetch_repo,
             app_commands::pull_repo,
+            app_commands::push_repo,
             app_commands::open_repo_directory,
             app_commands::open_repo_remote,
         ])
