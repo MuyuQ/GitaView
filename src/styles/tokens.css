@@ -1,0 +1,34 @@
+:root {
+  --gv-ink: #172033;
+  --gv-muted: #667488;
+  --gv-line: #dce3ec;
+  --gv-green: #2f9f67;
+  --gv-amber: #b57412;
+  --gv-red: #b94736;
+  --gv-slate: #64748b;
+  --gv-bg: #f7f9fc;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Noto Sans SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", sans-serif;
+  background: var(--gv-bg);
+  color: var(--gv-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  gap: 40px;
+  flex-wrap: wrap;
+}
