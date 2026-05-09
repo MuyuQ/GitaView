@@ -17,6 +17,14 @@ pub mod storage {
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            let _tray = tauri::tray::TrayIconBuilder::new()
+                .tooltip("GitaView")
+                .show_menu_on_left_click(false)
+                .build(app)?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             app_commands::get_settings,
             app_commands::save_settings,
