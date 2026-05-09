@@ -8,7 +8,9 @@ pub fn load_settings(path: &Path) -> Result<AppSettings, String> {
         return Ok(AppSettings::default());
     }
     let text = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    serde_json::from_str(&text).map_err(|err| err.to_string())
+    serde_json::from_str::<AppSettings>(&text)
+        .map(|settings| settings.normalized())
+        .map_err(|err| err.to_string())
 }
 
 pub fn save_settings(path: &Path, settings: &AppSettings) -> Result<(), String> {
@@ -30,5 +32,25 @@ mod tests {
         let settings = load_settings(&path).unwrap();
         assert_eq!(settings.default_group, "全部分组");
         assert!(settings.safety.confirm_pull);
+    }
+
+    #[test]
+    fn load_settings_repairs_missing_default_group() {
+        let path = std::env::temp_dir().join("gitaview_settings_repair.json");
+        let _ = fs::remove_file(&path);
+        fs::write(
+            &path,
+            r#"{
+              "repos": [],
+              "groups": [],
+              "defaultGroup": "全部分组",
+              "refresh": { "lightweightRefreshEnabled": true, "intervalMinutes": 5 },
+              "safety": { "confirmPull": true, "confirmPush": true },
+              "appearance": { "compactMode": false }
+            }"#,
+        ).unwrap();
+        let settings = load_settings(&path).unwrap();
+        assert!(settings.groups.iter().any(|group| group.name == "全部分组"));
+        let _ = fs::remove_file(&path);
     }
 }

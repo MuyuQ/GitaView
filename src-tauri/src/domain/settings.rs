@@ -67,3 +67,23 @@ impl Default for AppSettings {
         }
     }
 }
+
+impl AppSettings {
+    pub fn normalized(mut self) -> Self {
+        if self.default_group.trim().is_empty() {
+            self.default_group = "全部分组".to_string();
+        }
+        if !self.groups.iter().any(|group| group.name == self.default_group) {
+            self.groups.insert(0, GroupRecord {
+                name: self.default_group.clone(),
+                repo_ids: Vec::new(),
+            });
+        }
+        for repo in &mut self.repos {
+            if repo.group.trim().is_empty() || !self.groups.iter().any(|group| group.name == repo.group) {
+                repo.group = self.default_group.clone();
+            }
+        }
+        self
+    }
+}
