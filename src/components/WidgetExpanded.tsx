@@ -21,11 +21,22 @@ export function WidgetExpanded({
   const [group, setGroup] = useState("全部分组");
   const [relation, setRelation] = useState<RemoteRelation | "all">("all");
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
 
   const groupRepos = group === "全部分组" ? repos : repos.filter((repo) => repo.group === group);
-  const visibleRepos = sortRepos(
+  let visibleRepos = sortRepos(
     relation === "all" ? groupRepos : groupRepos.filter((repo) => repo.relation === relation),
   );
+
+  const normalizedQuery = query.trim().toLowerCase();
+  if (normalizedQuery) {
+    visibleRepos = visibleRepos.filter((repo) =>
+      [repo.name, repo.path, repo.branch, repo.group]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery),
+    );
+  }
 
   return (
     <section className="expanded-widget">
@@ -34,7 +45,12 @@ export function WidgetExpanded({
           <h1>仓库状态</h1>
           <p>{lastRefreshAt ? `刷新时间 ${lastRefreshAt.toLocaleTimeString("zh-CN", { hour12: false })}` : "尚未刷新"}</p>
         </div>
-        <input aria-label="搜索或分组" placeholder="搜索或分组" />
+        <input
+          aria-label="搜索仓库"
+          placeholder="搜索仓库 / 分支"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
         <button className="collapse-btn refresh-btn" onClick={onRefresh} aria-label="刷新">
           刷新
         </button>
@@ -52,7 +68,11 @@ export function WidgetExpanded({
       </header>
       <GroupFilters repos={repos} selected={group} onSelect={setGroup} />
       <StatusFilters repos={groupRepos} selected={relation} onSelect={setRelation} />
-      <RepoTable repos={visibleRepos} selectedRepoId={selectedRepoId} onSelect={setSelectedRepoId} onRefresh={onRefresh} />
+      {visibleRepos.length === 0 ? (
+        <p className="repo-empty">没有匹配的仓库</p>
+      ) : (
+        <RepoTable repos={visibleRepos} selectedRepoId={selectedRepoId} onSelect={setSelectedRepoId} onRefresh={onRefresh} />
+      )}
     </section>
   );
 }
