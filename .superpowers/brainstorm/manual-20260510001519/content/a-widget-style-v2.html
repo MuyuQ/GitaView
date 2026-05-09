@@ -1,0 +1,76 @@
+<h2>A 方案迭代：极简悬浮条 + 全仓库展开</h2>
+<p class="subtitle">这次重点看配色和质感。展开态会显示所有仓库，并把异常仓库固定排在顶部。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="padding:18px;border-radius:24px;background:linear-gradient(135deg,#fff7ed,#fefce8);border:1px solid #fed7aa">
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:18px;background:rgba(255,255,255,.82);box-shadow:0 18px 44px rgba(180,83,9,.16);color:#431407">
+          <strong style="font-size:18px">Gita</strong>
+          <span style="font-size:13px;color:#7c2d12">24 repos</span>
+          <span style="padding:4px 8px;border-radius:999px;background:#ffedd5;color:#c2410c">5 behind</span>
+          <span style="padding:4px 8px;border-radius:999px;background:#fee2e2;color:#b91c1c">2 diverged</span>
+        </div>
+        <div style="margin-top:14px;border-radius:18px;background:rgba(255,255,255,.9);box-shadow:0 18px 44px rgba(180,83,9,.12);overflow:hidden">
+          <div style="padding:10px 14px;font-weight:700;color:#7c2d12;border-bottom:1px solid #fed7aa">异常优先</div>
+          <div style="padding:10px 14px;background:#fff7ed;color:#9a3412">frontend · main · behind 2 · pull available</div>
+          <div style="padding:10px 14px;background:#fef2f2;color:#991b1b">api · dev · diverged · needs attention</div>
+          <div style="padding:10px 14px;color:#365314">docs · main · clean</div>
+          <div style="padding:10px 14px;color:#365314">scripts · main · clean</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 暖纸片</h3>
+      <p>温暖、轻、亲和，不像黑色终端。适合常驻桌面但不会显得压迫。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="padding:18px;border-radius:24px;background:linear-gradient(135deg,#e0f2fe,#ecfeff);border:1px solid #bae6fd">
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:18px;background:rgba(8,47,73,.9);box-shadow:0 18px 44px rgba(3,105,161,.18);color:#f0f9ff">
+          <strong style="font-size:18px">Gita</strong>
+          <span style="font-size:13px;color:#bae6fd">24 repos</span>
+          <span style="padding:4px 8px;border-radius:999px;background:#0e7490;color:white">5 behind</span>
+          <span style="padding:4px 8px;border-radius:999px;background:#be123c;color:white">2 diverged</span>
+        </div>
+        <div style="margin-top:14px;border-radius:18px;background:rgba(255,255,255,.92);box-shadow:0 18px 44px rgba(3,105,161,.14);overflow:hidden">
+          <div style="padding:10px 14px;font-weight:700;color:#075985;border-bottom:1px solid #bae6fd">异常优先</div>
+          <div style="padding:10px 14px;background:#ecfeff;color:#155e75">frontend · main · behind 2 · pull available</div>
+          <div style="padding:10px 14px;background:#fff1f2;color:#9f1239">api · dev · diverged · needs attention</div>
+          <div style="padding:10px 14px;color:#164e63">docs · main · clean</div>
+          <div style="padding:10px 14px;color:#164e63">scripts · main · clean</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 湖蓝玻璃</h3>
+      <p>更清爽、更现代，保留一点深色标题条来保证识别度和对比度。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="padding:18px;border-radius:24px;background:linear-gradient(135deg,#f8fafc,#e2e8f0);border:1px solid #cbd5e1">
+        <div style="display:flex;align-items:center;gap:14px;padding:12px 14px;border-radius:18px;background:#f8fafc;box-shadow:0 18px 44px rgba(15,23,42,.14);color:#0f172a;border:1px solid #e2e8f0">
+          <strong style="font-size:18px">Gita</strong>
+          <span style="font-size:13px;color:#475569">24 repos</span>
+          <span style="padding:4px 8px;border-radius:999px;background:#fef3c7;color:#92400e">5 behind</span>
+          <span style="padding:4px 8px;border-radius:999px;background:#fee2e2;color:#991b1b">2 diverged</span>
+        </div>
+        <div style="margin-top:14px;border-radius:18px;background:#ffffff;box-shadow:0 18px 44px rgba(15,23,42,.12);overflow:hidden;border:1px solid #e2e8f0">
+          <div style="padding:10px 14px;font-weight:700;color:#334155;border-bottom:1px solid #e2e8f0">异常优先</div>
+          <div style="padding:10px 14px;background:#fffbeb;color:#92400e">frontend · main · behind 2 · pull available</div>
+          <div style="padding:10px 14px;background:#fef2f2;color:#991b1b">api · dev · diverged · needs attention</div>
+          <div style="padding:10px 14px;color:#334155">docs · main · clean</div>
+          <div style="padding:10px 14px;color:#334155">scripts · main · clean</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 石墨浅色</h3>
+      <p>最克制、最工具化，接近原生系统小组件。优点是耐看，缺点是个性少一点。</p>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,50 @@
+<h2>默认收起态确认：轻量信号灯条</h2>
+<p class="subtitle">采用方案 C，并弱化 GitaView 字样。它更适合常驻桌面：小、安静、异常状态一眼可见。</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">默认收起态</div>
+    <div class="mockup-body">
+      <div style="height:210px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#f8fafc,#e5e7eb);border-radius:24px;border:1px solid #d7dde5">
+        <div style="width:258px;height:46px;border-radius:15px;background:#ffffff;border:1px solid #dbe2ea;box-shadow:0 16px 40px rgba(15,23,42,.13);display:flex;align-items:center;padding:0 11px;gap:9px;color:#0f172a">
+          <span style="font-size:12px;font-weight:650;color:#334155;letter-spacing:.1px">GitaView</span>
+          <span style="font-size:11px;color:#64748b">24</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:7px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#f59e0b"></span>
+            <span style="font-size:12px;color:#92400e">5</span>
+            <span style="width:7px;height:7px;border-radius:50%;background:#ef4444"></span>
+            <span style="font-size:12px;color:#991b1b">2</span>
+            <span style="width:25px;height:25px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#475569;font-size:13px">↻</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup">
+    <div class="mockup-header">点击展开态</div>
+    <div class="mockup-body">
+      <div style="border-radius:22px;background:#ffffff;box-shadow:0 20px 54px rgba(15,23,42,.14);overflow:hidden;border:1px solid #e2e8f0">
+        <div style="display:flex;gap:10px;align-items:center;padding:14px;border-bottom:1px solid #e2e8f0">
+          <strong style="color:#0f172a">全部仓库</strong>
+          <span style="color:#64748b">异常优先</span>
+          <span style="margin-left:auto;color:#475569">搜索 / 分组</span>
+        </div>
+        <div style="padding:11px 14px;background:#fffbeb;color:#92400e">前端 · main · 落后 2 个提交 · 可拉取</div>
+        <div style="padding:11px 14px;background:#fef2f2;color:#991b1b">接口服务 · dev · 本地/远端分叉 · 需要处理</div>
+        <div style="padding:11px 14px;background:#f8fafc;color:#334155">文档 · main · 干净 · 3 小时前提交</div>
+        <div style="padding:11px 14px;color:#334155">脚本工具 · main · 干净 · 昨天提交</div>
+        <div style="display:flex;gap:10px;padding:14px;border-top:1px solid #e2e8f0;background:#f8fafc">
+          <button class="mock-button">Fetch 选中项</button>
+          <button class="mock-button">Pull 选中项</button>
+          <button class="mock-button">打开目录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>状态含义</h3>
+  <p>灰色数字表示全部仓库数；黄色点表示落后远端的仓库数；红色点表示分叉或需要人工处理的仓库数；刷新按钮只刷新状态，不自动 fetch/pull。</p>
+</div>

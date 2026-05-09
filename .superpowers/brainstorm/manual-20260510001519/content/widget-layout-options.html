@@ -1,0 +1,74 @@
+<h2>桌面小组件的三种形态</h2>
+<p class="subtitle">你喜欢哪一种日常使用体验？可以点选一个，或者直接在终端说你的偏好。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">A. 极简悬浮条</div>
+        <div class="mockup-body">
+          <div style="display:flex;gap:12px;align-items:center;padding:12px;border-radius:14px;background:#111827;color:white">
+            <strong>Gita</strong>
+            <span>24 repos</span>
+            <span style="color:#facc15">↓ 5</span>
+            <span style="color:#fb7185">⇕ 2</span>
+            <button class="mock-button">Refresh</button>
+          </div>
+          <div class="placeholder" style="margin-top:12px;height:68px">点击后展开异常仓库列表</div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. 极简悬浮条</h3>
+      <p>像状态灯一样常驻桌面，优先显示仓库健康概览和异常数量。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">B. 可展开仪表盘</div>
+        <div class="mockup-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+            <div class="placeholder" style="height:42px">Behind 5</div>
+            <div class="placeholder" style="height:42px">Dirty 8</div>
+            <div class="placeholder" style="height:42px">Diverged 2</div>
+          </div>
+          <div style="display:grid;gap:7px">
+            <div class="mock-input" style="height:auto">Search repos / group</div>
+            <div class="placeholder" style="height:34px">frontend   main ↓ 2   fix checkout flow</div>
+            <div class="placeholder" style="height:34px">api        dev  *?    add repo scanner</div>
+            <div class="placeholder" style="height:34px">docs       main ✓     update README</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. 可展开仪表盘</h3>
+      <p>默认小巧，展开后显示 repo 表格、分组、搜索和常用动作。适合“查看为主，偶尔操作”。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div class="mockup">
+        <div class="mockup-header">C. 命令面板小组件</div>
+        <div class="mockup-body">
+          <div class="mock-input">Type: fetch group:web</div>
+          <div style="display:grid;grid-template-columns:150px 1fr;gap:12px;margin-top:12px">
+            <div class="mock-sidebar">Groups<br>web<br>infra<br>docs</div>
+            <div class="mock-content">
+              <div class="placeholder" style="height:34px">Run fetch on 7 repos</div>
+              <div class="placeholder" style="height:34px">Open changed repos</div>
+              <div class="placeholder" style="height:34px">Show last commits</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. 命令面板小组件</h3>
+      <p>偏 power-user，核心是搜索、过滤、批量命令。查看也有，但交互更像快速启动器。</p>
+    </div>
+  </div>
+</div>

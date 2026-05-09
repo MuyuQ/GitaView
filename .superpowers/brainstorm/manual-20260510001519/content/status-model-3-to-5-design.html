@@ -1,0 +1,401 @@
+<style>
+  .state-shell {
+    --ink: #172033;
+    --muted: #667488;
+    --green: #2f9f67;
+    --green-bg: #eefaf3;
+    --amber: #b57412;
+    --amber-bg: #fff7df;
+    --red: #b94736;
+    --red-bg: #fff1ed;
+    --slate: #64748b;
+    --slate-bg: #f1f5f9;
+    color: var(--ink);
+    padding: 26px;
+    border-radius: 34px;
+    border: 1px solid #d1dae5;
+    background:
+      radial-gradient(circle at 18% 10%, rgba(255,255,255,.98), rgba(255,255,255,0) 32%),
+      linear-gradient(135deg, #f7f9fc 0%, #dfe6ee 100%);
+    font-family: "Noto Sans SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", sans-serif;
+  }
+  .state-grid {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 22px;
+    align-items: start;
+  }
+  .state-caption {
+    margin: 0 0 10px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .state-mini {
+    height: 164px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .state-strip {
+    width: 236px;
+    height: 40px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.9);
+    border: 1px solid #dce3ec;
+    box-shadow: 0 14px 34px rgba(15,23,42,.12), inset 0 1px 0 rgba(255,255,255,.9);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 9px;
+  }
+  .state-logo {
+    width: 22px;
+    height: 22px;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    display: grid;
+    place-items: center;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .state-brand {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #3f4d60;
+  }
+  .state-total,
+  .state-count {
+    font: 11px/1 "JetBrains Mono", "SF Mono", monospace;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .state-total {
+    color: #64748b;
+  }
+  .state-summary {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .state-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    display: inline-block;
+    flex: none;
+  }
+  .state-note {
+    margin: 4px 4px 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .state-panel {
+    border-radius: 24px;
+    overflow: hidden;
+    background: rgba(255,255,255,.9);
+    border: 1px solid rgba(203,213,225,.9);
+    box-shadow: 0 26px 68px rgba(15,23,42,.15), inset 0 1px 0 rgba(255,255,255,.86);
+  }
+  .state-mini-example {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    background: rgba(255,255,255,.58);
+    border: 1px solid rgba(203,213,225,.72);
+  }
+  .state-mini-example-title {
+    margin-bottom: 8px;
+    color: #667488;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .state-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,250,252,.9));
+    border-bottom: 1px solid #e6ebf2;
+  }
+  .state-title {
+    font-size: 14px;
+    font-weight: 760;
+  }
+  .state-meta {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .state-search {
+    margin-left: auto;
+    height: 28px;
+    width: 138px;
+    border-radius: 10px;
+    border: 1px solid #dfe6ef;
+    background: #f8fafc;
+    color: #7b8797;
+    display: flex;
+    align-items: center;
+    padding: 0 9px;
+    font-size: 11.5px;
+  }
+  .state-modebar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 16px 0;
+    background: #f9fbfd;
+  }
+  .state-mode-label {
+    margin-right: 2px;
+    color: #8a96a8;
+    font-size: 10.5px;
+    font-weight: 700;
+  }
+  .state-mode {
+    height: 24px;
+    padding: 0 9px;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 9px;
+    border: 1px solid #dfe6ef;
+    background: #fff;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .state-mode.active {
+    background: #172033;
+    border-color: #172033;
+    color: #fff;
+  }
+  .state-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 16px 10px;
+    background: #f9fbfd;
+    border-bottom: 1px solid #e8edf4;
+  }
+  .state-tab {
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid #dfe6ef;
+    background: #fff;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 650;
+  }
+  .state-tab.active {
+    color: var(--ink);
+    background: #eef3f8;
+  }
+  .state-filter-note {
+    padding: 0 16px 8px;
+    background: #f9fbfd;
+    color: #8a96a8;
+    font-size: 10.5px;
+  }
+  .state-head,
+  .state-row {
+    display: grid;
+    grid-template-columns: 14px minmax(78px,1fr) 70px 54px 70px 50px minmax(82px,1fr);
+    gap: 8px;
+    align-items: center;
+  }
+  .state-head {
+    padding: 8px 16px;
+    background: #f4f7fb;
+    color: #8a96a8;
+    font-size: 10.5px;
+    border-bottom: 1px solid #e6ebf2;
+  }
+  .state-row {
+    min-height: 41px;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(226,232,240,.78);
+    font-size: 12.5px;
+  }
+  .state-repo {
+    font-weight: 720;
+  }
+  .state-mono {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #243247;
+  }
+  .state-branch {
+    font-family: "JetBrains Mono", "SF Mono", monospace;
+    font-weight: 560;
+    letter-spacing: -0.01em;
+    color: #334155;
+  }
+  .state-pill {
+    width: 54px;
+    height: 22px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 680;
+  }
+  .state-group {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #64748b;
+    font-size: 11.5px;
+  }
+  .row-green {
+    background: #fbfefc;
+  }
+  .row-amber {
+    background: #fffaf0;
+  }
+  .row-red {
+    background: linear-gradient(90deg, rgba(185,71,54,.08), rgba(255,247,243,.92) 56%, rgba(255,250,248,.88));
+    box-shadow: inset 3px 0 0 var(--red);
+  }
+  .row-slate {
+    background: #f8fafc;
+  }
+</style>
+
+<h2>状态模型设计：收起态 4 类，展开态 5 类</h2>
+<p class="subtitle">底层保留 gita 的五种本地/远程关系；默认小组件合并同步方向，但把“无远端”单独灰色展示。</p>
+
+<div class="state-shell">
+  <div class="state-grid">
+    <section>
+      <p class="state-caption">默认收起态：4 类摘要</p>
+      <div class="state-mini">
+        <div class="state-strip">
+          <span class="state-brand">GitaView</span>
+          <span class="state-total">24</span>
+          <div class="state-summary">
+            <span class="state-dot" style="background:var(--green)"></span><span class="state-count" style="color:var(--green)">17</span>
+            <span class="state-dot" style="background:var(--amber)"></span><span class="state-count" style="color:var(--amber)">4</span>
+            <span class="state-dot" style="background:var(--red)"></span><span class="state-count" style="color:var(--red)">2</span>
+            <span class="state-dot" style="background:var(--slate)"></span><span class="state-count" style="color:var(--slate)">1</span>
+          </div>
+        </div>
+      </div>
+      <p class="state-note">绿色：同步；黄色：本地领先或远程领先；灰色：无远端；红色：分叉，需要人工处理。</p>
+      <div class="state-mini-example">
+        <div class="state-mini-example-title">联动示例：选中 Web 分组后</div>
+        <div class="state-tabs" style="padding:0;background:transparent;border-bottom:0">
+          <span class="state-tab active">全部 6</span>
+          <span class="state-tab"><span class="state-dot" style="background:var(--green)"></span>同步 3</span>
+          <span class="state-tab"><span class="state-dot" style="background:var(--amber)"></span>远程领先 2</span>
+          <span class="state-tab"><span class="state-dot" style="background:var(--red)"></span>分叉 1</span>
+          <span class="state-tab"><span class="state-dot" style="background:var(--slate)"></span>无远端 0</span>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <p class="state-caption">点击展开态：5 类精确状态</p>
+      <div class="state-panel">
+        <div class="state-toolbar">
+          <div>
+            <div class="state-title">仓库状态</div>
+            <div class="state-meta">全部分组 · 刚刚刷新</div>
+          </div>
+          <div class="state-search">搜索或分组</div>
+        </div>
+
+        <div class="state-modebar">
+          <span class="state-mode-label">分组</span>
+          <span class="state-mode active">全部分组 24</span>
+          <span class="state-mode">后端 4</span>
+          <span class="state-mode">Web 6</span>
+          <span class="state-mode">共享 3</span>
+          <span class="state-mode">文档 5</span>
+          <span class="state-mode">实验 1</span>
+        </div>
+
+        <div class="state-tabs">
+          <span class="state-mode-label">状态</span>
+          <span class="state-tab active">全部 24</span>
+          <span class="state-tab"><span class="state-dot" style="background:var(--green)"></span>同步 17</span>
+          <span class="state-tab"><span class="state-dot" style="background:var(--amber)"></span>本地领先 2</span>
+          <span class="state-tab"><span class="state-dot" style="background:var(--amber)"></span>远程领先 2</span>
+          <span class="state-tab"><span class="state-dot" style="background:var(--red)"></span>分叉 2</span>
+          <span class="state-tab"><span class="state-dot" style="background:var(--slate)"></span>无远端 1</span>
+        </div>
+        <div class="state-filter-note">状态筛选统计基于当前分组；切换到 Web、后端等分组后，下方数量和列表同步收窄。</div>
+
+        <div class="state-head">
+          <span></span><span>仓库</span><span>分类</span><span>分支</span><span>关系</span><span>变更</span><span>提示</span>
+        </div>
+
+        <div class="state-row row-red">
+          <span class="state-dot" style="background:var(--red)"></span>
+          <span class="state-repo">接口服务</span>
+          <span class="state-group">后端</span>
+          <span class="state-branch">dev</span>
+          <span class="state-pill" style="background:var(--red-bg);color:var(--red)">分叉</span>
+          <span class="state-mono" style="color:var(--red)">⇕ 3</span>
+          <span>需要人工处理</span>
+        </div>
+
+        <div class="state-row row-amber">
+          <span class="state-dot" style="background:var(--amber)"></span>
+          <span class="state-repo">前端</span>
+          <span class="state-group">Web</span>
+          <span class="state-branch">main</span>
+          <span class="state-pill" style="background:var(--amber-bg);color:var(--amber)">远程领先</span>
+          <span class="state-mono" style="color:var(--amber)">↓ 2</span>
+          <span>可 Pull</span>
+        </div>
+
+        <div class="state-row row-amber">
+          <span class="state-dot" style="background:var(--amber)"></span>
+          <span class="state-repo">组件库</span>
+          <span class="state-group">共享</span>
+          <span class="state-branch">main</span>
+          <span class="state-pill" style="background:var(--amber-bg);color:var(--amber)">本地领先</span>
+          <span class="state-mono" style="color:var(--amber)">↑ 1</span>
+          <span>可 Push</span>
+        </div>
+
+        <div class="state-row row-green">
+          <span class="state-dot" style="background:var(--green)"></span>
+          <span class="state-repo">文档</span>
+          <span class="state-group">文档</span>
+          <span class="state-branch">main</span>
+          <span class="state-pill" style="background:var(--green-bg);color:var(--green)">同步</span>
+          <span class="state-mono" style="color:var(--green)">✓</span>
+          <span>无需操作</span>
+        </div>
+
+        <div class="state-row row-slate" style="border-bottom:0">
+          <span class="state-dot" style="background:var(--slate)"></span>
+          <span class="state-repo">实验仓库</span>
+          <span class="state-group">实验</span>
+          <span class="state-branch">topic</span>
+          <span class="state-pill" style="background:#f1f5f9;color:#64748b">无远端</span>
+          <span class="state-mono">∅</span>
+          <span>未设置 upstream</span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="section">
+  <h3>合并规则</h3>
+  <p>分组和状态是两个联动维度：先选“全部分组 / 某个分组”，再在该范围内按状态筛选。状态数量必须随当前分组实时变化，列表也只显示两者交集。</p>
+</div>

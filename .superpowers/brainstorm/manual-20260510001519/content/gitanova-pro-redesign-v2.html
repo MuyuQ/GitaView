@@ -1,0 +1,422 @@
+<style>
+  .pro-shell {
+    --ink: #172033;
+    --muted: #667488;
+    --faint: #94a3b8;
+    --line: #dce3ec;
+    --paper: rgba(255, 255, 255, .86);
+    --paper-strong: rgba(255, 255, 255, .96);
+    --amber: #b57412;
+    --amber-bg: #fff7df;
+    --red: #b94736;
+    --red-bg: #fff1ed;
+    --green: #2f9f67;
+    --green-bg: #eefaf3;
+    --blue: #38506c;
+    --slate-bg: #f6f8fb;
+    color: var(--ink);
+    padding: 26px;
+    border-radius: 34px;
+    border: 1px solid #d1dae5;
+    background:
+      radial-gradient(circle at 20% 8%, rgba(255,255,255,.98), rgba(255,255,255,0) 30%),
+      radial-gradient(circle at 86% 18%, rgba(199,210,224,.42), rgba(199,210,224,0) 34%),
+      linear-gradient(135deg, #f7f9fc 0%, #dfe6ee 100%);
+    font-family: "Noto Sans SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", sans-serif;
+    overflow: hidden;
+  }
+  .pro-layout {
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .pro-caption {
+    margin: 0 0 10px;
+    font-size: 11px;
+    letter-spacing: .18px;
+    color: var(--muted);
+  }
+  .pro-mini-wrap {
+    height: 168px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pro-mini {
+    width: 224px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    border-radius: 13px;
+    border: 1px solid rgba(203, 213, 225, .92);
+    background: rgba(255, 255, 255, .88);
+    box-shadow: 0 14px 34px rgba(15, 23, 42, .12), inset 0 1px 0 rgba(255,255,255,.9);
+  }
+  .pro-mark {
+    width: 22px;
+    height: 22px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    color: #334155;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+  }
+  .pro-brand {
+    font-size: 10.5px;
+    font-weight: 680;
+    color: #3f4d60;
+    letter-spacing: .08px;
+  }
+  .pro-count {
+    font: 11px/1 "JetBrains Mono", "SF Mono", "Cascadia Mono", monospace;
+    color: var(--faint);
+  }
+  .pro-mini-stats {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font: 11px/1 "JetBrains Mono", "SF Mono", "Cascadia Mono", monospace;
+  }
+  .pro-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    display: inline-block;
+    flex: none;
+  }
+  .pro-mini-button {
+    width: 22px;
+    height: 22px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #dce3ec;
+    background: #fff;
+    color: #64748b;
+  }
+  .pro-note {
+    margin: 2px 4px 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .pro-panel {
+    min-width: 0;
+    overflow: hidden;
+    border-radius: 24px;
+    border: 1px solid rgba(203, 213, 225, .9);
+    background: var(--paper);
+    box-shadow: 0 28px 72px rgba(15, 23, 42, .16), inset 0 1px 0 rgba(255,255,255,.85);
+    backdrop-filter: blur(18px) saturate(130%);
+  }
+  .pro-toolbar {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 14px 16px;
+    background: linear-gradient(180deg, var(--paper-strong), rgba(248,250,252,.88));
+    border-bottom: 1px solid #e6ebf2;
+  }
+  .pro-title {
+    font-size: 14px;
+    font-weight: 760;
+    letter-spacing: .05px;
+  }
+  .pro-meta {
+    margin-top: 2px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .pro-search {
+    width: 136px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 9px;
+    border-radius: 10px;
+    border: 1px solid #dfe6ef;
+    background: #f8fafc;
+    color: #7b8797;
+    font-size: 11.5px;
+  }
+  .pro-refresh {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    border: 1px solid #dfe6ef;
+    background: #fff;
+    color: #64748b;
+  }
+  .pro-tabs {
+    display: flex;
+    gap: 6px;
+    padding: 10px 16px;
+    background: #f9fbfd;
+    border-bottom: 1px solid #e8edf4;
+  }
+  .pro-tab {
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 8px;
+    border-radius: 999px;
+    border: 1px solid #dfe6ef;
+    background: #fff;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 650;
+  }
+  .pro-tab.active {
+    color: var(--ink);
+    background: #eef3f8;
+  }
+  .pro-head,
+  .pro-row {
+    display: grid;
+    grid-template-columns: 14px minmax(92px, 1.15fr) 58px 60px 48px minmax(94px, 1fr);
+    gap: 8px;
+    align-items: center;
+  }
+  .pro-head {
+    padding: 8px 16px;
+    background: #f4f7fb;
+    color: #8a96a8;
+    font-size: 10.5px;
+    border-bottom: 1px solid #e6ebf2;
+  }
+  .pro-row {
+    padding: 10px 16px;
+    min-height: 42px;
+    border-bottom: 1px solid rgba(226,232,240,.78);
+    font-size: 12.5px;
+  }
+  .pro-row.warn {
+    color: #4d3820;
+    background: #fffaf0;
+  }
+  .pro-row.selected {
+    color: #432b25;
+    background: linear-gradient(90deg, rgba(185,71,54,.08), rgba(255,247,243,.92) 56%, rgba(255,250,248,.88));
+    box-shadow: inset 3px 0 0 var(--red);
+  }
+  .pro-row.clean {
+    color: #344256;
+    background: #fbfcfe;
+  }
+  .pro-repo {
+    font-weight: 720;
+    color: #172033;
+  }
+  .pro-mono {
+    font-family: "JetBrains Mono", "SF Mono", "Cascadia Mono", monospace;
+    color: #526071;
+  }
+  .pro-status {
+    width: 40px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 680;
+  }
+  .pro-status.warn {
+    background: #fff0c7;
+    color: #8b570e;
+  }
+  .pro-status.danger {
+    background: #fee4dc;
+    color: #a33c2d;
+  }
+  .pro-status.clean {
+    background: #edf2f7;
+    color: #64748b;
+  }
+  .pro-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    min-height: 38px;
+    padding: 6px 12px 8px 40px;
+    background: linear-gradient(180deg, rgba(255,250,248,.94), rgba(255,246,242,.92));
+    border-bottom: 1px solid #edd8d1;
+  }
+  .pro-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 22px;
+    font-size: 11px;
+    color: #7b8797;
+  }
+  .pro-button-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 22px;
+  }
+  .pro-action {
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 0 6px;
+    border-radius: 8px;
+    border: 1px solid #dce3ec;
+    background: rgba(255,255,255,.76);
+    color: #334155;
+    font-size: 10.5px;
+    font-weight: 680;
+    line-height: 1;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+  }
+  .pro-action.pull {
+    border-color: #cf998b;
+    background: #fff1ec;
+    color: #934033;
+  }
+  .pro-action svg,
+  .pro-refresh svg,
+  .pro-mini-button svg,
+  .pro-search svg {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+</style>
+
+<h2>GitaView 重新设计 · Pro Draft</h2>
+<p class="subtitle">使用 ui-ux-pro-max：瑞士网格、轻玻璃层、中文高可读、状态不只靠颜色、按钮小而克制。</p>
+
+<div class="pro-shell">
+  <div class="pro-layout">
+    <section>
+      <p class="pro-caption">默认收起态</p>
+      <div class="pro-mini-wrap">
+        <div class="pro-mini">
+          <div class="pro-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <path d="M7 8h10M7 12h7M7 16h10" />
+            </svg>
+          </div>
+          <span class="pro-brand">GitaView</span>
+          <span class="pro-count">24</span>
+          <div class="pro-mini-stats">
+            <span class="pro-dot" style="background:var(--amber)"></span><span style="color:var(--amber)">5</span>
+            <span class="pro-dot" style="background:var(--red)"></span><span style="color:var(--red)">2</span>
+            <span class="pro-mini-button" aria-label="刷新">
+              <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-14 5M4 12a8 8 0 0 1 14-5"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>
+            </span>
+          </div>
+        </div>
+      </div>
+      <p class="pro-note">数字保持低噪声：全部、落后、严重异常。色点旁保留数字，避免只靠颜色判断。</p>
+    </section>
+
+    <section>
+      <p class="pro-caption">点击展开态</p>
+      <div class="pro-panel">
+        <div class="pro-toolbar">
+          <div>
+            <div class="pro-title">仓库状态</div>
+            <div class="pro-meta">异常优先 · 24 个仓库 · 刚刚刷新</div>
+          </div>
+          <div class="pro-search">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            搜索或分组
+          </div>
+          <div class="pro-refresh" aria-label="刷新">
+            <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-14 5M4 12a8 8 0 0 1 14-5"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>
+          </div>
+        </div>
+
+        <div class="pro-tabs">
+          <span class="pro-tab active">全部 24</span>
+          <span class="pro-tab"><span class="pro-dot" style="background:var(--amber)"></span>落后 5</span>
+          <span class="pro-tab"><span class="pro-dot" style="background:var(--red)"></span>需处理 2</span>
+          <span class="pro-tab"><span class="pro-dot" style="background:var(--green)"></span>干净 17</span>
+        </div>
+
+        <div class="pro-head">
+          <span></span><span>仓库</span><span>分支</span><span>状态</span><span>变更</span><span>最后提交</span>
+        </div>
+
+        <div class="pro-row warn">
+          <span class="pro-dot" style="background:var(--amber)"></span>
+          <span class="pro-repo">前端</span>
+          <span class="pro-mono">main</span>
+          <span class="pro-status warn">落后</span>
+          <span class="pro-mono" style="color:var(--amber)">↓ 2</span>
+          <span>修复登录跳转</span>
+        </div>
+
+        <div class="pro-row selected">
+          <span class="pro-dot" style="background:var(--red)"></span>
+          <span class="pro-repo">接口服务</span>
+          <span class="pro-mono">dev</span>
+          <span class="pro-status danger">分叉</span>
+          <span class="pro-mono" style="color:var(--red)">⇕ 3</span>
+          <span>调整仓库扫描</span>
+        </div>
+        <div class="pro-actions">
+          <span class="pro-path">已选中 · E:\Git_Repositories\api</span>
+          <div class="pro-button-row">
+            <button class="pro-action">
+              <svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>目录
+            </button>
+            <button class="pro-action">
+              <svg viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M9 7h8v8"/></svg>远端
+            </button>
+            <button class="pro-action">
+              <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 0 1-14 5M4 12a8 8 0 0 1 14-5"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>Fetch
+            </button>
+            <button class="pro-action pull">
+              <svg viewBox="0 0 24 24"><path d="M12 4v13"/><path d="m7 12 5 5 5-5"/></svg>Pull
+            </button>
+          </div>
+        </div>
+
+        <div class="pro-row clean">
+          <span class="pro-dot" style="background:var(--green)"></span>
+          <span class="pro-repo">文档</span>
+          <span class="pro-mono">main</span>
+          <span class="pro-status clean" style="background:var(--green-bg);color:#257a50">干净</span>
+          <span style="color:#94a3b8">-</span>
+          <span style="color:#64748b">3 小时前</span>
+        </div>
+
+        <div class="pro-row clean" style="border-bottom:0">
+          <span class="pro-dot" style="background:var(--green)"></span>
+          <span class="pro-repo">脚本工具</span>
+          <span class="pro-mono">main</span>
+          <span class="pro-status clean" style="background:var(--green-bg);color:#257a50">干净</span>
+          <span style="color:#94a3b8">-</span>
+          <span style="color:#64748b">昨天</span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div class="section">
+  <h3>设计原则</h3>
+  <p>按钮降为 22px 工具胶囊，图标使用一致 SVG；仓库状态用“色点 + 文案胶囊 + 数字”三重表达；列表仍列对齐，但通过筛选胶囊、选中行和上下文操作区减少表格感。</p>
+</div>

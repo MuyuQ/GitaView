@@ -1,0 +1,76 @@
+<h2>展开态操作更新：加入打开远端</h2>
+<p class="subtitle">选中仓库后显示针对该仓库的操作：打开目录、打开远端、Fetch、Pull。不再提供复制路径按钮。</p>
+
+<div class="mockup">
+  <div class="mockup-header">推荐视觉方向</div>
+  <div class="mockup-body">
+    <div style="max-width:880px;margin:auto;padding:22px;border-radius:30px;background:linear-gradient(135deg,#f8fafc,#e5e7eb);border:1px solid #d8dee8">
+      <div style="border-radius:24px;background:rgba(255,255,255,.92);box-shadow:0 24px 70px rgba(15,23,42,.16);overflow:hidden;border:1px solid rgba(203,213,225,.85);color:#172033;font-family:'HarmonyOS Sans SC','MiSans','Microsoft YaHei',sans-serif">
+        <div style="display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid #e5eaf1;background:linear-gradient(180deg,#ffffff,#f8fafc)">
+          <div>
+            <div style="font-size:15px;font-weight:720;letter-spacing:.1px">全部仓库</div>
+            <div style="margin-top:2px;font-size:12px;color:#748094">异常优先 · 24 个仓库 · 刚刚刷新</div>
+          </div>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+            <div style="padding:7px 10px;border-radius:11px;background:#f8fafc;border:1px solid #e2e8f0;color:#64748b;font-size:12px">搜索仓库或分组</div>
+            <div style="width:30px;height:30px;border-radius:11px;background:#ffffff;border:1px solid #dbe3ee;display:flex;align-items:center;justify-content:center;color:#64748b">↻</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:18px minmax(118px,1.2fr) 86px 86px 76px minmax(132px,1fr);gap:12px;align-items:center;padding:9px 18px;background:#f7f9fc;border-bottom:1px solid #e8edf4;font-size:11px;color:#8a96a8;letter-spacing:.15px">
+          <span></span><span>仓库</span><span>分支</span><span>状态</span><span>变更</span><span>最后提交</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:18px minmax(118px,1.2fr) 86px 86px 76px minmax(132px,1fr);gap:12px;align-items:center;padding:12px 18px;background:#fffaf0;border-bottom:1px solid #f4ead8;color:#4a3420;font-size:13px">
+          <span style="width:7px;height:7px;border-radius:50%;background:#d89b21"></span>
+          <strong style="font-weight:680">前端</strong>
+          <span style="font-family:'SF Mono','Cascadia Mono',monospace;color:#5f4a33">main</span>
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:44px;padding:4px 0;border-radius:999px;background:#fff3d8;color:#99610b;font-size:12px">落后</span>
+          <span style="font-family:'SF Mono','Cascadia Mono',monospace;color:#99610b">↓ 2</span>
+          <span style="color:#6f5534">修复登录跳转</span>
+        </div>
+
+        <div style="background:linear-gradient(180deg,#fff7f3,#fffaf8);border-bottom:1px solid #efdbd2;box-shadow:inset 3px 0 0 #d45b3f">
+          <div style="display:grid;grid-template-columns:18px minmax(118px,1.2fr) 86px 86px 76px minmax(132px,1fr);gap:12px;align-items:center;padding:12px 18px;color:#4a2b25;font-size:13px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#d9534f"></span>
+            <strong style="font-weight:720">接口服务</strong>
+            <span style="font-family:'SF Mono','Cascadia Mono',monospace;color:#6d4038">dev</span>
+            <span style="display:inline-flex;align-items:center;justify-content:center;width:44px;padding:4px 0;border-radius:999px;background:#fee7df;color:#a83f2d;font-size:12px">分叉</span>
+            <span style="font-family:'SF Mono','Cascadia Mono',monospace;color:#a83f2d">⇕ 3</span>
+            <span style="color:#71504a">调整仓库扫描</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;padding:0 18px 14px 48px">
+            <span style="font-size:12px;color:#7b8797;margin-right:auto">已选中 · E:\Git_Repositories\api</span>
+            <button style="height:30px;padding:0 11px;border-radius:10px;border:1px solid #d7e0eb;background:#ffffff;color:#334155;font-size:12px;font-weight:650;box-shadow:0 1px 0 rgba(15,23,42,.04)">打开目录</button>
+            <button style="height:30px;padding:0 11px;border-radius:10px;border:1px solid #cbd5e1;background:#f8fafc;color:#334155;font-size:12px;font-weight:650;box-shadow:0 1px 0 rgba(15,23,42,.04)">打开远端 ↗</button>
+            <button style="height:30px;padding:0 11px;border-radius:10px;border:1px solid #d7e0eb;background:#ffffff;color:#334155;font-size:12px;font-weight:650;box-shadow:0 1px 0 rgba(15,23,42,.04)">Fetch</button>
+            <button style="height:30px;padding:0 12px;border-radius:10px;border:1px solid #c98b7a;background:#fff2ed;color:#9a3b2e;font-size:12px;font-weight:700;box-shadow:0 1px 0 rgba(154,59,46,.05)">Pull...</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:18px minmax(118px,1.2fr) 86px 86px 76px minmax(132px,1fr);gap:12px;align-items:center;padding:12px 18px;background:#f8fafc;border-bottom:1px solid #e8edf4;color:#344256;font-size:13px">
+          <span style="width:7px;height:7px;border-radius:50%;background:#a6b2c2"></span>
+          <strong style="font-weight:640">文档</strong>
+          <span style="font-family:'SF Mono','Cascadia Mono',monospace;color:#596579">main</span>
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:44px;padding:4px 0;border-radius:999px;background:#edf2f7;color:#64748b;font-size:12px">干净</span>
+          <span style="color:#94a3b8">-</span>
+          <span style="color:#64748b">3 小时前</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:18px minmax(118px,1.2fr) 86px 86px 76px minmax(132px,1fr);gap:12px;align-items:center;padding:12px 18px;color:#344256;font-size:13px">
+          <span style="width:7px;height:7px;border-radius:50%;background:#a6b2c2"></span>
+          <strong style="font-weight:640">脚本工具</strong>
+          <span style="font-family:'SF Mono','Cascadia Mono',monospace;color:#596579">main</span>
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:44px;padding:4px 0;border-radius:999px;background:#edf2f7;color:#64748b;font-size:12px">干净</span>
+          <span style="color:#94a3b8">-</span>
+          <span style="color:#64748b">昨天</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>远端规则</h3>
+  <p>打开远端按钮读取仓库的 origin URL，并转换为浏览器可打开的网址；如果没有远端地址，则按钮禁用并显示“无远端”。</p>
+</div>

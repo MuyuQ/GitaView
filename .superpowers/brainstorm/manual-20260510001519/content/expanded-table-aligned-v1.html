@@ -1,0 +1,51 @@
+<h2>展开态调整：仓库信息列对齐</h2>
+<p class="subtitle">展开后显示所有仓库，异常仓库置顶；每行按固定列展示，方便快速扫视。</p>
+
+<div class="mockup">
+  <div class="mockup-header">收起态 + 展开态</div>
+  <div class="mockup-body">
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:28px;align-items:start">
+      <div style="height:210px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#f8fafc,#e5e7eb);border-radius:24px;border:1px solid #d7dde5">
+        <div style="width:258px;height:46px;border-radius:15px;background:#ffffff;border:1px solid #dbe2ea;box-shadow:0 16px 40px rgba(15,23,42,.13);display:flex;align-items:center;padding:0 11px;gap:9px;color:#0f172a">
+          <span style="font-size:12px;font-weight:650;color:#334155;letter-spacing:.1px">GitaView</span>
+          <span style="font-size:11px;color:#64748b">24</span>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:7px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#f59e0b"></span>
+            <span style="font-size:12px;color:#92400e">5</span>
+            <span style="width:7px;height:7px;border-radius:50%;background:#ef4444"></span>
+            <span style="font-size:12px;color:#991b1b">2</span>
+            <span style="width:25px;height:25px;border-radius:8px;background:#f8fafc;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;color:#475569;font-size:13px">↻</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="border-radius:22px;background:#ffffff;box-shadow:0 20px 54px rgba(15,23,42,.14);overflow:hidden;border:1px solid #e2e8f0;color:#0f172a">
+        <div style="display:flex;gap:10px;align-items:center;padding:14px 16px;border-bottom:1px solid #e2e8f0">
+          <strong>全部仓库</strong>
+          <span style="color:#64748b">异常优先</span>
+          <span style="margin-left:auto;color:#475569">搜索 / 分组</span>
+        </div>
+        <div style="display:grid;grid-template-columns:18px minmax(110px,1.2fr) 88px 86px 82px minmax(120px,1fr);gap:12px;align-items:center;padding:9px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b">
+          <span></span><span>仓库</span><span>分支</span><span>状态</span><span>变更</span><span>最后提交</span>
+        </div>
+        <div style="display:grid;grid-template-columns:18px minmax(110px,1.2fr) 88px 86px 82px minmax(120px,1fr);gap:12px;align-items:center;padding:11px 16px;background:#fffbeb;border-bottom:1px solid #fef3c7;color:#92400e">
+          <span style="width:8px;height:8px;border-radius:50%;background:#f59e0b"></span><strong>前端</strong><span>main</span><span>落后</span><span>↓ 2</span><span>修复登录跳转</span>
+        </div>
+        <div style="display:grid;grid-template-columns:18px minmax(110px,1.2fr) 88px 86px 82px minmax(120px,1fr);gap:12px;align-items:center;padding:11px 16px;background:#fef2f2;border-bottom:1px solid #fee2e2;color:#991b1b">
+          <span style="width:8px;height:8px;border-radius:50%;background:#ef4444"></span><strong>接口服务</strong><span>dev</span><span>分叉</span><span>⇕ 3</span><span>调整仓库扫描</span>
+        </div>
+        <div style="display:grid;grid-template-columns:18px minmax(110px,1.2fr) 88px 86px 82px minmax(120px,1fr);gap:12px;align-items:center;padding:11px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;color:#334155">
+          <span style="width:8px;height:8px;border-radius:50%;background:#94a3b8"></span><strong>文档</strong><span>main</span><span>干净</span><span>-</span><span>3 小时前</span>
+        </div>
+        <div style="display:grid;grid-template-columns:18px minmax(110px,1.2fr) 88px 86px 82px minmax(120px,1fr);gap:12px;align-items:center;padding:11px 16px;color:#334155">
+          <span style="width:8px;height:8px;border-radius:50%;background:#94a3b8"></span><strong>脚本工具</strong><span>main</span><span>干净</span><span>-</span><span>昨天</span>
+        </div>
+        <div style="display:flex;gap:10px;padding:14px 16px;border-top:1px solid #e2e8f0;background:#f8fafc">
+          <button class="mock-button">Fetch 选中项</button>
+          <button class="mock-button">Pull 选中项</button>
+          <button class="mock-button">打开目录</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

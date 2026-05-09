@@ -1,0 +1,341 @@
+<style>
+  .settings-shell {
+    --ink: #172033;
+    --muted: #667488;
+    --line: #dce3ec;
+    --paper: rgba(255,255,255,.9);
+    --green: #2f9f67;
+    --amber: #b57412;
+    --red: #b94736;
+    --slate: #64748b;
+    color: var(--ink);
+    padding: 24px;
+    border-radius: 34px;
+    border: 1px solid #d1dae5;
+    background:
+      radial-gradient(circle at 18% 10%, rgba(255,255,255,.98), rgba(255,255,255,0) 32%),
+      linear-gradient(135deg, #f7f9fc 0%, #dfe6ee 100%);
+    font-family: "Noto Sans SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", sans-serif;
+  }
+  .settings-window {
+    display: grid;
+    grid-template-columns: 178px minmax(0, 1fr);
+    min-height: 430px;
+    overflow: hidden;
+    border-radius: 24px;
+    background: rgba(255,255,255,.9);
+    border: 1px solid rgba(203,213,225,.9);
+    box-shadow: 0 26px 68px rgba(15,23,42,.15), inset 0 1px 0 rgba(255,255,255,.86);
+  }
+  .settings-sidebar {
+    padding: 14px;
+    background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(241,245,249,.88));
+    border-right: 1px solid #e2e8f0;
+  }
+  .settings-title {
+    margin: 4px 4px 14px;
+    font-size: 14px;
+    font-weight: 780;
+  }
+  .settings-nav {
+    display: grid;
+    gap: 6px;
+  }
+  .settings-nav-item {
+    height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px;
+    border-radius: 11px;
+    color: #526071;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .settings-nav-item.active {
+    background: #172033;
+    color: #fff;
+  }
+  .settings-nav-item svg,
+  .settings-button svg {
+    width: 13px;
+    height: 13px;
+    stroke: currentColor;
+    stroke-width: 2;
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .settings-main {
+    padding: 16px 18px;
+    min-width: 0;
+  }
+  .settings-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .settings-heading {
+    font-size: 16px;
+    font-weight: 780;
+  }
+  .settings-subtitle {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 11.5px;
+  }
+  .settings-spacer {
+    flex: 1;
+  }
+  .settings-button {
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0 10px;
+    border-radius: 10px;
+    border: 1px solid #dce3ec;
+    background: #fff;
+    color: #334155;
+    font-size: 11.5px;
+    font-weight: 700;
+  }
+  .settings-button.primary {
+    background: #172033;
+    border-color: #172033;
+    color: #fff;
+  }
+  .settings-grid {
+    display: grid;
+    grid-template-columns: 1.15fr .85fr;
+    gap: 12px;
+  }
+  .settings-card {
+    border-radius: 18px;
+    border: 1px solid #e2e8f0;
+    background: rgba(255,255,255,.78);
+    overflow: hidden;
+  }
+  .settings-card-head {
+    padding: 11px 12px;
+    border-bottom: 1px solid #e8edf4;
+    background: #f8fafc;
+  }
+  .settings-card-title {
+    font-size: 12.5px;
+    font-weight: 760;
+  }
+  .settings-card-note {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 10.5px;
+  }
+  .settings-row {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid #edf1f6;
+  }
+  .settings-row:last-child {
+    border-bottom: 0;
+  }
+  .settings-label {
+    font-size: 12px;
+    font-weight: 720;
+  }
+  .settings-help {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 10.5px;
+    line-height: 1.5;
+  }
+  .settings-select,
+  .settings-input {
+    height: 28px;
+    border-radius: 9px;
+    border: 1px solid #dce3ec;
+    background: #fff;
+    color: #334155;
+    font-size: 11.5px;
+    font-weight: 650;
+    padding: 0 9px;
+  }
+  .settings-toggle {
+    width: 38px;
+    height: 22px;
+    border-radius: 999px;
+    background: #172033;
+    padding: 3px;
+    box-sizing: border-box;
+  }
+  .settings-toggle::after {
+    content: "";
+    width: 16px;
+    height: 16px;
+    display: block;
+    margin-left: 16px;
+    border-radius: 50%;
+    background: #fff;
+  }
+  .settings-list {
+    display: grid;
+  }
+  .settings-repo {
+    display: grid;
+    grid-template-columns: 8px minmax(0,1fr) auto;
+    gap: 9px;
+    align-items: center;
+    padding: 9px 12px;
+    border-bottom: 1px solid #edf1f6;
+  }
+  .settings-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .settings-repo-name {
+    font-size: 12px;
+    font-weight: 740;
+  }
+  .settings-repo-path {
+    margin-top: 1px;
+    color: var(--muted);
+    font: 10.5px/1.35 "JetBrains Mono", "SF Mono", monospace;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .settings-tag {
+    height: 21px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 10.5px;
+    font-weight: 700;
+  }
+</style>
+
+<h2>设置界面设计</h2>
+<p class="subtitle">和主小组件同一套视觉语言：轻玻璃、低噪声、中文高可读。设置页负责管理仓库、分组、刷新、安全和外观。</p>
+
+<div class="settings-shell">
+  <div class="settings-window">
+    <aside class="settings-sidebar">
+      <div class="settings-title">设置</div>
+      <div class="settings-nav">
+        <div class="settings-nav-item active">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>仓库
+        </div>
+        <div class="settings-nav-item">
+          <svg viewBox="0 0 24 24"><path d="M4 6h7l2 2h7v10H4Z"/></svg>分组
+        </div>
+        <div class="settings-nav-item">
+          <svg viewBox="0 0 24 24"><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="9"/></svg>刷新
+        </div>
+        <div class="settings-nav-item">
+          <svg viewBox="0 0 24 24"><path d="M12 3 5 6v6c0 5 3.5 8 7 9 3.5-1 7-4 7-9V6Z"/></svg>安全操作
+        </div>
+        <div class="settings-nav-item">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16M7 7v10M17 7v10"/></svg>外观
+        </div>
+      </div>
+    </aside>
+
+    <main class="settings-main">
+      <div class="settings-header">
+        <div>
+          <div class="settings-heading">仓库管理</div>
+          <div class="settings-subtitle">扫描目录、手动添加仓库，并为仓库分配业务分组。</div>
+        </div>
+        <div class="settings-spacer"></div>
+        <button class="settings-button">
+          <svg viewBox="0 0 24 24"><path d="M4 6h7l2 2h7v10H4Z"/></svg>扫描目录
+        </button>
+        <button class="settings-button primary">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>添加仓库
+        </button>
+      </div>
+
+      <div class="settings-grid">
+        <section class="settings-card">
+          <div class="settings-card-head">
+            <div class="settings-card-title">已管理仓库</div>
+            <div class="settings-card-note">显示应用内独立管理的仓库；不依赖 gita CLI 配置。</div>
+          </div>
+          <div class="settings-list">
+            <div class="settings-repo">
+              <span class="settings-dot" style="background:var(--red)"></span>
+              <div>
+                <div class="settings-repo-name">接口服务</div>
+                <div class="settings-repo-path">E:\Git_Repositories\api</div>
+              </div>
+              <span class="settings-tag">后端</span>
+            </div>
+            <div class="settings-repo">
+              <span class="settings-dot" style="background:var(--amber)"></span>
+              <div>
+                <div class="settings-repo-name">前端</div>
+                <div class="settings-repo-path">E:\Git_Repositories\web</div>
+              </div>
+              <span class="settings-tag">Web</span>
+            </div>
+            <div class="settings-repo">
+              <span class="settings-dot" style="background:var(--green)"></span>
+              <div>
+                <div class="settings-repo-name">文档</div>
+                <div class="settings-repo-path">E:\Git_Repositories\docs</div>
+              </div>
+              <span class="settings-tag">文档</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-card">
+          <div class="settings-card-head">
+            <div class="settings-card-title">常用偏好</div>
+            <div class="settings-card-note">影响小组件刷新、展示和安全确认。</div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">轻量定时刷新</div>
+              <div class="settings-help">只刷新本地状态，不自动 fetch/pull。</div>
+            </div>
+            <div class="settings-toggle"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">刷新间隔</div>
+              <div class="settings-help">常驻时控制资源占用。</div>
+            </div>
+            <div class="settings-select">5 分钟</div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">Pull 前确认</div>
+              <div class="settings-help">Pull 会修改工作区，默认开启。</div>
+            </div>
+            <div class="settings-toggle"></div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">默认分组</div>
+              <div class="settings-help">打开小组件时优先显示。</div>
+            </div>
+            <div class="settings-select">全部分组</div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div class="section">
+  <h3>设置结构</h3>
+  <p>左侧是稳定导航：仓库、分组、刷新、安全操作、外观。右侧按任务组织表单，所有危险操作默认需要确认；扫描和添加仓库是设置页的主按钮。</p>
+</div>
