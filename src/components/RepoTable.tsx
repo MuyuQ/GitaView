@@ -1,5 +1,6 @@
 import type { RepoStatus } from "../types";
 import { RepoActions } from "./RepoActions";
+import { Fragment } from "react";
 
 const relationLabels: Record<RepoStatus["relation"], string> = {
   synced: "已同步",
@@ -17,7 +18,7 @@ const statusDotClass: Record<RepoStatus["relation"], string> = {
   no_remote: "slate",
 };
 
-export function RepoTable({ repos, selectedRepoId, onSelect }: { repos: RepoStatus[]; selectedRepoId: string | null; onSelect: (id: string | null) => void }) {
+export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repos: RepoStatus[]; selectedRepoId: string | null; onSelect: (id: string | null) => void; onRefresh: () => void }) {
   return (
     <div className="repo-table">
       <table>
@@ -34,9 +35,8 @@ export function RepoTable({ repos, selectedRepoId, onSelect }: { repos: RepoStat
         </thead>
         <tbody>
           {repos.map((repo) => (
-            <>
+            <Fragment key={repo.id}>
               <tr
-                key={repo.id}
                 className={`repo-row ${selectedRepoId === repo.id ? "selected" : ""}`}
                 onClick={() => onSelect(selectedRepoId === repo.id ? null : repo.id)}
               >
@@ -51,11 +51,11 @@ export function RepoTable({ repos, selectedRepoId, onSelect }: { repos: RepoStat
               {selectedRepoId === repo.id && (
                 <tr key={`${repo.id}-actions`}>
                   <td colSpan={7}>
-                    <RepoActions repo={repo} />
+                    <RepoActions repo={repo} onRefresh={onRefresh} />
                   </td>
                 </tr>
               )}
-            </>
+            </Fragment>
           ))}
         </tbody>
       </table>

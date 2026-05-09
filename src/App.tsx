@@ -10,21 +10,53 @@ export default function App() {
   const [repos, setRepos] = useState<RepoStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
+
+  function refreshRepos() {
+    setLoading(true);
+    setError(null);
+    listRepoStatuses()
+      .then((data) => {
+        setRepos(data);
+        setLastRefreshAt(new Date());
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(String(err));
+        setLoading(false);
+      });
+  }
 
   useEffect(() => {
-    listRepoStatuses()
-      .then((data) => { setRepos(data); setLoading(false); })
-      .catch((err) => { setError(String(err)); setLoading(false); });
+    refreshRepos();
   }, []);
 
   if (loading) return <main className="app-shell">正在刷新仓库状态...</main>;
   if (error) return <main className="app-shell" role="alert">加载仓库失败：{error}</main>;
-  if (view === "settings") return <SettingsShell />;
-  if (repos.length === 0) return <main className="app-shell">还没有添加仓库</main>;
+  if (view === "settings" || repos.length === 0) {
+    return (
+      <SettingsShell
+        onClose={() => {
+          refreshRepos();
+          setView("collapsed");
+        }}
+      />
+    );
+  }
 
   return view === "expanded" ? (
-    <WidgetExpanded repos={repos} />
+    <WidgetExpanded
+      repos={repos}
+      lastRefreshAt={lastRefreshAt}
+      onRefresh={refreshRepos}
+      onCollapse={() => setView("collapsed")}
+      onOpenSettings={() => setView("settings")}
+    />
   ) : (
-    <WidgetCollapsed repos={repos} onExpand={() => setView("expanded")} />
+    <WidgetCollapsed
+      repos={repos}
+      onExpand={() => setView("expanded")}
+      onOpenSettings={() => setView("settings")}
+    />
   );
 }
