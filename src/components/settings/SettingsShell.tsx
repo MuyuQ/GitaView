@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { RepositorySettings } from "./RepositorySettings";
+import { GroupSettings } from "./GroupSettings";
+import { RefreshSettings } from "./RefreshSettings";
+import { SafetySettings } from "./SafetySettings";
+import { AppearanceSettings } from "./AppearanceSettings";
 
 const sections = ["仓库", "分组", "刷新", "安全操作", "外观"] as const;
 type Section = (typeof sections)[number];
 
-export function SettingsShell() {
+export function SettingsShell({ onClose }: { onClose?: () => void }) {
   const [active, setActive] = useState<Section>("仓库");
 
   return (
@@ -22,7 +26,14 @@ export function SettingsShell() {
         ))}
       </aside>
       <main className="settings-main">
-        {active === "仓库" ? <RepositorySettings /> : <div className="settings-placeholder">{active}</div>}
+        <div className="settings-topbar">
+          <button className="settings-close" onClick={onClose}>完成</button>
+        </div>
+        {active === "仓库" && <RepositorySettings />}
+        {active === "分组" && <GroupSettings />}
+        {active === "刷新" && <RefreshSettings />}
+        {active === "安全操作" && <SafetySettings />}
+        {active === "外观" && <AppearanceSettings />}
       </main>
     </section>
   );

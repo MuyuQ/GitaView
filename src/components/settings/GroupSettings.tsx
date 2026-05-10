@@ -1,8 +1,88 @@
+import { useEffect, useState } from "react";
+import { getSettings, saveSettings } from "../../lib/commands";
+import type { AppSettings } from "../../types";
+
 export function GroupSettings() {
+  const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [name, setName] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    getSettings()
+      .then(setSettings)
+      .catch((err) => setMessage(`加载分组失败：${err}`));
+  }, []);
+
+  async function persist(nextSettings: AppSettings, successMessage: string) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await saveSettings(nextSettings);
+      setSettings(nextSettings);
+      setMessage(successMessage);
+    } catch (err) {
+      setMessage(`保存失败：${err}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCreate() {
+    if (!settings) return;
+    const groupName = name.trim();
+    if (!groupName) {
+      setMessage("请输入分组名称");
+      return;
+    }
+    if (settings.groups.some((group) => group.name === groupName)) {
+      setMessage("这个分组已经存在");
+      return;
+    }
+    await persist(
+      {
+        ...settings,
+        groups: [...settings.groups, { name: groupName, repoIds: [] }],
+      },
+      "分组已创建",
+    );
+    setName("");
+  }
+
+  async function handleRemove(groupName: string) {
+    if (!settings || groupName === settings.defaultGroup) return;
+    await persist(
+      {
+        ...settings,
+        groups: settings.groups.filter((group) => group.name !== groupName),
+        repos: settings.repos.map((repo) =>
+          repo.group === groupName ? { ...repo, group: settings.defaultGroup } : repo,
+        ),
+      },
+      "分组已删除，相关仓库已移回默认分组",
+    );
+  }
+
   return (
     <section className="settings-card">
       <h3>分组管理</h3>
-      <p>创建和编辑仓库分组。</p>
+      <p>创建分组后，可以在“仓库”页把仓库分配进去。</p>
+      <div className="settings-path-row">
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：工作、开源、实验" />
+        <button className="primary" onClick={handleCreate} disabled={busy || !settings}>新增分组</button>
+      </div>
+      {message && <p className="settings-message" role="status">{message}</p>}
+      <div className="settings-list">
+        {settings?.groups.map((group) => (
+          <article className="settings-group" key={group.name}>
+            <strong>{group.name}</strong>
+            <span>{settings.repos.filter((repo) => repo.group === group.name).length} 个仓库</span>
+            <button onClick={() => handleRemove(group.name)} disabled={busy || group.name === settings.defaultGroup}>
+              {group.name === settings.defaultGroup ? "默认" : "删除"}
+            </button>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }
