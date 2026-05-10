@@ -1,7 +1,11 @@
-use crate::domain::repo::RepoStatusDto;
+use crate::domain::repo::{RepoRecord, RepoStatusDto};
 use crate::domain::settings::AppSettings;
-use crate::git::commands::{branch_state, change_label, relation_hint, run_git};
+use crate::domain::status::RemoteRelation;
+use crate::git::commands::{branch_state, change_label, relation_hint, run_git, GitBranchState};
 use tauri::Manager;
+use dunce;
+
+const STATUS_REFRESH_BATCH_SIZE: usize = 4;
 
 fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(app
@@ -15,7 +19,10 @@ fn load_app_settings(app: &tauri::AppHandle) -> Result<AppSettings, String> {
     crate::storage::store::load_settings(&settings_path(app)?)
 }
 
-fn save_app_settings(app: &tauri::AppHandle, settings: &AppSettings) -> Result<(), String> {
+fn save_app_settings(
+    app: &tauri::AppHandle,
+    settings: &AppSettings,
+) -> Result<AppSettings, String> {
     crate::storage::store::save_settings(&settings_path(app)?, settings)
 }
 
@@ -25,11 +32,21 @@ fn repo_id_from_path(path: &std::path::Path, settings: &AppSettings) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or("repo")
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .trim_matches('-')
         .to_string();
-    let base = if base.is_empty() { "repo".to_string() } else { base };
+    let base = if base.is_empty() {
+        "repo".to_string()
+    } else {
+        base
+    };
     if !settings.repos.iter().any(|repo| repo.id == base) {
         return base;
     }
@@ -43,7 +60,10 @@ fn repo_id_from_path(path: &std::path::Path, settings: &AppSettings) -> String {
     }
 }
 
-fn find_repo<'a>(settings: &'a AppSettings, repo_id: &str) -> Result<&'a crate::domain::repo::RepoRecord, String> {
+fn find_repo<'a>(
+    settings: &'a AppSettings,
+    repo_id: &str,
+) -> Result<&'a crate::domain::repo::RepoRecord, String> {
     settings
         .repos
         .iter()
@@ -54,8 +74,8 @@ fn find_repo<'a>(settings: &'a AppSettings, repo_id: &str) -> Result<&'a crate::
 fn open_path(target: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let mut command = {
-        let mut cmd = std::process::Command::new("cmd");
-        cmd.args(["/C", "start", "", target]);
+        let mut cmd = std::process::Command::new("explorer");
+        cmd.arg(target);
         cmd
     };
 
@@ -77,31 +97,144 @@ fn open_path(target: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy)]
+enum RepoGitOperation {
+    Fetch,
+    Pull,
+    Push,
+}
+
+fn validate_repo_git_operation(
+    operation: RepoGitOperation,
+    relation: RemoteRelation,
+) -> Result<(), String> {
+    match (operation, relation) {
+        (_, RemoteRelation::Error) => Err("当前仓库状态异常，请先刷新或检查仓库路径".to_string()),
+        (_, RemoteRelation::NoRemote) => Err("当前仓库没有远端，无法执行远端操作".to_string()),
+        (RepoGitOperation::Fetch, _) => Ok(()),
+        (RepoGitOperation::Pull, RemoteRelation::RemoteAhead | RemoteRelation::Diverged) => Ok(()),
+        (RepoGitOperation::Pull, RemoteRelation::Synced) => {
+            Err("当前仓库已同步，无需 Pull".to_string())
+        }
+        (RepoGitOperation::Pull, RemoteRelation::LocalAhead) => {
+            Err("当前仓库只有本地提交，无需 Pull".to_string())
+        }
+        (RepoGitOperation::Push, RemoteRelation::LocalAhead | RemoteRelation::Diverged) => Ok(()),
+        (RepoGitOperation::Push, RemoteRelation::Synced) => {
+            Err("当前仓库已同步，无需 Push".to_string())
+        }
+        (RepoGitOperation::Push, RemoteRelation::RemoteAhead) => {
+            Err("当前仓库落后远端，请先 Pull 或处理分叉".to_string())
+        }
+    }
+}
+
+fn repo_status_from_branch_result(
+    repo: RepoRecord,
+    result: Result<GitBranchState, String>,
+) -> RepoStatusDto {
+    match result {
+        Ok(state) => RepoStatusDto {
+            id: repo.id,
+            name: repo.name,
+            path: repo.path.to_string_lossy().to_string(),
+            group: repo.group,
+            branch: state.branch.clone(),
+            relation: state.relation,
+            change_label: change_label(&state),
+            hint: relation_hint(state.relation).to_string(),
+            remote_url: state.remote_url,
+        },
+        Err(err) => RepoStatusDto {
+            id: repo.id,
+            name: repo.name,
+            path: repo.path.to_string_lossy().to_string(),
+            group: repo.group,
+            branch: "未知".to_string(),
+            relation: RemoteRelation::Error,
+            change_label: "!".to_string(),
+            hint: format!("读取失败：{err}"),
+            remote_url: None,
+        },
+    }
+}
+
+fn sort_repo_statuses(statuses: &mut [RepoStatusDto]) {
+    statuses.sort_by_key(|repo| repo.relation.sort_rank());
+}
+
+fn collect_repo_statuses(repos: Vec<RepoRecord>) -> Result<Vec<RepoStatusDto>, String> {
+    let mut statuses = Vec::with_capacity(repos.len());
+    for batch in repos.chunks(STATUS_REFRESH_BATCH_SIZE) {
+        let handles = batch
+            .iter()
+            .cloned()
+            .map(|repo| {
+                std::thread::spawn(move || {
+                    let state = branch_state(&repo.path);
+                    repo_status_from_branch_result(repo, state)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            statuses.push(
+                handle
+                    .join()
+                    .map_err(|_| "刷新仓库状态线程异常退出".to_string())?,
+            );
+        }
+    }
+    sort_repo_statuses(&mut statuses);
+    Ok(statuses)
+}
+
 #[tauri::command]
 pub async fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
     load_app_settings(&app)
 }
 
 #[tauri::command]
-pub async fn save_settings(app: tauri::AppHandle, settings: AppSettings) -> Result<AppSettings, String> {
-    save_app_settings(&app, &settings)?;
-    Ok(settings)
+pub async fn save_settings(
+    app: tauri::AppHandle,
+    settings: AppSettings,
+) -> Result<AppSettings, String> {
+    let saved = save_app_settings(&app, &settings)?;
+    // 动态更新窗口置顶状态
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_always_on_top(saved.appearance.always_on_top);
+    }
+    Ok(saved)
 }
 
 #[tauri::command]
 pub async fn scan_directory(path: String) -> Result<Vec<String>, String> {
-    let repos = crate::git::discovery::scan_repositories(std::path::Path::new(&path));
-    Ok(repos.into_iter().map(|p| p.to_string_lossy().to_string()).collect())
+    let root = std::path::PathBuf::from(&path);
+    if !root.is_dir() {
+        return Err("请选择有效的目录".to_string());
+    }
+    let repos = tauri::async_runtime::spawn_blocking(move || {
+        crate::git::discovery::scan_repositories(&root)
+    })
+    .await
+    .map_err(|err| err.to_string())?;
+    Ok(repos
+        .into_iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect())
 }
 
 #[tauri::command]
-pub async fn add_repository(app: tauri::AppHandle, path: String) -> Result<crate::domain::repo::RepoRecord, String> {
+pub async fn add_repository(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<crate::domain::repo::RepoRecord, String> {
     use crate::domain::repo::RepoRecord;
     let repo_path = std::path::PathBuf::from(&path);
     if !crate::git::discovery::is_git_repo(&repo_path) {
         return Err("请选择有效的 Git 仓库目录".to_string());
     }
-    let repo_path = repo_path.canonicalize().map_err(|err| err.to_string())?;
+    let repo_path = dunce::canonicalize(&repo_path).map_err(|err| err.to_string())?;
     let mut settings = load_app_settings(&app)?;
     if let Some(existing) = settings
         .repos
@@ -140,64 +273,67 @@ pub async fn remove_repository(app: tauri::AppHandle, repo_id: String) -> Result
 #[tauri::command]
 pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusDto>, String> {
     let settings = load_app_settings(&app)?;
-    let mut statuses = Vec::new();
-    for repo in settings.repos {
-        match branch_state(&repo.path) {
-            Ok(state) => statuses.push(RepoStatusDto {
-                id: repo.id,
-                name: repo.name,
-                path: repo.path.to_string_lossy().to_string(),
-                group: repo.group,
-                branch: state.branch.clone(),
-                relation: state.relation,
-                change_label: change_label(&state),
-                hint: relation_hint(state.relation).to_string(),
-                remote_url: state.remote_url,
-            }),
-            Err(err) => statuses.push(RepoStatusDto {
-                id: repo.id,
-                name: repo.name,
-                path: repo.path.to_string_lossy().to_string(),
-                group: repo.group,
-                branch: "未知".to_string(),
-                relation: crate::domain::status::RemoteRelation::Error,
-                change_label: "!".to_string(),
-                hint: format!("读取失败：{err}"),
-                remote_url: None,
-            }),
-        }
-    }
-    statuses.sort_by_key(|repo| repo.relation.sort_rank());
-    Ok(statuses)
+    tauri::async_runtime::spawn_blocking(move || collect_repo_statuses(settings.repos))
+        .await
+        .map_err(|err| err.to_string())?
 }
 
 #[tauri::command]
 pub async fn fetch_repo(app: tauri::AppHandle, repo_id: String) -> Result<String, String> {
     let settings = load_app_settings(&app)?;
     let repo = find_repo(&settings, &repo_id)?;
-    run_git(&repo.path, &["fetch"])?;
+    let repo_path = repo.path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = branch_state(&repo_path)?;
+        validate_repo_git_operation(RepoGitOperation::Fetch, state.relation)?;
+        run_git(&repo_path, &["fetch"])
+    })
+    .await
+    .map_err(|err| err.to_string())??;
     Ok("Fetch 已完成".to_string())
 }
 
 #[tauri::command]
-pub async fn pull_repo(app: tauri::AppHandle, repo_id: String, confirmed: bool) -> Result<String, String> {
+pub async fn pull_repo(
+    app: tauri::AppHandle,
+    repo_id: String,
+    confirmed: bool,
+) -> Result<String, String> {
     let settings = load_app_settings(&app)?;
     if settings.safety.confirm_pull && !confirmed {
         return Err("Pull 需要确认".to_string());
     }
     let repo = find_repo(&settings, &repo_id)?;
-    run_git(&repo.path, &["pull"])?;
+    let repo_path = repo.path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = branch_state(&repo_path)?;
+        validate_repo_git_operation(RepoGitOperation::Pull, state.relation)?;
+        run_git(&repo_path, &["pull"])
+    })
+    .await
+    .map_err(|err| err.to_string())??;
     Ok("Pull 已完成".to_string())
 }
 
 #[tauri::command]
-pub async fn push_repo(app: tauri::AppHandle, repo_id: String, confirmed: bool) -> Result<String, String> {
+pub async fn push_repo(
+    app: tauri::AppHandle,
+    repo_id: String,
+    confirmed: bool,
+) -> Result<String, String> {
     let settings = load_app_settings(&app)?;
     if settings.safety.confirm_push && !confirmed {
         return Err("Push 需要确认".to_string());
     }
     let repo = find_repo(&settings, &repo_id)?;
-    run_git(&repo.path, &["push"])?;
+    let repo_path = repo.path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = branch_state(&repo_path)?;
+        validate_repo_git_operation(RepoGitOperation::Push, state.relation)?;
+        run_git(&repo_path, &["push"])
+    })
+    .await
+    .map_err(|err| err.to_string())??;
     Ok("Push 已完成".to_string())
 }
 
@@ -214,9 +350,173 @@ pub async fn open_repo_directory(app: tauri::AppHandle, repo_id: String) -> Resu
 pub async fn open_repo_remote(app: tauri::AppHandle, repo_id: String) -> Result<(), String> {
     let settings = load_app_settings(&app)?;
     let repo = find_repo(&settings, &repo_id)?;
-    let remote = run_git(&repo.path, &["config", "--get", "remote.origin.url"])?;
+    let repo_path = repo.path.clone();
+    let remote = tauri::async_runtime::spawn_blocking(move || {
+        run_git(&repo_path, &["config", "--get", "remote.origin.url"])
+    })
+    .await
+    .map_err(|err| err.to_string())??;
     let remote = crate::git::commands::normalize_remote_url(&remote)
-        .ok_or_else(|| "当前仓库没有远端地址".to_string())?;
+        .ok_or_else(|| "当前仓库没有可打开的 HTTP/HTTPS 远端地址".to_string())?;
     open_path(&remote)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::repo::RepoRecord;
+    use crate::git::commands::GitBranchState;
+    use std::path::PathBuf;
+
+    fn sample_repo(id: &str) -> RepoRecord {
+        RepoRecord {
+            id: id.to_string(),
+            name: id.to_string(),
+            path: PathBuf::from(format!("C:/{id}")),
+            group: "全部分组".to_string(),
+        }
+    }
+
+    #[test]
+    fn fetch_rejects_error_and_no_remote_repositories() {
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Synced).is_ok()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::LocalAhead)
+                .is_ok()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::RemoteAhead)
+                .is_ok()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Diverged).is_ok()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::NoRemote).is_err()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Error).is_err()
+        );
+    }
+
+    #[test]
+    fn pull_only_allows_remote_changes_that_need_user_action() {
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::RemoteAhead)
+                .is_ok()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Diverged).is_ok()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Synced).is_err()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::LocalAhead)
+                .is_err()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::NoRemote).is_err()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Error).is_err()
+        );
+    }
+
+    #[test]
+    fn push_only_allows_local_changes_that_need_user_action() {
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::LocalAhead).is_ok()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Diverged).is_ok()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Synced).is_err()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::RemoteAhead)
+                .is_err()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::NoRemote).is_err()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Error).is_err()
+        );
+    }
+
+    #[test]
+    fn repo_status_from_branch_error_marks_repository_as_error() {
+        let status =
+            repo_status_from_branch_result(sample_repo("broken"), Err("missing".to_string()));
+
+        assert_eq!(status.id, "broken");
+        assert_eq!(status.branch, "未知");
+        assert_eq!(status.relation, RemoteRelation::Error);
+        assert_eq!(status.change_label, "!");
+        assert!(status.hint.contains("missing"));
+    }
+
+    #[test]
+    fn repo_status_from_branch_state_preserves_remote_url_and_labels() {
+        let status = repo_status_from_branch_result(
+            sample_repo("ready"),
+            Ok(GitBranchState {
+                branch: "main".to_string(),
+                relation: RemoteRelation::RemoteAhead,
+                ahead: 0,
+                behind: 2,
+                remote_url: Some("https://github.com/owner/repo".to_string()),
+            }),
+        );
+
+        assert_eq!(status.branch, "main");
+        assert_eq!(status.relation, RemoteRelation::RemoteAhead);
+        assert_eq!(status.change_label, "↓ 2");
+        assert_eq!(
+            status.remote_url.as_deref(),
+            Some("https://github.com/owner/repo")
+        );
+    }
+
+    #[test]
+    fn sort_repo_statuses_keeps_no_remote_last() {
+        let mut statuses = vec![
+            repo_status_from_branch_result(
+                sample_repo("no-remote"),
+                Ok(GitBranchState {
+                    branch: "main".to_string(),
+                    relation: RemoteRelation::NoRemote,
+                    ahead: 0,
+                    behind: 0,
+                    remote_url: None,
+                }),
+            ),
+            repo_status_from_branch_result(sample_repo("broken"), Err("missing".to_string())),
+            repo_status_from_branch_result(
+                sample_repo("synced"),
+                Ok(GitBranchState {
+                    branch: "main".to_string(),
+                    relation: RemoteRelation::Synced,
+                    ahead: 0,
+                    behind: 0,
+                    remote_url: Some("https://github.com/owner/repo".to_string()),
+                }),
+            ),
+        ];
+
+        sort_repo_statuses(&mut statuses);
+
+        assert_eq!(
+            statuses
+                .iter()
+                .map(|status| status.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["broken", "synced", "no-remote"],
+        );
+    }
 }
