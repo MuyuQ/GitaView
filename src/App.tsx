@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import { listRepoStatuses, getSettings } from "./lib/commands";
 import type { AppSettings, RepoStatus } from "./types";
@@ -21,8 +21,12 @@ export default function App() {
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
   const [refreshSettings, setRefreshSettings] = useState<AppSettings["refresh"] | null>(null);
+  const hasLoadedOnce = useRef(false);
 
-  function refreshRepos() {
+  const refreshRepos = useCallback((opts: { initial: boolean }) => {
+    if (opts.initial) {
+      setInitialLoading(true);
+    }
     setRefreshing(true);
     setRefreshError(null);
     listRepoStatuses()
@@ -33,7 +37,7 @@ export default function App() {
       })
       .catch((err) => {
         const message = String(err);
-        if (initialLoading && repos.length === 0) {
+        if (opts.initial && !hasLoadedOnce.current) {
           setInitialError(message);
         } else {
           setRefreshError(message);
@@ -42,12 +46,13 @@ export default function App() {
       .finally(() => {
         setInitialLoading(false);
         setRefreshing(false);
+        hasLoadedOnce.current = true;
       });
-  }
+  }, []);
 
   useEffect(() => {
-    refreshRepos();
-  }, []);
+    refreshRepos({ initial: true });
+  }, [refreshRepos]);
 
   useEffect(() => {
     const appWindow = getCurrentWindow();
@@ -67,9 +72,9 @@ export default function App() {
   useEffect(() => {
     if (!refreshSettings?.lightweightRefreshEnabled) return;
     const intervalMinutes = Math.min(Math.max(refreshSettings.intervalMinutes, 1), 60);
-    const id = window.setInterval(refreshRepos, intervalMinutes * 60_000);
+    const id = window.setInterval(() => refreshRepos({ initial: false }), intervalMinutes * 60_000);
     return () => window.clearInterval(id);
-  }, [refreshSettings]);
+  }, [refreshSettings, refreshRepos]);
 
   if (initialLoading) return <main className="app-shell">正在刷新仓库状态...</main>;
   if (initialError && repos.length === 0) {
@@ -79,7 +84,7 @@ export default function App() {
     return (
       <SettingsShell
         onClose={() => {
-          refreshRepos();
+          refreshRepos({ initial: false });
           setView("collapsed");
           getSettings().then((settings) => setRefreshSettings(settings.refresh)).catch(() => {});
         }}
@@ -93,7 +98,7 @@ export default function App() {
       lastRefreshAt={lastRefreshAt}
       refreshing={refreshing}
       refreshError={refreshError}
-      onRefresh={refreshRepos}
+      onRefresh={() => refreshRepos({ initial: false })}
       onCollapse={() => setView("collapsed")}
       onOpenSettings={() => setView("settings")}
     />
