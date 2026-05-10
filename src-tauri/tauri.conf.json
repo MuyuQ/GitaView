@@ -14,12 +14,12 @@
       {
         "label": "main",
         "title": "GitaView",
-        "width": 360,
-        "height": 80,
+        "width": 300,
+        "height": 72,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
-        "resizable": false,
+        "resizable": true,
         "visible": true
       }
     ],

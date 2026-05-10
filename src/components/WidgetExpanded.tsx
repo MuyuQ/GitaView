@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { sortRepos } from "../lib/statusModel";
+import { filterRepos } from "../lib/statusModel";
 import type { RemoteRelation, RepoStatus } from "../types";
 import { GroupFilters } from "./GroupFilters";
 import { StatusFilters } from "./StatusFilters";
@@ -8,12 +8,14 @@ import { RepoTable } from "./RepoTable";
 export function WidgetExpanded({
   repos,
   lastRefreshAt,
+  refreshing,
   onRefresh,
   onCollapse,
   onOpenSettings,
 }: {
   repos: RepoStatus[];
   lastRefreshAt: Date | null;
+  refreshing: boolean;
   onRefresh: () => void;
   onCollapse: () => void;
   onOpenSettings: () => void;
@@ -24,19 +26,7 @@ export function WidgetExpanded({
   const [query, setQuery] = useState("");
 
   const groupRepos = group === "全部分组" ? repos : repos.filter((repo) => repo.group === group);
-  let visibleRepos = sortRepos(
-    relation === "all" ? groupRepos : groupRepos.filter((repo) => repo.relation === relation),
-  );
-
-  const normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery) {
-    visibleRepos = visibleRepos.filter((repo) =>
-      [repo.name, repo.path, repo.branch, repo.group]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalizedQuery),
-    );
-  }
+  const visibleRepos = filterRepos(repos, group, relation, query);
 
   return (
     <section className="expanded-widget">
@@ -51,8 +41,8 @@ export function WidgetExpanded({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <button className="collapse-btn refresh-btn" onClick={onRefresh} aria-label="刷新">
-          刷新
+        <button className="collapse-btn refresh-btn" onClick={onRefresh} disabled={refreshing} aria-label="刷新">
+          {refreshing ? "刷新中" : "刷新"}
         </button>
         <button className="collapse-btn" onClick={onOpenSettings} aria-label="打开设置">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">

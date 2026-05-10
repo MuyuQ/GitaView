@@ -142,18 +142,30 @@ pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusD
     let settings = load_app_settings(&app)?;
     let mut statuses = Vec::new();
     for repo in settings.repos {
-        let state = branch_state(&repo.path)?;
-        statuses.push(RepoStatusDto {
-            id: repo.id,
-            name: repo.name,
-            path: repo.path.to_string_lossy().to_string(),
-            group: repo.group,
-            branch: state.branch.clone(),
-            relation: state.relation,
-            change_label: change_label(&state),
-            hint: relation_hint(state.relation).to_string(),
-            remote_url: state.remote_url,
-        });
+        match branch_state(&repo.path) {
+            Ok(state) => statuses.push(RepoStatusDto {
+                id: repo.id,
+                name: repo.name,
+                path: repo.path.to_string_lossy().to_string(),
+                group: repo.group,
+                branch: state.branch.clone(),
+                relation: state.relation,
+                change_label: change_label(&state),
+                hint: relation_hint(state.relation).to_string(),
+                remote_url: state.remote_url,
+            }),
+            Err(err) => statuses.push(RepoStatusDto {
+                id: repo.id,
+                name: repo.name,
+                path: repo.path.to_string_lossy().to_string(),
+                group: repo.group,
+                branch: "未知".to_string(),
+                relation: crate::domain::status::RemoteRelation::NoRemote,
+                change_label: "!".to_string(),
+                hint: format!("读取失败：{err}"),
+                remote_url: None,
+            }),
+        }
     }
     statuses.sort_by_key(|repo| repo.relation.sort_rank());
     Ok(statuses)

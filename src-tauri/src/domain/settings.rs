@@ -16,10 +16,16 @@ pub struct RefreshSettings {
     pub interval_minutes: u32,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SafetySettings {
+    #[serde(default = "default_true")]
     pub confirm_pull: bool,
+    #[serde(default = "default_true")]
     pub confirm_push: bool,
 }
 

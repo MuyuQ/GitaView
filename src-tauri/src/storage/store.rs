@@ -53,4 +53,25 @@ mod tests {
         assert!(settings.groups.iter().any(|group| group.name == "全部分组"));
         let _ = fs::remove_file(&path);
     }
+
+    #[test]
+    fn load_settings_defaults_missing_confirm_push() {
+        let path = std::env::temp_dir().join("gitaview_missing_confirm_push.json");
+        let _ = fs::remove_file(&path);
+        fs::write(
+            &path,
+            r#"{
+              "repos": [],
+              "groups": [{ "name": "全部分组", "repoIds": [] }],
+              "defaultGroup": "全部分组",
+              "refresh": { "lightweightRefreshEnabled": true, "intervalMinutes": 5 },
+              "safety": { "confirmPull": true },
+              "appearance": { "compactMode": false }
+            }"#,
+        ).unwrap();
+        let settings = load_settings(&path).unwrap();
+        assert!(settings.safety.confirm_pull);
+        assert!(settings.safety.confirm_push);
+        let _ = fs::remove_file(&path);
+    }
 }
