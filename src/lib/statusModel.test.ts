@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { summarizeCollapsed, sortRepos, filterRepos } from "./statusModel";
+import { summarizeCollapsed, sortRepos, filterRepos, toCollapsedBucket } from "./statusModel";
 import type { RepoStatus } from "../types";
 
 const base = (name: string, relation: RepoStatus["relation"]): RepoStatus => ({
@@ -36,12 +36,33 @@ describe("statusModel", () => {
     ]);
   });
 
-  it("sorts no_remote last in expanded table", () => {
+  it("sorts error first and no_remote last in expanded table", () => {
     expect(sortRepos([
       base("no", "no_remote"),
       base("ok", "synced"),
       base("bad", "diverged"),
-    ]).map((repo) => repo.name)).toEqual(["bad", "ok", "no"]);
+      base("err", "error"),
+    ]).map((repo) => repo.name)).toEqual(["err", "bad", "ok", "no"]);
+  });
+
+  it("toCollapsedBucket maps error to needs_attention", () => {
+    expect(toCollapsedBucket("error")).toBe("needs_attention");
+    expect(toCollapsedBucket("diverged")).toBe("needs_attention");
+    expect(toCollapsedBucket("no_remote")).toBe("no_remote");
+  });
+
+  it("summarizes collapsed buckets includes error in needs_attention", () => {
+    const summary = summarizeCollapsed([
+      base("a", "error"),
+      base("b", "diverged"),
+      base("c", "synced"),
+    ]);
+    expect(summary).toEqual([
+      { bucket: "synced", count: 1 },
+      { bucket: "syncable", count: 0 },
+      { bucket: "needs_attention", count: 2 },
+      { bucket: "no_remote", count: 0 },
+    ]);
   });
 
   it("filterRepos with 全部分组 includes all repos", () => {

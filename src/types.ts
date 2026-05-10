@@ -1,4 +1,5 @@
 export type RemoteRelation =
+  | "error"
   | "synced"
   | "local_ahead"
   | "remote_ahead"

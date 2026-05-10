@@ -1,11 +1,12 @@
 import type { CollapsedBucket, RemoteRelation, RepoStatus } from "../types";
 
 const expandedRank: Record<RemoteRelation, number> = {
-  diverged: 0,
-  remote_ahead: 1,
-  local_ahead: 2,
-  synced: 3,
-  no_remote: 4,
+  error: 0,
+  diverged: 1,
+  remote_ahead: 2,
+  local_ahead: 3,
+  synced: 4,
+  no_remote: 5,
 };
 
 const bucketRank: CollapsedBucket[] = [
@@ -16,8 +17,8 @@ const bucketRank: CollapsedBucket[] = [
 ];
 
 export function toCollapsedBucket(relation: RemoteRelation): CollapsedBucket {
+  if (relation === "error" || relation === "diverged") return "needs_attention";
   if (relation === "synced") return "synced";
-  if (relation === "diverged") return "needs_attention";
   if (relation === "no_remote") return "no_remote";
   return "syncable";
 }

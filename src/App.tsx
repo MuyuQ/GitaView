@@ -17,20 +17,27 @@ export default function App() {
   const [repos, setRepos] = useState<RepoStatus[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [initialError, setInitialError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
   const [refreshSettings, setRefreshSettings] = useState<AppSettings["refresh"] | null>(null);
 
   function refreshRepos() {
     setRefreshing(true);
-    setError(null);
+    setRefreshError(null);
     listRepoStatuses()
       .then((data) => {
         setRepos(data);
         setLastRefreshAt(new Date());
+        setInitialError(null);
       })
       .catch((err) => {
-        setError(String(err));
+        const message = String(err);
+        if (initialLoading && repos.length === 0) {
+          setInitialError(message);
+        } else {
+          setRefreshError(message);
+        }
       })
       .finally(() => {
         setInitialLoading(false);
@@ -59,12 +66,15 @@ export default function App() {
 
   useEffect(() => {
     if (!refreshSettings?.lightweightRefreshEnabled) return;
-    const id = window.setInterval(refreshRepos, refreshSettings.intervalMinutes * 60_000);
+    const intervalMinutes = Math.min(Math.max(refreshSettings.intervalMinutes, 1), 60);
+    const id = window.setInterval(refreshRepos, intervalMinutes * 60_000);
     return () => window.clearInterval(id);
   }, [refreshSettings]);
 
   if (initialLoading) return <main className="app-shell">正在刷新仓库状态...</main>;
-  if (error) return <main className="app-shell" role="alert">加载仓库失败：{error}</main>;
+  if (initialError && repos.length === 0) {
+    return <main className="app-shell" role="alert">加载仓库失败：{initialError}</main>;
+  }
   if (view === "settings" || repos.length === 0) {
     return (
       <SettingsShell
@@ -82,6 +92,7 @@ export default function App() {
       repos={repos}
       lastRefreshAt={lastRefreshAt}
       refreshing={refreshing}
+      refreshError={refreshError}
       onRefresh={refreshRepos}
       onCollapse={() => setView("collapsed")}
       onOpenSettings={() => setView("settings")}

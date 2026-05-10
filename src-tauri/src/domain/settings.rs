@@ -90,6 +90,7 @@ impl AppSettings {
                 repo.group = self.default_group.clone();
             }
         }
+        self.refresh.interval_minutes = self.refresh.interval_minutes.clamp(1, 60);
         self
     }
 }

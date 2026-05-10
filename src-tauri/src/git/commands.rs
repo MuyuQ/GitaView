@@ -105,6 +105,7 @@ pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
 
 pub fn change_label(state: &GitBranchState) -> String {
     match state.relation {
+        RemoteRelation::Error => "!".to_string(),
         RemoteRelation::Synced => "✓".to_string(),
         RemoteRelation::LocalAhead => format!("↑ {}", state.ahead),
         RemoteRelation::RemoteAhead => format!("↓ {}", state.behind),
@@ -115,6 +116,7 @@ pub fn change_label(state: &GitBranchState) -> String {
 
 pub fn relation_hint(relation: RemoteRelation) -> &'static str {
     match relation {
+        RemoteRelation::Error => "读取失败",
         RemoteRelation::Synced => "无需操作",
         RemoteRelation::LocalAhead => "可 Push",
         RemoteRelation::RemoteAhead => "可 Pull",

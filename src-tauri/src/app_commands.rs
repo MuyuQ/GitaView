@@ -160,7 +160,7 @@ pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusD
                 path: repo.path.to_string_lossy().to_string(),
                 group: repo.group,
                 branch: "未知".to_string(),
-                relation: crate::domain::status::RemoteRelation::NoRemote,
+                relation: crate::domain::status::RemoteRelation::Error,
                 change_label: "!".to_string(),
                 hint: format!("读取失败：{err}"),
                 remote_url: None,

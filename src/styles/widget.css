@@ -175,6 +175,12 @@
   outline-offset: 1px;
 }
 
+.refresh-warning {
+  margin: 0 16px 8px;
+  color: var(--gv-red);
+  font-size: 11px;
+}
+
 /* Filter rows */
 .filter-row {
   display: flex;

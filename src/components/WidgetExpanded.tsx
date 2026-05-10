@@ -9,6 +9,7 @@ export function WidgetExpanded({
   repos,
   lastRefreshAt,
   refreshing,
+  refreshError,
   onRefresh,
   onCollapse,
   onOpenSettings,
@@ -16,6 +17,7 @@ export function WidgetExpanded({
   repos: RepoStatus[];
   lastRefreshAt: Date | null;
   refreshing: boolean;
+  refreshError: string | null;
   onRefresh: () => void;
   onCollapse: () => void;
   onOpenSettings: () => void;
@@ -56,6 +58,7 @@ export function WidgetExpanded({
           </svg>
         </button>
       </header>
+      {refreshError && <p className="refresh-warning" role="status">刷新失败：{refreshError}</p>}
       <GroupFilters repos={repos} selected={group} onSelect={setGroup} />
       <StatusFilters repos={groupRepos} selected={relation} onSelect={setRelation} />
       {visibleRepos.length === 0 ? (

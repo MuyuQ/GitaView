@@ -74,4 +74,24 @@ mod tests {
         assert!(settings.safety.confirm_push);
         let _ = fs::remove_file(&path);
     }
+
+    #[test]
+    fn load_settings_clamps_refresh_interval() {
+        let path = std::env::temp_dir().join("gitaview_refresh_interval_clamp.json");
+        let _ = fs::remove_file(&path);
+        fs::write(
+            &path,
+            r#"{
+              "repos": [],
+              "groups": [{ "name": "全部分组", "repoIds": [] }],
+              "defaultGroup": "全部分组",
+              "refresh": { "lightweightRefreshEnabled": true, "intervalMinutes": 0 },
+              "safety": { "confirmPull": true, "confirmPush": true },
+              "appearance": { "compactMode": false }
+            }"#,
+        ).unwrap();
+        let settings = load_settings(&path).unwrap();
+        assert_eq!(settings.refresh.interval_minutes, 1);
+        let _ = fs::remove_file(&path);
+    }
 }

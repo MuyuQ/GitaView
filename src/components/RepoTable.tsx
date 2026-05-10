@@ -3,6 +3,7 @@ import { RepoActions } from "./RepoActions";
 import { Fragment } from "react";
 
 const relationLabels: Record<RepoStatus["relation"], string> = {
+  error: "读取失败",
   synced: "已同步",
   local_ahead: "本地领先",
   remote_ahead: "远程领先",
@@ -11,6 +12,7 @@ const relationLabels: Record<RepoStatus["relation"], string> = {
 };
 
 const statusDotClass: Record<RepoStatus["relation"], string> = {
+  error: "red",
   synced: "green",
   local_ahead: "amber",
   remote_ahead: "amber",
