@@ -154,4 +154,29 @@ mod tests {
         assert_eq!(group.repo_ids, vec!["repo-a"]);
         let _ = fs::remove_file(&path);
     }
+
+    #[test]
+    fn save_settings_drops_legacy_always_on_top() {
+        let path = std::env::temp_dir().join("gitaview_save_drops_always_on_top.json");
+        let _ = fs::remove_file(&path);
+        fs::write(
+            &path,
+            r#"{
+              "repos": [],
+              "groups": [{ "name": "全部分组", "repoIds": [] }],
+              "defaultGroup": "全部分组",
+              "refresh": { "lightweightRefreshEnabled": true, "intervalMinutes": 5 },
+              "safety": { "confirmPull": true, "confirmPush": true },
+              "appearance": { "compactMode": false, "allowWidgetDrag": true, "alwaysOnTop": true }
+            }"#,
+        )
+        .unwrap();
+
+        let settings = load_settings(&path).unwrap();
+        save_settings(&path, &settings).unwrap();
+        let saved_text = fs::read_to_string(&path).unwrap();
+
+        assert!(!saved_text.contains("alwaysOnTop"));
+        let _ = fs::remove_file(&path);
+    }
 }

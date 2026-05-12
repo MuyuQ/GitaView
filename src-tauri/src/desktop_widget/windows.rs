@@ -142,25 +142,33 @@ fn find_desktop_icon_host(fallback: HWND) -> Result<HWND, String> {
 
         let result = unsafe { EnumWindows(Some(callback), LPARAM(0)) };
 
-        // EnumWindows 在回调返回 FALSE 时也会返回 FALSE
-        // 需要检查 GetLastError 来区分是否真正失败
-        // ERROR_SUCCESS (0) 表示回调成功停止枚举，不是真正的错误
-        if result.is_err() {
-            let last_error = unsafe { GetLastError() };
-            if last_error.0 != 0 {
-                return Err(format!("EnumWindows 失败: 错误码 {}", last_error.0));
-            }
-            // 错误码为 0 表示回调成功停止枚举，继续处理结果
-        }
-
         let found = cell.get();
-        if !found.is_invalid() {
-            Ok(found)
+        let last_error = if result.is_err() {
+            unsafe { GetLastError() }.0
         } else {
-            eprintln!("[desktop_widget] 未找到 WorkerW 宿主窗口，回退到 Progman");
-            Ok(fallback)
-        }
+            0
+        };
+
+        resolve_enum_windows_host(fallback, found, result.is_err(), last_error)
     })
+}
+
+fn resolve_enum_windows_host(
+    fallback: HWND,
+    found: HWND,
+    enum_failed: bool,
+    last_error: u32,
+) -> Result<HWND, String> {
+    if !found.is_invalid() {
+        return Ok(found);
+    }
+
+    if enum_failed && last_error != 0 {
+        return Err(format!("EnumWindows 失败: 错误码 {}", last_error));
+    }
+
+    eprintln!("[desktop_widget] 未找到 WorkerW 宿主窗口，回退到 Progman");
+    Ok(fallback)
 }
 
 /// 检查窗口是否有指定类名的子窗口
@@ -184,9 +192,7 @@ fn has_child_with_class(parent: HWND, class_name: &str) -> bool {
 /// 检查窗口的类名是否匹配
 fn is_window_class(hwnd: HWND, class_name: &[u16]) -> bool {
     let mut buffer = [0u16; 256];
-    let len = unsafe {
-        windows::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd, &mut buffer)
-    };
+    let len = unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassNameW(hwnd, &mut buffer) };
     if len == 0 {
         return false;
     }
@@ -213,12 +219,12 @@ fn adjust_window_styles(hwnd: HWND) -> Result<(), String> {
     // 计算新样式
     // 添加 WS_CHILD | WS_VISIBLE
     // 移除 WS_POPUP（与 WS_CHILD 冲突）
-    let new_style = (current_style | WS_VISIBLE.0 as isize | WS_CHILD.0 as isize)
-        & !(WS_POPUP.0 as isize);
+    let new_style =
+        (current_style | WS_VISIBLE.0 as isize | WS_CHILD.0 as isize) & !(WS_POPUP.0 as isize);
 
     // 扩展样式：添加 WS_EX_TOOLWINDOW，移除 WS_EX_APPWINDOW
-    let new_ex_style = (current_ex_style | WS_EX_TOOLWINDOW.0 as isize)
-        & !(WS_EX_APPWINDOW.0 as isize);
+    let new_ex_style =
+        (current_ex_style | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize);
 
     // 应用新样式
     unsafe {
@@ -237,4 +243,19 @@ fn adjust_window_styles(hwnd: HWND) -> Result<(), String> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn found_desktop_host_ignores_stale_enum_windows_error() {
+        let fallback = HWND(1 as *mut _);
+        let found = HWND(2 as *mut _);
+
+        let host = resolve_enum_windows_host(fallback, found, true, 123).unwrap();
+
+        assert_eq!(host, found);
+    }
 }

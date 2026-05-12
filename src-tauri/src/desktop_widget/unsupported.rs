@@ -11,7 +11,7 @@ use tauri::{Manager, WebviewWindow};
 /// 保持普通窗口行为不变。
 pub fn apply_desktop_widget_layer(_window: &WebviewWindow) -> Result<(), String> {
     // 当前平台不支持桌面 widget 层级，保持普通窗口行为
-    log::info!("桌面 widget 层级在当前平台不受支持，将使用普通窗口行为");
+    eprintln!("桌面 widget 层级在当前平台不受支持，将使用普通窗口行为");
     Ok(())
 }
 
@@ -25,6 +25,6 @@ pub fn reapply_desktop_widget_layer(app: &tauri::AppHandle) -> Result<(), String
     };
 
     // 当前平台不支持桌面 widget 层级
-    log::info!("桌面 widget 层级在当前平台不受支持，将使用普通窗口行为");
+    eprintln!("桌面 widget 层级在当前平台不受支持，将使用普通窗口行为");
     Ok(())
 }
