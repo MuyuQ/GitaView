@@ -16,7 +16,7 @@
 use std::cell::Cell;
 use tauri::{Manager, WebviewWindow};
 use windows::core::{w, BOOL, PCWSTR};
-use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, FindWindowW, GetWindow, GetWindowLongPtrW, SendMessageTimeoutW, SetParent,
     SetWindowLongPtrW, SetWindowPos, ShowWindowAsync, GWL_EXSTYLE, GWL_STYLE, GW_CHILD,
@@ -142,8 +142,15 @@ fn find_desktop_icon_host(fallback: HWND) -> Result<HWND, String> {
 
         let result = unsafe { EnumWindows(Some(callback), LPARAM(0)) };
 
-        if let Err(e) = result {
-            return Err(format!("EnumWindows 失败: {}", e));
+        // EnumWindows 在回调返回 FALSE 时也会返回 FALSE
+        // 需要检查 GetLastError 来区分是否真正失败
+        // ERROR_SUCCESS (0) 表示回调成功停止枚举，不是真正的错误
+        if result.is_err() {
+            let last_error = unsafe { GetLastError() };
+            if last_error.0 != 0 {
+                return Err(format!("EnumWindows 失败: 错误码 {}", last_error.0));
+            }
+            // 错误码为 0 表示回调成功停止枚举，继续处理结果
         }
 
         let found = cell.get();
