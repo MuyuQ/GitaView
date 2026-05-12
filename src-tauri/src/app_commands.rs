@@ -1,7 +1,7 @@
 use crate::domain::repo::{RepoRecord, RepoStatusDto};
 use crate::domain::settings::AppSettings;
 use crate::domain::status::RemoteRelation;
-use crate::git::commands::{branch_state, change_label, relation_hint, run_git, GitBranchState};
+use crate::git::commands::{branch_state, change_label, state_hint, run_git, GitBranchState};
 use tauri::Manager;
 use dunce;
 
@@ -71,29 +71,66 @@ fn find_repo<'a>(
         .ok_or_else(|| format!("未找到仓库：{repo_id}"))
 }
 
-fn open_path(target: &str) -> Result<(), String> {
+/// 打开本地目录（使用系统默认文件浏览器）
+/// 仅用于打开已验证的仓库目录
+fn open_directory(path: &std::path::Path) -> Result<(), String> {
+    let path_str = path.to_string_lossy().to_string();
+
     #[cfg(target_os = "windows")]
     let mut command = {
         let mut cmd = std::process::Command::new("explorer");
-        cmd.arg(target);
+        cmd.arg(&path_str);
         cmd
     };
 
     #[cfg(target_os = "macos")]
     let mut command = {
         let mut cmd = std::process::Command::new("open");
-        cmd.arg(target);
+        cmd.arg(&path_str);
         cmd
     };
 
     #[cfg(all(unix, not(target_os = "macos")))]
     let mut command = {
         let mut cmd = std::process::Command::new("xdg-open");
-        cmd.arg(target);
+        cmd.arg(&path_str);
         cmd
     };
 
-    command.spawn().map_err(|err| err.to_string())?;
+    command.spawn().map_err(|err| format!("无法打开目录：{}", err))?;
+    Ok(())
+}
+
+/// 打开 HTTP/HTTPS URL（使用系统默认浏览器）
+/// 仅用于打开已规范化的远端 URL
+fn open_http_url(url: &str) -> Result<(), String> {
+    // 校验 URL 必须是 HTTP 或 HTTPS
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("只支持 HTTP/HTTPS URL".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut cmd = std::process::Command::new("explorer");
+        cmd.arg(url);
+        cmd
+    };
+
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut cmd = std::process::Command::new("open");
+        cmd.arg(url);
+        cmd
+    };
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = {
+        let mut cmd = std::process::Command::new("xdg-open");
+        cmd.arg(url);
+        cmd
+    };
+
+    command.spawn().map_err(|err| format!("无法打开 URL：{}", err))?;
     Ok(())
 }
 
@@ -107,10 +144,12 @@ enum RepoGitOperation {
 fn validate_repo_git_operation(
     operation: RepoGitOperation,
     relation: RemoteRelation,
+    has_remote: bool,
 ) -> Result<(), String> {
     match (operation, relation) {
         (_, RemoteRelation::Error) => Err("当前仓库状态异常，请先刷新或检查仓库路径".to_string()),
-        (_, RemoteRelation::NoRemote) => Err("当前仓库没有远端，无法执行远端操作".to_string()),
+        (RepoGitOperation::Fetch, RemoteRelation::NoRemote) if has_remote => Ok(()),
+        (_, RemoteRelation::NoRemote) => Err("当前仓库没有可操作的远端分支".to_string()),
         (RepoGitOperation::Fetch, _) => Ok(()),
         (RepoGitOperation::Pull, RemoteRelation::RemoteAhead | RemoteRelation::Diverged) => Ok(()),
         (RepoGitOperation::Pull, RemoteRelation::Synced) => {
@@ -142,7 +181,8 @@ fn repo_status_from_branch_result(
             branch: state.branch.clone(),
             relation: state.relation,
             change_label: change_label(&state),
-            hint: relation_hint(state.relation).to_string(),
+            hint: state_hint(&state),
+            has_remote: state.has_remote,
             remote_url: state.remote_url,
         },
         Err(err) => RepoStatusDto {
@@ -154,6 +194,7 @@ fn repo_status_from_branch_result(
             relation: RemoteRelation::Error,
             change_label: "!".to_string(),
             hint: format!("读取失败：{err}"),
+            has_remote: false,
             remote_url: None,
         },
     }
@@ -200,10 +241,6 @@ pub async fn save_settings(
     settings: AppSettings,
 ) -> Result<AppSettings, String> {
     let saved = save_app_settings(&app, &settings)?;
-    // 动态更新窗口置顶状态
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_always_on_top(saved.appearance.always_on_top);
-    }
     Ok(saved)
 }
 
@@ -285,7 +322,7 @@ pub async fn fetch_repo(app: tauri::AppHandle, repo_id: String) -> Result<String
     let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let state = branch_state(&repo_path)?;
-        validate_repo_git_operation(RepoGitOperation::Fetch, state.relation)?;
+        validate_repo_git_operation(RepoGitOperation::Fetch, state.relation, state.has_remote)?;
         run_git(&repo_path, &["fetch"])
     })
     .await
@@ -307,7 +344,7 @@ pub async fn pull_repo(
     let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let state = branch_state(&repo_path)?;
-        validate_repo_git_operation(RepoGitOperation::Pull, state.relation)?;
+        validate_repo_git_operation(RepoGitOperation::Pull, state.relation, state.has_remote)?;
         run_git(&repo_path, &["pull"])
     })
     .await
@@ -329,7 +366,7 @@ pub async fn push_repo(
     let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let state = branch_state(&repo_path)?;
-        validate_repo_git_operation(RepoGitOperation::Push, state.relation)?;
+        validate_repo_git_operation(RepoGitOperation::Push, state.relation, state.has_remote)?;
         run_git(&repo_path, &["push"])
     })
     .await
@@ -341,8 +378,11 @@ pub async fn push_repo(
 pub async fn open_repo_directory(app: tauri::AppHandle, repo_id: String) -> Result<(), String> {
     let settings = load_app_settings(&app)?;
     let repo = find_repo(&settings, &repo_id)?;
-    let target = repo.path.to_string_lossy().to_string();
-    open_path(&target)?;
+    // 校验路径存在
+    if !repo.path.exists() {
+        return Err("仓库目录不存在".to_string());
+    }
+    open_directory(&repo.path)?;
     Ok(())
 }
 
@@ -356,10 +396,16 @@ pub async fn open_repo_remote(app: tauri::AppHandle, repo_id: String) -> Result<
     })
     .await
     .map_err(|err| err.to_string())??;
+    // 规范化 URL 并校验是否为可打开的 HTTP/HTTPS 地址
     let remote = crate::git::commands::normalize_remote_url(&remote)
         .ok_or_else(|| "当前仓库没有可打开的 HTTP/HTTPS 远端地址".to_string())?;
-    open_path(&remote)?;
+    open_http_url(&remote)?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
 }
 
 #[cfg(test)]
@@ -379,73 +425,87 @@ mod tests {
     }
 
     #[test]
-    fn fetch_rejects_error_and_no_remote_repositories() {
+    fn fetch_allows_repositories_with_remote_even_without_upstream() {
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Synced).is_ok()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::LocalAhead)
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Synced, true)
                 .is_ok()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::RemoteAhead)
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::LocalAhead, true)
                 .is_ok()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Diverged).is_ok()
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::RemoteAhead, true)
+                .is_ok()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::NoRemote).is_err()
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Diverged, true)
+                .is_ok()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Error).is_err()
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::NoRemote, true)
+                .is_ok()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::NoRemote, false)
+                .is_err()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Error, true).is_err()
         );
     }
 
     #[test]
     fn pull_only_allows_remote_changes_that_need_user_action() {
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::RemoteAhead)
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::RemoteAhead, true)
                 .is_ok()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Diverged).is_ok()
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Diverged, true)
+                .is_ok()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Synced).is_err()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::LocalAhead)
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Synced, true)
                 .is_err()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::NoRemote).is_err()
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::LocalAhead, true)
+                .is_err()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Error).is_err()
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::NoRemote, true)
+                .is_err()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Error, true).is_err()
         );
     }
 
     #[test]
     fn push_only_allows_local_changes_that_need_user_action() {
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::LocalAhead).is_ok()
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::LocalAhead, true)
+                .is_ok()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Diverged).is_ok()
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Diverged, true)
+                .is_ok()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Synced).is_err()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::RemoteAhead)
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Synced, true)
                 .is_err()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::NoRemote).is_err()
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::RemoteAhead, true)
+                .is_err()
         );
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Error).is_err()
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::NoRemote, true)
+                .is_err()
+        );
+        assert!(
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Error, true).is_err()
         );
     }
 
@@ -470,6 +530,7 @@ mod tests {
                 relation: RemoteRelation::RemoteAhead,
                 ahead: 0,
                 behind: 2,
+                has_remote: true,
                 remote_url: Some("https://github.com/owner/repo".to_string()),
             }),
         );
@@ -477,6 +538,7 @@ mod tests {
         assert_eq!(status.branch, "main");
         assert_eq!(status.relation, RemoteRelation::RemoteAhead);
         assert_eq!(status.change_label, "↓ 2");
+        assert_eq!(status.has_remote, true);
         assert_eq!(
             status.remote_url.as_deref(),
             Some("https://github.com/owner/repo")
@@ -493,6 +555,7 @@ mod tests {
                     relation: RemoteRelation::NoRemote,
                     ahead: 0,
                     behind: 0,
+                    has_remote: false,
                     remote_url: None,
                 }),
             ),
@@ -504,6 +567,7 @@ mod tests {
                     relation: RemoteRelation::Synced,
                     ahead: 0,
                     behind: 0,
+                    has_remote: true,
                     remote_url: Some("https://github.com/owner/repo".to_string()),
                 }),
             ),

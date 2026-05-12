@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { summarizeCollapsed, sortRepos, filterRepos, toCollapsedBucket } from "./statusModel";
+import {
+  buildGroupOptions,
+  getCompactBodyClassName,
+  getRepoActionAvailability,
+  shouldShowSettingsView,
+  summarizeCollapsed,
+  sortRepos,
+  filterRepos,
+  toCollapsedBucket,
+} from "./statusModel";
 import type { RepoStatus } from "../types";
 
 const base = (name: string, relation: RepoStatus["relation"]): RepoStatus => ({
@@ -11,6 +20,7 @@ const base = (name: string, relation: RepoStatus["relation"]): RepoStatus => ({
   relation,
   changeLabel: "-",
   hint: "",
+  hasRemote: false,
   remoteUrl: null,
 });
 
@@ -119,5 +129,58 @@ describe("statusModel", () => {
     ];
     const result = filterRepos(repos, "Web", "all", "");
     expect(result).toHaveLength(2);
+  });
+
+  it("buildGroupOptions keeps 全部分组 first without duplicating it", () => {
+    const repos = [
+      withGroup("a", "synced", "全部分组"),
+      withGroup("b", "synced", "后端"),
+      withGroup("c", "synced", "后端"),
+    ];
+    expect(buildGroupOptions(repos).map((group) => group.name)).toEqual(["全部分组", "后端"]);
+    expect(buildGroupOptions(repos).map((group) => group.count)).toEqual([3, 2]);
+  });
+
+  it("getRepoActionAvailability only enables meaningful git actions", () => {
+    expect(getRepoActionAvailability({ ...base("ok", "synced"), hasRemote: true, remoteUrl: "https://example.com/repo" })).toMatchObject({
+      canFetch: true,
+      showPull: false,
+      showPush: false,
+    });
+    expect(getRepoActionAvailability({ ...base("down", "remote_ahead"), hasRemote: true, remoteUrl: "https://example.com/repo" })).toMatchObject({
+      canFetch: true,
+      showPull: true,
+      showPush: false,
+    });
+    expect(getRepoActionAvailability({ ...base("up", "local_ahead"), hasRemote: true, remoteUrl: "https://example.com/repo" })).toMatchObject({
+      canFetch: true,
+      showPull: false,
+      showPush: true,
+    });
+    expect(getRepoActionAvailability(base("broken", "error"))).toMatchObject({
+      canFetch: false,
+      showPull: false,
+      showPush: false,
+    });
+    expect(getRepoActionAvailability(base("local", "no_remote"))).toMatchObject({
+      canFetch: false,
+      showPull: false,
+      showPush: false,
+    });
+  });
+
+  it("getCompactBodyClassName returns the body class for compact mode", () => {
+    expect(getCompactBodyClassName(true)).toBe("gv-compact");
+    expect(getCompactBodyClassName(false)).toBe("");
+  });
+
+  it("shouldShowSettingsView allows closing the initial empty settings screen", () => {
+    expect(shouldShowSettingsView("collapsed", 0, null, false)).toBe(true);
+    expect(shouldShowSettingsView("collapsed", 0, null, true)).toBe(false);
+    expect(shouldShowSettingsView("settings", 0, null, true)).toBe(true);
+  });
+
+  it("shouldShowSettingsView does not auto-open settings when the initial load failed", () => {
+    expect(shouldShowSettingsView("collapsed", 0, "读取失败", false)).toBe(false);
   });
 });

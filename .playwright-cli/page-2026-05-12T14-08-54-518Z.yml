@@ -1,0 +1,69 @@
+- generic "拖动空白区域移动窗口" [ref=e21]:
+  - generic [ref=e22]:
+    - generic [ref=e23]:
+      - heading "仓库状态" [level=1] [ref=e24]
+      - paragraph [ref=e25]: 刷新时间 22:08:33
+    - textbox "搜索仓库" [ref=e27]:
+      - /placeholder: 搜索仓库 / 分支
+    - button "刷新" [ref=e28] [cursor=pointer]
+    - button "打开设置" [ref=e29] [cursor=pointer]:
+      - img [ref=e30]
+    - button "收起" [ref=e33] [cursor=pointer]:
+      - img [ref=e34]
+  - generic [ref=e36]:
+    - button "全部分组 4" [ref=e37] [cursor=pointer]
+    - button "业务 1" [ref=e38] [cursor=pointer]
+    - button "基础设施 1" [ref=e39] [cursor=pointer]
+    - button "产品 1" [ref=e40] [cursor=pointer]
+    - button "归档 1" [ref=e41] [cursor=pointer]
+  - generic [ref=e42]:
+    - button "全部 4" [ref=e43] [cursor=pointer]
+    - button "读取失败 0" [ref=e44] [cursor=pointer]
+    - button "分叉 1" [ref=e45] [cursor=pointer]
+    - button "远程领先 1" [ref=e46] [cursor=pointer]
+    - button "本地领先 0" [ref=e47] [cursor=pointer]
+    - button "同步 1" [ref=e48] [cursor=pointer]
+    - button "无远端 1" [ref=e49] [cursor=pointer]
+  - table [ref=e52]:
+    - rowgroup [ref=e53]:
+      - row "状态 仓库 分类 分支 关系 变更 提示" [ref=e54]:
+        - columnheader "状态" [ref=e55]
+        - columnheader "仓库" [ref=e56]
+        - columnheader "分类" [ref=e57]
+        - columnheader "分支" [ref=e58]
+        - columnheader "关系" [ref=e59]
+        - columnheader "变更" [ref=e60]
+        - columnheader "提示" [ref=e61]
+    - rowgroup [ref=e62]:
+      - row "website 业务 main 分叉 ↑ 2 ↓ 1 本地与远端分叉" [ref=e63] [cursor=pointer]:
+        - cell [ref=e64]
+        - cell "website" [ref=e66]
+        - cell "业务" [ref=e67]
+        - cell "main" [ref=e68]
+        - cell "分叉" [ref=e69]
+        - cell "↑ 2 ↓ 1" [ref=e70]
+        - cell "本地与远端分叉" [ref=e71]
+      - row "tooling 基础设施 release 远程领先 ↓ 3 远端有更新" [ref=e72] [cursor=pointer]:
+        - cell [ref=e73]
+        - cell "tooling" [ref=e75]
+        - cell "基础设施" [ref=e76]
+        - cell "release" [ref=e77]
+        - cell "远程领先" [ref=e78]
+        - cell "↓ 3" [ref=e79]
+        - cell "远端有更新" [ref=e80]
+      - row "GitaView 产品 main 已同步 ✓ 本地与远端一致" [ref=e81] [cursor=pointer]:
+        - cell [ref=e82]
+        - cell "GitaView" [ref=e84]
+        - cell "产品" [ref=e85]
+        - cell "main" [ref=e86]
+        - cell "已同步" [ref=e87]
+        - cell "✓" [ref=e88]
+        - cell "本地与远端一致" [ref=e89]
+      - row "archive 归档 main 无远端 无远端 未配置远端" [ref=e90] [cursor=pointer]:
+        - cell [ref=e91]
+        - cell "archive" [ref=e93]
+        - cell "归档" [ref=e94]
+        - cell "main" [ref=e95]
+        - cell "无远端" [ref=e96]
+        - cell "无远端" [ref=e97]
+        - cell "未配置远端" [ref=e98]

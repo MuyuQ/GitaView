@@ -73,14 +73,29 @@ mod tests {
 
     #[test]
     fn collapsed_bucket_keeps_no_remote_separate() {
-        assert_eq!(RemoteRelation::NoRemote.collapsed_bucket(), CollapsedBucket::NoRemote);
-        assert_eq!(RemoteRelation::LocalAhead.collapsed_bucket(), CollapsedBucket::Syncable);
-        assert_eq!(RemoteRelation::RemoteAhead.collapsed_bucket(), CollapsedBucket::Syncable);
+        assert_eq!(
+            RemoteRelation::NoRemote.collapsed_bucket(),
+            CollapsedBucket::NoRemote
+        );
+        assert_eq!(
+            RemoteRelation::LocalAhead.collapsed_bucket(),
+            CollapsedBucket::Syncable
+        );
+        assert_eq!(
+            RemoteRelation::RemoteAhead.collapsed_bucket(),
+            CollapsedBucket::Syncable
+        );
     }
 
     #[test]
     fn collapsed_bucket_maps_error_to_needs_attention() {
-        assert_eq!(RemoteRelation::Error.collapsed_bucket(), CollapsedBucket::NeedsAttention);
-        assert_eq!(RemoteRelation::Diverged.collapsed_bucket(), CollapsedBucket::NeedsAttention);
+        assert_eq!(
+            RemoteRelation::Error.collapsed_bucket(),
+            CollapsedBucket::NeedsAttention
+        );
+        assert_eq!(
+            RemoteRelation::Diverged.collapsed_bucket(),
+            CollapsedBucket::NeedsAttention
+        );
     }
 }

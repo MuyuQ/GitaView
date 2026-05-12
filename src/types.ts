@@ -21,6 +21,7 @@ export interface RepoStatus {
   relation: RemoteRelation;
   changeLabel: string;
   hint: string;
+  hasRemote: boolean;
   remoteUrl: string | null;
 }
 
@@ -50,5 +51,6 @@ export interface AppSettings {
   };
   appearance: {
     compactMode: boolean;
+    allowWidgetDrag: boolean;
   };
 }

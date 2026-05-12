@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+const MAX_SCAN_DEPTH: usize = 8;
+
 pub fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
@@ -14,12 +16,15 @@ fn should_skip_dir(path: &Path) -> bool {
 
 pub fn scan_repositories(root: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
-    scan_inner(root, &mut found);
+    scan_inner(root, &mut found, 0);
     found.sort();
     found
 }
 
-fn scan_inner(path: &Path, found: &mut Vec<PathBuf>) {
+fn scan_inner(path: &Path, found: &mut Vec<PathBuf>, depth: usize) {
+    if depth > MAX_SCAN_DEPTH {
+        return;
+    }
     if is_git_repo(path) {
         found.push(path.to_path_buf());
         return;
@@ -31,8 +36,14 @@ fn scan_inner(path: &Path, found: &mut Vec<PathBuf>) {
 
     for entry in entries.flatten() {
         let child = entry.path();
-        if child.is_dir() && !should_skip_dir(&child) {
-            scan_inner(&child, found);
+        let Ok(metadata) = fs::symlink_metadata(&child) else {
+            continue;
+        };
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        if metadata.is_dir() && !should_skip_dir(&child) {
+            scan_inner(&child, found, depth + 1);
         }
     }
 }
@@ -71,6 +82,20 @@ mod tests {
         let found = scan_repositories(&temp);
         assert_eq!(found.len(), 1);
         assert!(found[0].ends_with("real-repo"));
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn scan_stops_at_max_depth() {
+        let temp = std::env::temp_dir().join("gitaview_scan_depth_test");
+        let _ = fs::remove_dir_all(&temp);
+        let mut deep = temp.clone();
+        for index in 0..=MAX_SCAN_DEPTH + 1 {
+            deep = deep.join(format!("level-{index}"));
+        }
+        fs::create_dir_all(deep.join(".git")).unwrap();
+        let found = scan_repositories(&temp);
+        assert!(found.is_empty());
         let _ = fs::remove_dir_all(&temp);
     }
 }

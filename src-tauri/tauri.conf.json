@@ -14,17 +14,19 @@
       {
         "label": "main",
         "title": "GitaView",
-        "width": 300,
-        "height": 72,
+        "width": 218,
+        "height": 40,
         "decorations": false,
         "transparent": true,
-        "alwaysOnTop": true,
+        "shadow": false,
+        "alwaysOnTop": false,
+        "skipTaskbar": true,
         "resizable": false,
         "visible": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost"
     }
   }
 }

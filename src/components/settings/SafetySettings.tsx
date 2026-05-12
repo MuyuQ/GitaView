@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getSettings, saveSettings } from "../../lib/commands";
+import { notifySettingsUpdated } from "../../lib/settingsEvents";
 import type { AppSettings } from "../../types";
 
 export function SafetySettings() {
@@ -28,8 +29,9 @@ export function SafetySettings() {
         ...settings,
         safety: { confirmPull, confirmPush },
       };
-      await saveSettings(nextSettings);
-      setSettings(nextSettings);
+      const savedSettings = await saveSettings(nextSettings);
+      setSettings(savedSettings);
+      notifySettingsUpdated(savedSettings);
       setMessage("安全设置已保存");
     } catch (err) {
       setMessage(`保存失败：${err}`);

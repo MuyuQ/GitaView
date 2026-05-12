@@ -1,21 +1,19 @@
 import type { RepoStatus } from "../types";
+import { buildGroupOptions } from "../lib/statusModel";
 
 export function GroupFilters({ repos, selected, onSelect }: { repos: RepoStatus[]; selected: string; onSelect: (g: string) => void }) {
-  const groups = ["全部分组", ...Array.from(new Set(repos.map((r) => r.group)))];
+  const groups = buildGroupOptions(repos);
   return (
     <div className="filter-row group-filters">
-      {groups.map((g) => {
-        const count = g === "全部分组" ? repos.length : repos.filter((r) => r.group === g).length;
-        return (
-          <button
-            key={g}
-            className={`filter-btn ${g === selected ? "active" : ""}`}
-            onClick={() => onSelect(g)}
-          >
-            {g} {count}
-          </button>
-        );
-      })}
+      {groups.map((group) => (
+        <button
+          key={group.name}
+          className={`filter-btn ${group.name === selected ? "active" : ""}`}
+          onClick={() => onSelect(group.name)}
+        >
+          {group.name} {group.count}
+        </button>
+      ))}
     </div>
   );
 }

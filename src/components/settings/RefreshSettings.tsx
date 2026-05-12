@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getSettings, saveSettings } from "../../lib/commands";
+import { notifySettingsUpdated } from "../../lib/settingsEvents";
 import type { AppSettings } from "../../types";
 
 export function RefreshSettings() {
@@ -32,8 +33,9 @@ export function RefreshSettings() {
           intervalMinutes: safeInterval,
         },
       };
-      await saveSettings(nextSettings);
-      setSettings(nextSettings);
+      const savedSettings = await saveSettings(nextSettings);
+      setSettings(savedSettings);
+      notifySettingsUpdated(savedSettings);
       setIntervalMinutes(safeInterval);
       setMessage("刷新设置已保存");
     } catch (err) {

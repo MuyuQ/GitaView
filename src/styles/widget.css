@@ -13,22 +13,24 @@
 .collapsed-widget-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 0;
+  height: 100%;
 }
 
 .collapsed-widget {
   height: 40px;
-  min-width: 236px;
+  width: 218px;
+  min-width: 0;
   border-radius: 14px;
-  border: 1px solid var(--gv-line);
+  border: 1px solid transparent;
   background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
+  box-shadow: none;
   color: var(--gv-ink);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px;
+  gap: 7px;
+  padding: 0 13px;
   font-size: 13px;
 }
 
@@ -44,7 +46,7 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+  box-shadow: none;
 }
 
 .mini-icon-button:hover {
@@ -53,7 +55,7 @@
 }
 
 .collapsed-widget:hover {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .collapsed-widget:focus-visible {
@@ -75,8 +77,8 @@
 
 .summary {
   display: flex;
-  gap: 6px;
-  margin-left: auto;
+  gap: 5px;
+  margin-left: 6px;
 }
 
 .summary-item {
@@ -99,21 +101,66 @@
 .status-dot.red { background: var(--gv-red); }
 .status-dot.slate { background: var(--gv-slate); }
 
+/* Native-window resize is intentionally instant; this lightweight layer owns the visible morph. */
+.transition-stage {
+  position: relative;
+  width: 680px;
+  height: min(520px, 100vh);
+  pointer-events: none;
+}
+
+.transition-surface {
+  display: none;
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 680px;
+  height: min(520px, 100vh);
+  border: 1px solid var(--gv-line);
+  border-radius: var(--gv-window-radius);
+  background:
+    radial-gradient(circle at 18% 5%, rgba(47, 159, 103, 0.12), transparent 30%),
+    rgba(255, 255, 255, 0.95);
+  box-shadow: none;
+  opacity: 1;
+  transform-origin: 0 0;
+  will-change: transform, opacity, border-radius;
+}
+
+.transition-capsule {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 218px;
+  height: 40px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--gv-ink);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
+  font-size: 13px;
+  box-shadow: none;
+  overflow: hidden;
+  opacity: 1;
+}
+
 /* Expanded widget */
 .expanded-widget {
   width: 680px;
   max-height: 80vh;
-  border-radius: 12px;
+  border-radius: var(--gv-window-radius);
   border: 1px solid var(--gv-line);
   background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12);
+  box-shadow: none;
   overflow: hidden;
+  transform-origin: top left;
 }
 
 .widget-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   padding: 12px 16px 8px;
   border-bottom: 1px solid var(--gv-line);
 }
@@ -130,18 +177,55 @@
   margin: 2px 0 0;
 }
 
+.search-control {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.search-control::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 10px;
+  background: rgba(47, 159, 103, 0.1);
+  opacity: 0;
+  transform: scaleX(0.94);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
 .widget-toolbar input {
+  position: relative;
   padding: 6px 10px;
   border: 1px solid var(--gv-line);
   border-radius: 6px;
   font-size: 12px;
   width: 140px;
   background: var(--gv-bg);
+  color: var(--gv-ink);
+  font-family: inherit;
+  transition:
+    width 190ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .widget-toolbar input:focus {
   outline: none;
-  border-color: var(--gv-muted);
+  border-color: rgba(47, 159, 103, 0.58);
+  background: white;
+  box-shadow: 0 0 0 3px rgba(47, 159, 103, 0.1);
+}
+
+.expanded-widget.searching .search-control::before,
+.search-control:focus-within::before {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.expanded-widget.searching .widget-toolbar input,
+.search-control:focus-within input {
+  width: 188px;
 }
 
 .collapse-btn {
@@ -158,6 +242,7 @@
   padding: 0;
   font-size: 11px;
   font-family: inherit;
+  transition: background 150ms ease, color 150ms ease, transform 150ms ease, border-color 150ms ease;
 }
 
 .collapse-btn.refresh-btn {
@@ -168,6 +253,7 @@
 .collapse-btn:hover {
   background: var(--gv-bg);
   color: var(--gv-ink);
+  transform: translateY(-1px);
 }
 
 .collapse-btn:focus-visible {
@@ -187,6 +273,7 @@
   gap: 4px;
   padding: 8px 16px;
   overflow-x: auto;
+  animation: filter-row-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .filter-btn {
@@ -199,16 +286,24 @@
   cursor: pointer;
   white-space: nowrap;
   font-family: inherit;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .filter-btn:hover {
   background: var(--gv-bg);
+  transform: translateY(-1px);
 }
 
 .filter-btn.active {
   background: var(--gv-ink);
   color: white;
   border-color: var(--gv-ink);
+  box-shadow: 0 6px 14px rgba(23, 32, 51, 0.14);
 }
 
 .filter-btn:focus-visible {
@@ -221,6 +316,10 @@
   margin: 12px 16px 16px;
   color: var(--gv-muted);
   font-size: 12px;
+}
+
+.repo-results {
+  animation: results-enter 170ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .repo-table {
@@ -249,14 +348,23 @@
 
 .repo-row {
   cursor: pointer;
+  animation: row-enter 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transition: background 140ms ease, transform 140ms ease;
+  outline: none;
 }
 
 .repo-row:hover {
   background: var(--gv-bg);
+  transform: translateX(2px);
+}
+
+.repo-row:focus-visible {
+  outline: 2px solid rgba(34, 100, 242, 0.45);
+  outline-offset: -2px;
 }
 
 .repo-row.selected {
-  background: rgba(23, 32, 51, 0.04);
+  background: rgba(23, 32, 51, 0.055);
 }
 
 .repo-row td {
@@ -265,13 +373,59 @@
   vertical-align: middle;
 }
 
+.repo-row.selected td {
+  border-bottom-color: transparent;
+}
+
 .col-status { width: 24px; }
-.col-name { flex: 1; font-weight: 500; }
+.col-name { flex: 1; font-weight: 600; }
 .col-group { width: 60px; color: var(--gv-muted); }
 .col-branch { width: 80px; }
 .col-relation { width: 80px; }
 .col-changes { width: 50px; text-align: right; }
 .col-hint { width: 80px; color: var(--gv-muted); font-size: 11px; }
+
+.repo-name-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.repo-expand-indicator {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(122, 138, 161, 0.34);
+  border-radius: 999px;
+  color: var(--gv-muted);
+  font-size: 14px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 140ms ease, color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.repo-row:hover .repo-expand-indicator,
+.repo-row.selected .repo-expand-indicator {
+  border-color: rgba(34, 100, 242, 0.35);
+  color: var(--gv-blue);
+  background: rgba(34, 100, 242, 0.08);
+}
+
+.repo-row.selected .repo-expand-indicator {
+  transform: rotate(90deg);
+}
+
+.repo-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .mono {
   font-family: "JetBrains Mono", "SF Mono", "Cascadia Mono", monospace;
@@ -284,17 +438,34 @@
 }
 
 /* Repo actions */
+.repo-actions-row td {
+  padding: 0 8px 10px 32px;
+  border-bottom: 1px solid var(--gv-line);
+}
+
+.repo-actions-panel {
+  padding: 10px;
+  border: 1px solid rgba(122, 138, 161, 0.26);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 253, 0.98));
+  box-shadow: 0 10px 22px rgba(23, 32, 51, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  animation: actions-reveal 150ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transform-origin: top;
+}
+
 .repo-actions {
   display: flex;
-  gap: 6px;
-  padding: 6px 8px;
-  background: var(--gv-bg);
-  border-bottom: 1px solid var(--gv-line);
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  background: transparent;
+  border-bottom: 0;
   align-items: center;
 }
 
 .action-btn {
-  padding: 4px 12px;
+  min-width: 58px;
+  padding: 5px 12px;
   border: 1px solid var(--gv-line);
   border-radius: 6px;
   background: white;
@@ -302,10 +473,12 @@
   font-size: 11px;
   cursor: pointer;
   font-family: inherit;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
 .action-btn:hover:not(:disabled) {
   background: var(--gv-bg);
+  transform: translateY(-1px);
 }
 
 .action-btn:disabled {
@@ -326,10 +499,119 @@
 .action-result {
   font-size: 11px;
   color: var(--gv-green);
-  margin-left: auto;
+  margin-left: 4px;
 }
 
 .action-warning {
   font-size: 11px;
   color: var(--gv-red);
+}
+
+body.gv-compact .collapsed-widget {
+  height: 34px;
+  min-width: 218px;
+  border-radius: 12px;
+  padding: 0 10px;
+}
+
+body.gv-compact .mini-icon-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+}
+
+body.gv-compact .widget-toolbar {
+  padding: 10px 14px 6px;
+}
+
+body.gv-compact .filter-row {
+  padding: 6px 14px;
+}
+
+body.gv-compact .repo-row td {
+  padding: 4px 8px;
+}
+
+body.gv-compact .repo-actions-row td {
+  padding: 0 8px 8px 28px;
+}
+
+body.gv-compact .repo-actions-panel {
+  padding: 8px;
+}
+
+@keyframes widget-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes filter-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes results-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes actions-reveal {
+  from {
+    opacity: 0;
+    transform: scaleY(0.96) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .expanded-widget,
+  .transition-surface,
+  .transition-capsule,
+  .filter-row,
+  .repo-results,
+  .repo-row,
+  .repo-actions {
+    animation: none;
+  }
+
+  .widget-toolbar input,
+  .search-control::before,
+  .collapse-btn,
+  .filter-btn,
+  .repo-row,
+  .action-btn {
+    transition: none;
+  }
 }

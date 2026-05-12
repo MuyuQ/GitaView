@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
+import { shouldStartExpandedDrag } from "../lib/windowDrag";
 import { filterRepos } from "../lib/statusModel";
 import type { RemoteRelation, RepoStatus } from "../types";
 import { GroupFilters } from "./GroupFilters";
@@ -13,6 +14,8 @@ export function WidgetExpanded({
   onRefresh,
   onCollapse,
   onOpenSettings,
+  allowDrag,
+  onStartDrag,
 }: {
   repos: RepoStatus[];
   lastRefreshAt: Date | null;
@@ -21,28 +24,44 @@ export function WidgetExpanded({
   onRefresh: () => void;
   onCollapse: () => void;
   onOpenSettings: () => void;
+  allowDrag: boolean;
+  onStartDrag: () => void;
 }) {
   const [group, setGroup] = useState("全部分组");
   const [relation, setRelation] = useState<RemoteRelation | "all">("all");
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
 
+  const deferredQuery = useDeferredValue(query);
+  const isSearching = query.trim().length > 0;
   const groupRepos = group === "全部分组" ? repos : repos.filter((repo) => repo.group === group);
-  const visibleRepos = filterRepos(repos, group, relation, query);
+  const visibleRepos = filterRepos(repos, group, relation, deferredQuery);
+  const resultMotionKey = `${group}:${relation}:${deferredQuery.trim()}`;
+
+  function handleMouseDown(event: React.MouseEvent<HTMLElement>) {
+    if (!shouldStartExpandedDrag(allowDrag, event.button, event.target)) return;
+    onStartDrag();
+  }
 
   return (
-    <section className="expanded-widget">
+    <section
+      className={`expanded-widget ${isSearching ? "searching" : ""}`}
+      onMouseDown={handleMouseDown}
+      title={allowDrag ? "拖动空白区域移动窗口" : undefined}
+    >
       <header className="widget-toolbar">
         <div>
           <h1>仓库状态</h1>
           <p>{lastRefreshAt ? `刷新时间 ${lastRefreshAt.toLocaleTimeString("zh-CN", { hour12: false })}` : "尚未刷新"}</p>
         </div>
-        <input
-          aria-label="搜索仓库"
-          placeholder="搜索仓库 / 分支"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="search-control">
+          <input
+            aria-label="搜索仓库"
+            placeholder="搜索仓库 / 分支"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </div>
         <button className="collapse-btn refresh-btn" onClick={onRefresh} disabled={refreshing} aria-label="刷新">
           {refreshing ? "刷新中" : "刷新"}
         </button>
@@ -61,11 +80,13 @@ export function WidgetExpanded({
       {refreshError && <p className="refresh-warning" role="status">刷新失败：{refreshError}</p>}
       <GroupFilters repos={repos} selected={group} onSelect={setGroup} />
       <StatusFilters repos={groupRepos} selected={relation} onSelect={setRelation} />
-      {visibleRepos.length === 0 ? (
-        <p className="repo-empty">没有匹配的仓库</p>
-      ) : (
-        <RepoTable repos={visibleRepos} selectedRepoId={selectedRepoId} onSelect={setSelectedRepoId} onRefresh={onRefresh} />
-      )}
+      <div className="repo-results" key={resultMotionKey}>
+        {visibleRepos.length === 0 ? (
+          <p className="repo-empty">没有匹配的仓库</p>
+        ) : (
+          <RepoTable repos={visibleRepos} selectedRepoId={selectedRepoId} onSelect={setSelectedRepoId} onRefresh={onRefresh} />
+        )}
+      </div>
     </section>
   );
 }

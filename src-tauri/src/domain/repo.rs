@@ -23,5 +23,6 @@ pub struct RepoStatusDto {
     pub relation: RemoteRelation,
     pub change_label: String,
     pub hint: String,
+    pub has_remote: bool,
     pub remote_url: Option<String>,
 }

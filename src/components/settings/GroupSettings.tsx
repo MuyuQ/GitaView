@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getSettings, saveSettings } from "../../lib/commands";
+import { notifySettingsUpdated, subscribeToSettingsUpdates } from "../../lib/settingsEvents";
 import type { AppSettings } from "../../types";
 
 export function GroupSettings() {
@@ -12,14 +13,16 @@ export function GroupSettings() {
     getSettings()
       .then(setSettings)
       .catch((err) => setMessage(`加载分组失败：${err}`));
+    return subscribeToSettingsUpdates(setSettings);
   }, []);
 
   async function persist(nextSettings: AppSettings, successMessage: string) {
     setBusy(true);
     setMessage(null);
     try {
-      await saveSettings(nextSettings);
-      setSettings(nextSettings);
+      const savedSettings = await saveSettings(nextSettings);
+      setSettings(savedSettings);
+      notifySettingsUpdated(savedSettings);
       setMessage(successMessage);
     } catch (err) {
       setMessage(`保存失败：${err}`);
@@ -66,8 +69,8 @@ export function GroupSettings() {
   return (
     <section className="settings-card">
       <h3>分组管理</h3>
-      <p>创建分组后，可以在“仓库”页把仓库分配进去。</p>
-      <div className="settings-path-row">
+      <p>创建分组后，可以在上方仓库列表里把仓库分配进去。</p>
+      <div className="settings-group-create">
         <input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：工作、开源、实验" />
         <button className="primary" onClick={handleCreate} disabled={busy || !settings}>新增分组</button>
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { RepoStatus } from "../types";
 import { fetchRepo, getSettings, pullRepo, pushRepo, openRepoDirectory, openRepoRemote } from "../lib/commands";
+import { getRepoActionAvailability } from "../lib/statusModel";
 
 export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: () => void }) {
   const [loading, setLoading] = useState<string | null>(null);
@@ -55,27 +56,29 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
     }
   }
 
-  const showPush = repo.relation === "local_ahead" || repo.relation === "diverged";
+  const actions = getRepoActionAvailability(repo);
 
   return (
-    <div className="repo-actions">
-      <button className="action-btn" onClick={() => runAction("目录", () => openRepoDirectory(repo.id))} disabled={loading !== null}>
+    <div className="repo-actions" onClick={(event) => event.stopPropagation()}>
+      <button className="action-btn" onClick={() => runAction("目录", () => openRepoDirectory(repo.id))} disabled={loading !== null || !actions.canOpenDirectory}>
         {loading === "目录" ? "加载中..." : "目录"}
       </button>
-      <button className="action-btn" onClick={() => runAction("远端", () => openRepoRemote(repo.id))} disabled={loading !== null || !repo.remoteUrl}>
+      <button className="action-btn" onClick={() => runAction("远端", () => openRepoRemote(repo.id))} disabled={loading !== null || !actions.canOpenRemote}>
         {loading === "远端" ? "加载中..." : "远端"}
       </button>
-      <button className="action-btn" onClick={() => runAction("Fetch", () => fetchRepo(repo.id))} disabled={loading !== null}>
+      <button className="action-btn" onClick={() => runAction("Fetch", () => fetchRepo(repo.id))} disabled={loading !== null || !actions.canFetch}>
         {loading === "Fetch" ? "加载中..." : "Fetch"}
       </button>
-      {showPush && (
+      {actions.showPush && (
         <button className={`action-btn push-btn ${confirmPush ? "confirm" : ""}`} onClick={handlePush} disabled={loading !== null}>
           {loading === "Push" ? "加载中..." : confirmPush ? "确认 Push" : "Push"}
         </button>
       )}
-      <button className={`action-btn pull-btn ${confirmPull ? "confirm" : ""}`} onClick={handlePull} disabled={loading !== null}>
-        {loading === "Pull" ? "加载中..." : confirmPull ? "确认 Pull" : "Pull"}
-      </button>
+      {actions.showPull && (
+        <button className={`action-btn pull-btn ${confirmPull ? "confirm" : ""}`} onClick={handlePull} disabled={loading !== null}>
+          {loading === "Pull" ? "加载中..." : confirmPull ? "确认 Pull" : "Pull"}
+        </button>
+      )}
       {requiresPullConfirm && confirmPull && (
         <span className="action-warning">Pull 会修改当前仓库工作区，是否继续？</span>
       )}

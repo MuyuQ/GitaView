@@ -1,6 +1,8 @@
 import type { RepoStatus } from "../types";
 import { RepoActions } from "./RepoActions";
 import { Fragment } from "react";
+import type { CSSProperties } from "react";
+import { nextSelectedRepoId } from "../lib/repoSelection";
 
 const relationLabels: Record<RepoStatus["relation"], string> = {
   error: "读取失败",
@@ -36,29 +38,53 @@ export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repo
           </tr>
         </thead>
         <tbody>
-          {repos.map((repo) => (
-            <Fragment key={repo.id}>
-              <tr
-                className={`repo-row ${selectedRepoId === repo.id ? "selected" : ""}`}
-                onClick={() => onSelect(selectedRepoId === repo.id ? null : repo.id)}
-              >
-                <td className="col-status"><span className={`status-dot ${statusDotClass[repo.relation]}`} /></td>
-                <td className="col-name">{repo.name}</td>
-                <td className="col-group">{repo.group}</td>
-                <td className="col-branch mono-light">{repo.branch}</td>
-                <td className="col-relation mono">{relationLabels[repo.relation]}</td>
-                <td className="col-changes mono">{repo.changeLabel}</td>
-                <td className="col-hint">{repo.hint}</td>
-              </tr>
-              {selectedRepoId === repo.id && (
-                <tr key={`${repo.id}-actions`}>
-                  <td colSpan={7}>
-                    <RepoActions repo={repo} onRefresh={onRefresh} />
+          {repos.map((repo, index) => {
+            const isExpanded = selectedRepoId === repo.id;
+            const actionsPanelId = `repo-actions-${repo.id}`;
+            const handleToggle = () => onSelect(nextSelectedRepoId(selectedRepoId, repo.id));
+
+            return (
+              <Fragment key={repo.id}>
+                <tr
+                  className={`repo-row ${isExpanded ? "selected" : ""}`}
+                  style={{ animationDelay: `${Math.min(index, 8) * 16}ms` } as CSSProperties}
+                  onClick={handleToggle}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleToggle();
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isExpanded}
+                  aria-controls={actionsPanelId}
+                >
+                  <td className="col-status"><span className={`status-dot ${statusDotClass[repo.relation]}`} /></td>
+                  <td className="col-name">
+                    <span className="repo-name-trigger">
+                      <span className="repo-expand-indicator" aria-hidden="true">›</span>
+                      <span className="repo-name-text">{repo.name}</span>
+                    </span>
                   </td>
+                  <td className="col-group">{repo.group}</td>
+                  <td className="col-branch mono-light">{repo.branch}</td>
+                  <td className="col-relation mono">{relationLabels[repo.relation]}</td>
+                  <td className="col-changes mono">{repo.changeLabel}</td>
+                  <td className="col-hint">{repo.hint}</td>
                 </tr>
-              )}
-            </Fragment>
-          ))}
+                {isExpanded && (
+                  <tr className="repo-actions-row" key={`${repo.id}-actions`}>
+                    <td colSpan={7}>
+                      <div id={actionsPanelId} className="repo-actions-panel" onClick={(event) => event.stopPropagation()}>
+                        <RepoActions repo={repo} onRefresh={onRefresh} />
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

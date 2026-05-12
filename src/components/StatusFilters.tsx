@@ -10,7 +10,7 @@ const statusLabels: Record<RemoteRelation, string> = {
 };
 
 export function StatusFilters({ repos, selected, onSelect }: { repos: RepoStatus[]; selected: RemoteRelation | "all"; onSelect: (r: RemoteRelation | "all") => void }) {
-  const statuses: (RemoteRelation | "all")[] = ["all", "error", "synced", "local_ahead", "remote_ahead", "diverged", "no_remote"];
+  const statuses: (RemoteRelation | "all")[] = ["all", "error", "diverged", "remote_ahead", "local_ahead", "synced", "no_remote"];
   return (
     <div className="filter-row status-filters">
       {statuses.map((s) => {

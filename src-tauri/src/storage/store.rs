@@ -13,12 +13,14 @@ pub fn load_settings(path: &Path) -> Result<AppSettings, String> {
         .map_err(|err| err.to_string())
 }
 
-pub fn save_settings(path: &Path, settings: &AppSettings) -> Result<(), String> {
+pub fn save_settings(path: &Path, settings: &AppSettings) -> Result<AppSettings, String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
     }
-    let text = serde_json::to_string_pretty(settings).map_err(|err| err.to_string())?;
-    fs::write(path, text).map_err(|err| err.to_string())
+    let normalized = settings.clone().normalized();
+    let text = serde_json::to_string_pretty(&normalized).map_err(|err| err.to_string())?;
+    fs::write(path, text).map_err(|err| err.to_string())?;
+    Ok(normalized)
 }
 
 #[cfg(test)]
@@ -48,7 +50,8 @@ mod tests {
               "safety": { "confirmPull": true, "confirmPush": true },
               "appearance": { "compactMode": false }
             }"#,
-        ).unwrap();
+        )
+        .unwrap();
         let settings = load_settings(&path).unwrap();
         assert!(settings.groups.iter().any(|group| group.name == "全部分组"));
         let _ = fs::remove_file(&path);
@@ -68,7 +71,8 @@ mod tests {
               "safety": { "confirmPull": true },
               "appearance": { "compactMode": false }
             }"#,
-        ).unwrap();
+        )
+        .unwrap();
         let settings = load_settings(&path).unwrap();
         assert!(settings.safety.confirm_pull);
         assert!(settings.safety.confirm_push);
@@ -89,9 +93,65 @@ mod tests {
               "safety": { "confirmPull": true, "confirmPush": true },
               "appearance": { "compactMode": false }
             }"#,
-        ).unwrap();
+        )
+        .unwrap();
         let settings = load_settings(&path).unwrap();
         assert_eq!(settings.refresh.interval_minutes, 1);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn load_settings_defaults_missing_allow_widget_drag() {
+        let path = std::env::temp_dir().join("gitaview_missing_allow_widget_drag.json");
+        let _ = fs::remove_file(&path);
+        fs::write(
+            &path,
+            r#"{
+              "repos": [],
+              "groups": [{ "name": "全部分组", "repoIds": [] }],
+              "defaultGroup": "全部分组",
+              "refresh": { "lightweightRefreshEnabled": true, "intervalMinutes": 5 },
+              "safety": { "confirmPull": true, "confirmPush": true },
+              "appearance": { "compactMode": false }
+            }"#,
+        )
+        .unwrap();
+        let settings = load_settings(&path).unwrap();
+        assert!(settings.appearance.allow_widget_drag);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn save_settings_rebuilds_group_repo_ids() {
+        let path = std::env::temp_dir().join("gitaview_save_group_repo_ids.json");
+        let _ = fs::remove_file(&path);
+        let mut settings = AppSettings::default();
+        settings.groups.push(crate::domain::settings::GroupRecord {
+            name: "业务".to_string(),
+            repo_ids: vec!["stale".to_string()],
+        });
+        settings.repos.push(crate::domain::repo::RepoRecord {
+            id: "repo-a".to_string(),
+            name: "repo-a".to_string(),
+            path: std::path::PathBuf::from("C:/repo-a"),
+            group: "业务".to_string(),
+        });
+
+        let saved = save_settings(&path, &settings).unwrap();
+        let saved_group = saved
+            .groups
+            .iter()
+            .find(|group| group.name == "业务")
+            .unwrap();
+        assert_eq!(saved_group.repo_ids, vec!["repo-a"]);
+
+        let loaded = load_settings(&path).unwrap();
+        let group = loaded
+            .groups
+            .iter()
+            .find(|group| group.name == "业务")
+            .unwrap();
+        assert_eq!(group.repo_ids, vec!["repo-a"]);
         let _ = fs::remove_file(&path);
     }
 }

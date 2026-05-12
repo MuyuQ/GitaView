@@ -1,5 +1,7 @@
 import type { CollapsedBucket, RemoteRelation, RepoStatus } from "../types";
 
+type AppView = "collapsed" | "expanded" | "settings";
+
 const expandedRank: Record<RemoteRelation, number> = {
   error: 0,
   diverged: 1,
@@ -30,6 +32,15 @@ export function summarizeCollapsed(repos: RepoStatus[]) {
   }));
 }
 
+export function buildGroupOptions(repos: RepoStatus[]) {
+  const repoGroups = Array.from(new Set(repos.map((repo) => repo.group)))
+    .filter((group) => group !== "全部分组");
+  return ["全部分组", ...repoGroups].map((name) => ({
+    name,
+    count: name === "全部分组" ? repos.length : repos.filter((repo) => repo.group === name).length,
+  }));
+}
+
 export function sortRepos(repos: RepoStatus[]) {
   return [...repos].sort((a, b) => {
     const rankDiff = expandedRank[a.relation] - expandedRank[b.relation];
@@ -52,4 +63,28 @@ export function filterRepos(
       )
     : relationRepos;
   return sortRepos(searchedRepos);
+}
+
+export function getRepoActionAvailability(repo: RepoStatus) {
+  return {
+    canOpenDirectory: true,
+    canOpenRemote: Boolean(repo.remoteUrl),
+    canFetch: repo.hasRemote && repo.relation !== "error",
+    showPull: repo.relation === "remote_ahead" || repo.relation === "diverged",
+    showPush: repo.relation === "local_ahead" || repo.relation === "diverged",
+  };
+}
+
+export function getCompactBodyClassName(compactMode: boolean) {
+  return compactMode ? "gv-compact" : "";
+}
+
+export function shouldShowSettingsView(
+  view: AppView,
+  repoCount: number,
+  initialError: string | null,
+  emptySettingsDismissed: boolean,
+) {
+  if (view === "settings") return true;
+  return !initialError && repoCount === 0 && !emptySettingsDismissed;
 }
