@@ -60,22 +60,47 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
 
   return (
     <div className="repo-actions" onClick={(event) => event.stopPropagation()}>
-      <button className="action-btn" onClick={() => runAction("目录", () => openRepoDirectory(repo.id))} disabled={loading !== null || !actions.canOpenDirectory}>
+      <button
+        className="action-btn"
+        onClick={() => runAction("目录", () => openRepoDirectory(repo.id))}
+        disabled={loading !== null || !actions.canOpenDirectory}
+        title="在文件管理器中打开仓库目录"
+      >
         {loading === "目录" ? "加载中..." : "目录"}
       </button>
-      <button className="action-btn" onClick={() => runAction("远端", () => openRepoRemote(repo.id))} disabled={loading !== null || !actions.canOpenRemote}>
+      <button
+        className="action-btn"
+        onClick={() => runAction("远端", () => openRepoRemote(repo.id))}
+        disabled={loading !== null || !actions.canOpenRemote}
+        title={repo.remoteUrl ? "在浏览器中打开远端仓库页面" : "未配置远端仓库"}
+      >
         {loading === "远端" ? "加载中..." : "远端"}
       </button>
-      <button className="action-btn" onClick={() => runAction("Fetch", () => fetchRepo(repo.id))} disabled={loading !== null || !actions.canFetch}>
+      <button
+        className="action-btn"
+        onClick={() => runAction("Fetch", () => fetchRepo(repo.id))}
+        disabled={loading !== null || !actions.canFetch}
+        title="从远端获取最新分支信息"
+      >
         {loading === "Fetch" ? "加载中..." : "Fetch"}
       </button>
       {actions.showPush && (
-        <button className={`action-btn push-btn ${confirmPush ? "confirm" : ""}`} onClick={handlePush} disabled={loading !== null}>
+        <button
+          className={`action-btn push-btn ${confirmPush ? "confirm" : ""}`}
+          onClick={handlePush}
+          disabled={loading !== null}
+          title="将本地提交推送到远端"
+        >
           {loading === "Push" ? "加载中..." : confirmPush ? "确认 Push" : "Push"}
         </button>
       )}
       {actions.showPull && (
-        <button className={`action-btn pull-btn ${confirmPull ? "confirm" : ""}`} onClick={handlePull} disabled={loading !== null}>
+        <button
+          className={`action-btn pull-btn ${confirmPull ? "confirm" : ""}`}
+          onClick={handlePull}
+          disabled={loading !== null}
+          title="从远端拉取更新并合并到本地"
+        >
           {loading === "Pull" ? "加载中..." : confirmPull ? "确认 Pull" : "Pull"}
         </button>
       )}

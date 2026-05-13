@@ -5,7 +5,6 @@ import type { AppSettings } from "../../types";
 
 export function AppearanceSettings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [compactMode, setCompactMode] = useState(false);
   const [allowWidgetDrag, setAllowWidgetDrag] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -14,7 +13,6 @@ export function AppearanceSettings() {
     getSettings()
       .then((nextSettings) => {
         setSettings(nextSettings);
-        setCompactMode(nextSettings.appearance.compactMode);
         setAllowWidgetDrag(nextSettings.appearance.allowWidgetDrag);
       })
       .catch((err) => setMessage(`加载外观设置失败：${err}`));
@@ -27,7 +25,7 @@ export function AppearanceSettings() {
     try {
       const nextSettings = {
         ...settings,
-        appearance: { compactMode, allowWidgetDrag },
+        appearance: { allowWidgetDrag },
       };
       const savedSettings = await saveSettings(nextSettings);
       setSettings(savedSettings);
@@ -45,16 +43,11 @@ export function AppearanceSettings() {
       <h3>外观</h3>
       <div className="settings-row">
         <label>
-          <input type="checkbox" checked={compactMode} onChange={(event) => setCompactMode(event.target.checked)} /> 紧凑模式
-        </label>
-      </div>
-      <div className="settings-row">
-        <label>
           <input
             type="checkbox"
             checked={allowWidgetDrag}
             onChange={(event) => setAllowWidgetDrag(event.target.checked)}
-          />{" "}
+          />
           允许拖动收起浮窗
         </label>
       </div>

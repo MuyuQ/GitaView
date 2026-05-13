@@ -7,22 +7,23 @@ import {
 } from "./widgetTransition";
 
 describe("widget transition state helpers", () => {
-  it("keeps native window resize out of the visible closing animation", () => {
-    expect(getTransitionWindowTarget("opening")).toBe("expanded");
-    expect(getTransitionWindowTarget("closing")).toBe("expanded");
-    expect(getTransitionWindowTarget("collapsed")).toBe("collapsed");
+  it("does not route user toggles through a visible transient window target", () => {
+    expect(getTransitionWindowTarget("opening")).toBe("collapsed");
+    expect(getTransitionWindowTarget("closing")).toBe("collapsed");
+    expect(getTransitionWindowTarget("expanded")).toBe("expanded");
   });
 
-  it("maps transient render states to lightweight ghost modes", () => {
-    expect(getTransitionMode("opening")).toBe("open");
-    expect(getTransitionMode("closing")).toBe("close");
+  it("keeps transient render states invisible to avoid switch ghosts", () => {
+    expect(getTransitionMode("opening")).toBeNull();
+    expect(getTransitionMode("closing")).toBeNull();
     expect(getTransitionMode("expanded")).toBeNull();
   });
 
-  it("keeps widget morphs intentionally short", () => {
-    expect(isWidgetTransitionView("opening")).toBe(true);
+  it("keeps widget toggles instant at the app-state layer", () => {
+    expect(isWidgetTransitionView("opening")).toBe(false);
+    expect(isWidgetTransitionView("closing")).toBe(false);
     expect(isWidgetTransitionView("settings")).toBe(false);
-    expect(transitionDurations.openingMs).toBeLessThanOrEqual(60);
-    expect(transitionDurations.closingMs).toBeLessThanOrEqual(60);
+    expect(transitionDurations.openingMs).toBe(0);
+    expect(transitionDurations.closingMs).toBe(0);
   });
 });

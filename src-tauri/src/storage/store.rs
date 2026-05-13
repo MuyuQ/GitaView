@@ -177,6 +177,7 @@ mod tests {
         let saved_text = fs::read_to_string(&path).unwrap();
 
         assert!(!saved_text.contains("alwaysOnTop"));
+        assert!(!saved_text.contains("compactMode"));
         let _ = fs::remove_file(&path);
     }
 }

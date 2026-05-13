@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   shouldPromoteCollapsedDrag,
+  shouldPromoteExpandedDrag,
   shouldStartCollapsedDrag,
   shouldStartExpandedDrag,
   shouldStartWindowDrag,
@@ -55,5 +56,20 @@ describe("shouldPromoteCollapsedDrag", () => {
 
   it("does not promote when dragging is disabled", () => {
     expect(shouldPromoteCollapsedDrag(false, { x: 10, y: 10 }, { x: 30, y: 30 })).toBe(false);
+  });
+});
+
+describe("shouldPromoteExpandedDrag", () => {
+  it("promotes a press to drag only after the pointer moves beyond threshold", () => {
+    expect(shouldPromoteExpandedDrag(true, { x: 10, y: 10 }, { x: 12, y: 11 })).toBe(false);
+    expect(shouldPromoteExpandedDrag(true, { x: 10, y: 10 }, { x: 14, y: 10 })).toBe(true);
+  });
+
+  it("does not promote when dragging is disabled", () => {
+    expect(shouldPromoteExpandedDrag(false, { x: 10, y: 10 }, { x: 30, y: 30 })).toBe(false);
+  });
+
+  it("does not promote when start position is null", () => {
+    expect(shouldPromoteExpandedDrag(true, null, { x: 30, y: 30 })).toBe(false);
   });
 });

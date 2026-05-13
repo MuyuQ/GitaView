@@ -20,7 +20,9 @@ html,
 body,
 #root {
   width: 100%;
+  height: 100%;
   min-height: 100%;
+  overflow: hidden;
   background: transparent;
 }
 
@@ -99,16 +101,4 @@ body.gv-collapsed-view {
   color: var(--gv-ink);
   cursor: pointer;
   font-family: inherit;
-}
-
-body.gv-compact .app-shell {
-  padding: 24px;
-}
-
-body.gv-compact .settings-shell {
-  padding: 0;
-}
-
-body.gv-compact .collapsed-shell {
-  padding: 0;
 }

@@ -1,5 +1,5 @@
-import { useDeferredValue, useState } from "react";
-import { shouldStartExpandedDrag } from "../lib/windowDrag";
+import { useRef, useState } from "react";
+import { shouldPromoteExpandedDrag, shouldStartExpandedDrag } from "../lib/windowDrag";
 import { filterRepos } from "../lib/statusModel";
 import type { RemoteRelation, RepoStatus } from "../types";
 import { GroupFilters } from "./GroupFilters";
@@ -30,37 +30,42 @@ export function WidgetExpanded({
   const [group, setGroup] = useState("全部分组");
   const [relation, setRelation] = useState<RemoteRelation | "all">("all");
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
 
-  const deferredQuery = useDeferredValue(query);
-  const isSearching = query.trim().length > 0;
   const groupRepos = group === "全部分组" ? repos : repos.filter((repo) => repo.group === group);
-  const visibleRepos = filterRepos(repos, group, relation, deferredQuery);
-  const resultMotionKey = `${group}:${relation}:${deferredQuery.trim()}`;
+  const visibleRepos = filterRepos(repos, group, relation);
+  const resultMotionKey = `${group}:${relation}`;
 
   function handleMouseDown(event: React.MouseEvent<HTMLElement>) {
     if (!shouldStartExpandedDrag(allowDrag, event.button, event.target)) return;
+    dragStart.current = { x: event.clientX, y: event.clientY };
+  }
+
+  function handleMouseMove(event: React.MouseEvent<HTMLElement>) {
+    if (!dragStart.current) return;
+    const current = { x: event.clientX, y: event.clientY };
+    if (!shouldPromoteExpandedDrag(allowDrag, dragStart.current, current)) return;
+    dragStart.current = null;
     onStartDrag();
+  }
+
+  function clearDragStart() {
+    dragStart.current = null;
   }
 
   return (
     <section
-      className={`expanded-widget ${isSearching ? "searching" : ""}`}
+      className="expanded-widget"
       onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={clearDragStart}
+      onMouseLeave={clearDragStart}
       title={allowDrag ? "拖动空白区域移动窗口" : undefined}
     >
       <header className="widget-toolbar">
         <div>
           <h1>仓库状态</h1>
           <p>{lastRefreshAt ? `刷新时间 ${lastRefreshAt.toLocaleTimeString("zh-CN", { hour12: false })}` : "尚未刷新"}</p>
-        </div>
-        <div className="search-control">
-          <input
-            aria-label="搜索仓库"
-            placeholder="搜索仓库 / 分支"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-          />
         </div>
         <button className="collapse-btn refresh-btn" onClick={onRefresh} disabled={refreshing} aria-label="刷新">
           {refreshing ? "刷新中" : "刷新"}

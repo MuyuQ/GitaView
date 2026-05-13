@@ -12,6 +12,18 @@ export function shouldStartExpandedDrag(allowDrag: boolean, button: number, targ
   return allowDrag && button === 0 && shouldStartWindowDrag(target);
 }
 
+export function shouldPromoteExpandedDrag(
+  allowDrag: boolean,
+  start: { x: number; y: number } | null,
+  current: { x: number; y: number },
+  threshold = 4,
+): boolean {
+  if (!allowDrag || !start) return false;
+  const deltaX = Math.abs(current.x - start.x);
+  const deltaY = Math.abs(current.y - start.y);
+  return deltaX + deltaY >= threshold;
+}
+
 export function shouldPromoteCollapsedDrag(
   allowDrag: boolean,
   start: { x: number; y: number } | null,

@@ -8,6 +8,11 @@ function readStyle(path: string) {
   return readFileSync(resolve(projectRoot, path), "utf8");
 }
 
+function declarationBlock(css: string, selector: string) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return css.match(new RegExp(`${escapedSelector}\\s*{[^}]*}`))?.[0] ?? "";
+}
+
 describe("window radius style contract", () => {
   it("uses transparent outer chrome and one shared radius token for visible windows", () => {
     const tokens = readStyle("src/styles/tokens.css");
@@ -47,5 +52,31 @@ describe("window radius style contract", () => {
     expect(widget).not.toMatch(/\.transition-capsule--(?:open|close)\s*{[^}]*animation:/);
     expect(widget).not.toContain("@keyframes capsule-open");
     expect(widget).not.toContain("@keyframes capsule-close");
+  });
+
+  it("keeps expanded content fully painted when switching from collapsed view", () => {
+    const widget = readStyle("src/styles/widget.css");
+
+    expect(widget).not.toMatch(/\.filter-row\s*{[^}]*animation:/);
+    expect(widget).not.toMatch(/\.repo-results\s*{[^}]*animation:/);
+    expect(widget).not.toMatch(/\.repo-row\s*{[^}]*animation:/);
+  });
+
+  it("keeps expanded widget surfaces the same size as the native window", () => {
+    const widget = readStyle("src/styles/widget.css");
+    const expandedWidget = declarationBlock(widget, ".expanded-widget");
+
+    expect(expandedWidget).toContain("width: 100vw;");
+    expect(expandedWidget).toContain("height: 100vh;");
+    expect(expandedWidget).toContain("max-width: none;");
+    expect(expandedWidget).toContain("max-height: none;");
+  });
+
+  it("prevents browser scrollbars while the native window is being resized", () => {
+    const tokens = readStyle("src/styles/tokens.css");
+    const rootBlock = tokens.match(/html,\s*body,\s*#root\s*{[^}]*}/)?.[0] ?? "";
+
+    expect(rootBlock).toContain("height: 100%;");
+    expect(rootBlock).toContain("overflow: hidden;");
   });
 });

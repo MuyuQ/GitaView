@@ -50,7 +50,6 @@ export interface AppSettings {
     confirmPush: boolean;
   };
   appearance: {
-    compactMode: boolean;
     allowWidgetDrag: boolean;
   };
 }

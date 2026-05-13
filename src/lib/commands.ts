@@ -46,7 +46,6 @@ const previewSettings: AppSettings = {
     confirmPush: true,
   },
   appearance: {
-    compactMode: false,
     allowWidgetDrag: true,
   },
 };

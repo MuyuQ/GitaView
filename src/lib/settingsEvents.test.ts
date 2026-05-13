@@ -8,7 +8,7 @@ const settings: AppSettings = {
   defaultGroup: "全部分组",
   refresh: { lightweightRefreshEnabled: true, intervalMinutes: 5 },
   safety: { confirmPull: true, confirmPush: true },
-  appearance: { compactMode: false, allowWidgetDrag: true },
+  appearance: { allowWidgetDrag: true },
 };
 
 describe("settings update events", () => {

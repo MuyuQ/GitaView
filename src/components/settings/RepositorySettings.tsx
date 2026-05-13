@@ -70,6 +70,7 @@ export function RepositorySettings() {
     try {
       await addRepository(targetPath);
       setPath("");
+      setScanResults((prev) => prev.filter((p) => p !== targetPath));
       await reload();
       setMessage("仓库已添加");
     } catch (err) {

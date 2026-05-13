@@ -32,11 +32,12 @@ pub struct SafetySettings {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppearanceSettings {
-    pub compact_mode: bool,
     #[serde(default = "default_true")]
     pub allow_widget_drag: bool,
-    // 已移除 always_on_top 字段，现由前端原生桌面 widget 层控制
-    // 使用 #[serde(default, skip_serializing)] 读取旧配置但不再写回 alwaysOnTop
+    // 已移除 compact_mode 和 always_on_top 字段
+    // 使用 #[serde(default, skip_serializing)] 读取旧配置但不再写回
+    #[serde(default, skip_serializing)]
+    compact_mode: bool,
     #[serde(default, skip_serializing)]
     always_on_top: bool,
 }
@@ -44,8 +45,8 @@ pub struct AppearanceSettings {
 impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
-            compact_mode: false,
             allow_widget_drag: true,
+            compact_mode: false, // 私有字段，仅用于 serde 兼容
             always_on_top: false, // 私有字段，仅用于 serde 兼容
         }
     }

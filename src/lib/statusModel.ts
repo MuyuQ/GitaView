@@ -52,17 +52,10 @@ export function filterRepos(
   repos: RepoStatus[],
   group: string,
   relation: RemoteRelation | "all",
-  query: string,
 ): RepoStatus[] {
   const groupRepos = group === "全部分组" ? repos : repos.filter((repo) => repo.group === group);
   const relationRepos = relation === "all" ? groupRepos : groupRepos.filter((repo) => repo.relation === relation);
-  const normalizedQuery = query.trim().toLowerCase();
-  const searchedRepos = normalizedQuery
-    ? relationRepos.filter((repo) =>
-        [repo.name, repo.path, repo.branch, repo.group].join(" ").toLowerCase().includes(normalizedQuery),
-      )
-    : relationRepos;
-  return sortRepos(searchedRepos);
+  return sortRepos(relationRepos);
 }
 
 export function getRepoActionAvailability(repo: RepoStatus) {
@@ -73,10 +66,6 @@ export function getRepoActionAvailability(repo: RepoStatus) {
     showPull: repo.relation === "remote_ahead" || repo.relation === "diverged",
     showPush: repo.relation === "local_ahead" || repo.relation === "diverged",
   };
-}
-
-export function getCompactBodyClassName(compactMode: boolean) {
-  return compactMode ? "gv-compact" : "";
 }
 
 export function shouldShowSettingsView(
