@@ -79,4 +79,12 @@ describe("window radius style contract", () => {
     expect(rootBlock).toContain("height: 100%;");
     expect(rootBlock).toContain("overflow: hidden;");
   });
+
+  it("keeps the settings window background neutral instead of using a green glow", () => {
+    const settings = readStyle("src/styles/settings.css");
+    const settingsWindow = declarationBlock(settings, ".settings-window");
+
+    expect(settingsWindow).not.toContain("radial-gradient");
+    expect(settingsWindow).not.toContain("47, 159, 103");
+  });
 });

@@ -1,9 +1,9 @@
 use crate::domain::repo::{RepoRecord, RepoStatusDto};
 use crate::domain::settings::AppSettings;
 use crate::domain::status::RemoteRelation;
-use crate::git::commands::{branch_state, change_label, state_hint, run_git, GitBranchState};
-use tauri::Manager;
+use crate::git::commands::{branch_state, change_label, run_git, state_hint, GitBranchState};
 use dunce;
+use tauri::Manager;
 
 const STATUS_REFRESH_BATCH_SIZE: usize = 4;
 
@@ -97,7 +97,9 @@ fn open_directory(path: &std::path::Path) -> Result<(), String> {
         cmd
     };
 
-    command.spawn().map_err(|err| format!("无法打开目录：{}", err))?;
+    command
+        .spawn()
+        .map_err(|err| format!("无法打开目录：{}", err))?;
     Ok(())
 }
 
@@ -130,7 +132,9 @@ fn open_http_url(url: &str) -> Result<(), String> {
         cmd
     };
 
-    command.spawn().map_err(|err| format!("无法打开 URL：{}", err))?;
+    command
+        .spawn()
+        .map_err(|err| format!("无法打开 URL：{}", err))?;
     Ok(())
 }
 
@@ -430,82 +434,111 @@ mod tests {
             validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Synced, true)
                 .is_ok()
         );
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Fetch,
+            RemoteRelation::LocalAhead,
+            true
+        )
+        .is_ok());
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Fetch,
+            RemoteRelation::RemoteAhead,
+            true
+        )
+        .is_ok());
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Fetch,
+            RemoteRelation::Diverged,
+            true
+        )
+        .is_ok());
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Fetch,
+            RemoteRelation::NoRemote,
+            true
+        )
+        .is_ok());
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Fetch,
+            RemoteRelation::NoRemote,
+            false
+        )
+        .is_err());
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::LocalAhead, true)
-                .is_ok()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::RemoteAhead, true)
-                .is_ok()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Diverged, true)
-                .is_ok()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::NoRemote, true)
-                .is_ok()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::NoRemote, false)
+            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Error, true)
                 .is_err()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Fetch, RemoteRelation::Error, true).is_err()
         );
     }
 
     #[test]
     fn pull_only_allows_remote_changes_that_need_user_action() {
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::RemoteAhead, true)
-                .is_ok()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Diverged, true)
-                .is_ok()
-        );
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Pull,
+            RemoteRelation::RemoteAhead,
+            true
+        )
+        .is_ok());
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Pull,
+            RemoteRelation::Diverged,
+            true
+        )
+        .is_ok());
         assert!(
             validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Synced, true)
                 .is_err()
         );
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Pull,
+            RemoteRelation::LocalAhead,
+            true
+        )
+        .is_err());
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Pull,
+            RemoteRelation::NoRemote,
+            true
+        )
+        .is_err());
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::LocalAhead, true)
+            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Error, true)
                 .is_err()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::NoRemote, true)
-                .is_err()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Pull, RemoteRelation::Error, true).is_err()
         );
     }
 
     #[test]
     fn push_only_allows_local_changes_that_need_user_action() {
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::LocalAhead, true)
-                .is_ok()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Diverged, true)
-                .is_ok()
-        );
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Push,
+            RemoteRelation::LocalAhead,
+            true
+        )
+        .is_ok());
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Push,
+            RemoteRelation::Diverged,
+            true
+        )
+        .is_ok());
         assert!(
             validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Synced, true)
                 .is_err()
         );
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Push,
+            RemoteRelation::RemoteAhead,
+            true
+        )
+        .is_err());
+        assert!(validate_repo_git_operation(
+            RepoGitOperation::Push,
+            RemoteRelation::NoRemote,
+            true
+        )
+        .is_err());
         assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::RemoteAhead, true)
+            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Error, true)
                 .is_err()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::NoRemote, true)
-                .is_err()
-        );
-        assert!(
-            validate_repo_git_operation(RepoGitOperation::Push, RemoteRelation::Error, true).is_err()
         );
     }
 
@@ -538,7 +571,7 @@ mod tests {
         assert_eq!(status.branch, "main");
         assert_eq!(status.relation, RemoteRelation::RemoteAhead);
         assert_eq!(status.change_label, "↓ 2");
-        assert_eq!(status.has_remote, true);
+        assert!(status.has_remote);
         assert_eq!(
             status.remote_url.as_deref(),
             Some("https://github.com/owner/repo")

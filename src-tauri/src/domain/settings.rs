@@ -46,7 +46,7 @@ impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
             allow_widget_drag: true,
-            compact_mode: false, // 私有字段，仅用于 serde 兼容
+            compact_mode: false,  // 私有字段，仅用于 serde 兼容
             always_on_top: false, // 私有字段，仅用于 serde 兼容
         }
     }

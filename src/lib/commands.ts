@@ -2,30 +2,33 @@ import { invoke } from "@tauri-apps/api/core";
 import type { AppSettings, RepoRecord, RepoStatus } from "../types";
 import { hasTauriRuntime } from "./runtime";
 
+const previewRepoRoot = "~/projects";
+
+// Browser-only fixture data used when the Tauri runtime is unavailable.
 const previewSettings: AppSettings = {
   repos: [
     {
       id: "gitaview",
       name: "GitaView",
-      path: "E:/Git_Repositories/GitaView",
+      path: `${previewRepoRoot}/gitaview`,
       group: "产品",
     },
     {
       id: "website",
       name: "website",
-      path: "E:/Git_Repositories/website",
+      path: `${previewRepoRoot}/website`,
       group: "业务",
     },
     {
       id: "tooling",
       name: "tooling",
-      path: "E:/Git_Repositories/tooling",
+      path: `${previewRepoRoot}/tooling`,
       group: "基础设施",
     },
     {
       id: "archive",
       name: "archive",
-      path: "E:/Git_Repositories/archive",
+      path: `${previewRepoRoot}/archive`,
       group: "归档",
     },
   ],
@@ -54,7 +57,7 @@ const previewStatuses: RepoStatus[] = [
   {
     id: "website",
     name: "website",
-    path: "E:/Git_Repositories/website",
+    path: `${previewRepoRoot}/website`,
     group: "业务",
     branch: "main",
     relation: "diverged",
@@ -66,7 +69,7 @@ const previewStatuses: RepoStatus[] = [
   {
     id: "tooling",
     name: "tooling",
-    path: "E:/Git_Repositories/tooling",
+    path: `${previewRepoRoot}/tooling`,
     group: "基础设施",
     branch: "release",
     relation: "remote_ahead",
@@ -78,7 +81,7 @@ const previewStatuses: RepoStatus[] = [
   {
     id: "gitaview",
     name: "GitaView",
-    path: "E:/Git_Repositories/GitaView",
+    path: `${previewRepoRoot}/gitaview`,
     group: "产品",
     branch: "main",
     relation: "synced",
@@ -90,7 +93,7 @@ const previewStatuses: RepoStatus[] = [
   {
     id: "archive",
     name: "archive",
-    path: "E:/Git_Repositories/archive",
+    path: `${previewRepoRoot}/archive`,
     group: "归档",
     branch: "main",
     relation: "no_remote",

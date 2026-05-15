@@ -46,7 +46,9 @@ export default function App() {
   function reloadSettings() {
     getSettings()
       .then(applySettings)
-      .catch(() => {});
+      .catch((err) => {
+        console.error("加载设置失败", err);
+      });
   }
 
   const syncNativeWindowFrame = useCallback((nextView: WidgetStableView) => {
@@ -145,7 +147,9 @@ export default function App() {
   }
 
   function handleExit() {
-    exitApp().catch(() => {});
+    exitApp().catch((err) => {
+      console.error("退出应用失败", err);
+    });
   }
 
   const refreshRepos = useCallback((opts: { initial: boolean }) => {

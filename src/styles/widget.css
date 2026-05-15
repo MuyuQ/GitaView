@@ -184,6 +184,14 @@
   margin: 2px 0 0;
 }
 
+.widget-toolbar-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .collapse-btn {
   width: 28px;
   height: 28px;

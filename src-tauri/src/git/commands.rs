@@ -300,7 +300,10 @@ mod tests {
         fs::write(repo.join("README.md"), "initial\n").unwrap();
         test_git(&repo, &["add", "README.md"]);
         test_git(&repo, &["commit", "-m", "initial"]);
-        test_git(&repo, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        test_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
         test_git(&repo, &["push", "-u", "origin", "main"]);
 
         fs::write(repo.join("README.md"), "initial\nlocal\n").unwrap();

@@ -251,8 +251,8 @@ mod tests {
 
     #[test]
     fn found_desktop_host_ignores_stale_enum_windows_error() {
-        let fallback = HWND(1 as *mut _);
-        let found = HWND(2 as *mut _);
+        let fallback = HWND::default();
+        let found = HWND(std::ptr::dangling_mut::<u8>().cast());
 
         let host = resolve_enum_windows_host(fallback, found, true, 123).unwrap();
 

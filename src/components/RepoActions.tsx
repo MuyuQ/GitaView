@@ -17,7 +17,8 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
         setRequiresPullConfirm(settings.safety.confirmPull);
         setRequiresPushConfirm(settings.safety.confirmPush);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("加载安全操作设置失败", err);
         setRequiresPullConfirm(true);
         setRequiresPushConfirm(true);
       });
