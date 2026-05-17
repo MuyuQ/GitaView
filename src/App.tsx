@@ -59,6 +59,11 @@ export default function App() {
     const targetLogicalSize = new LogicalSize(size.width, size.height);
     const appWindow = getCurrentWindow();
 
+    // 设置窗口置顶状态：settings 视图置顶，其他不置顶
+    appWindow.setAlwaysOnTop(nextView === "settings").catch((err) => {
+      console.error("设置窗口置顶状态失败", err);
+    });
+
     Promise.all([
       appWindow.outerPosition(),
       appWindow.outerSize(),

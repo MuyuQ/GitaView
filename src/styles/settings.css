@@ -224,8 +224,8 @@
   position: relative;
   width: 100%;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.84)),
-    var(--gv-bg);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0.85)),
+    linear-gradient(180deg, #f8fafc, #f1f5f9);
   border: 1px solid rgba(226, 232, 240, 0.92);
   border-radius: 14px;
   padding: 16px 18px;
@@ -486,7 +486,7 @@
   border: 1px dashed rgba(148, 163, 184, 0.54);
   border-radius: 14px;
   background:
-    radial-gradient(circle at 24px 20px, rgba(47, 159, 103, 0.12), transparent 26px),
+    radial-gradient(circle at 24px 20px, rgba(100, 116, 139, 0.08), transparent 26px),
     rgba(255, 255, 255, 0.54);
   color: var(--gv-muted);
 }

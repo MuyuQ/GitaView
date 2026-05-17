@@ -344,6 +344,28 @@
   position: sticky;
   top: 0;
   background: white;
+  user-select: none;
+}
+
+.col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.col-resize-handle {
+  width: 4px;
+  height: 14px;
+  cursor: col-resize;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 150ms ease;
+}
+
+.col-resize-handle:hover,
+.col-resize-handle:active {
+  background: var(--gv-line);
 }
 
 .repo-row {
@@ -377,7 +399,8 @@
   border-bottom-color: transparent;
 }
 
-.col-status { width: 24px; }
+.col-status { width: 24px; text-align: center; }
+.col-status .status-dot { margin: 0 auto; display: block; }
 .col-name { flex: 1; font-weight: 600; }
 .col-group { width: 60px; color: var(--gv-muted); }
 .col-branch { width: 80px; }
