@@ -4,6 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use crate::domain::status::RemoteRelation;
+use crate::git::remote::normalize_remote_url;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitBranchState {
@@ -13,23 +14,6 @@ pub struct GitBranchState {
     pub behind: u32,
     pub has_remote: bool,
     pub remote_url: Option<String>,
-}
-
-pub fn normalize_remote_url(raw: &str) -> Option<String> {
-    let value = raw.trim();
-    if value.is_empty() {
-        return None;
-    }
-    if let Some(rest) = value.strip_prefix("git@github.com:") {
-        return Some(format!(
-            "https://github.com/{}",
-            rest.trim_end_matches(".git")
-        ));
-    }
-    if value.starts_with("https://") || value.starts_with("http://") {
-        return Some(value.trim_end_matches(".git").to_string());
-    }
-    None
 }
 
 fn run_command_with_timeout(mut command: Command, timeout: Duration) -> Result<Output, String> {
@@ -157,41 +141,6 @@ pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
     })
 }
 
-pub fn change_label(state: &GitBranchState) -> String {
-    match state.relation {
-        RemoteRelation::Error => "!".to_string(),
-        RemoteRelation::Synced => "✓".to_string(),
-        RemoteRelation::LocalAhead => format!("↑ {}", state.ahead),
-        RemoteRelation::RemoteAhead => format!("↓ {}", state.behind),
-        RemoteRelation::Diverged => format!("⇕ {}", state.ahead + state.behind),
-        RemoteRelation::NoRemote => "∅".to_string(),
-    }
-}
-
-pub fn relation_hint(relation: RemoteRelation) -> &'static str {
-    match relation {
-        RemoteRelation::Error => "读取失败",
-        RemoteRelation::Synced => "无需操作",
-        RemoteRelation::LocalAhead => "可 Push",
-        RemoteRelation::RemoteAhead => "可 Pull",
-        RemoteRelation::Diverged => "需要人工处理",
-        RemoteRelation::NoRemote => "未配置远端",
-    }
-}
-
-/// 根据完整状态生成更精确的提示（特别是区分无远端与无 upstream）
-pub fn state_hint(state: &GitBranchState) -> String {
-    if state.relation == RemoteRelation::NoRemote {
-        if state.has_remote {
-            "未设置可比较的 upstream".to_string()
-        } else {
-            "未配置远端".to_string()
-        }
-    } else {
-        relation_hint(state.relation).to_string()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,54 +169,6 @@ mod tests {
             args.join(" "),
             String::from_utf8_lossy(&output.stderr)
         );
-    }
-
-    #[test]
-    fn normalizes_github_ssh_url() {
-        assert_eq!(
-            normalize_remote_url("git@github.com:owner/repo.git"),
-            Some("https://github.com/owner/repo".to_string()),
-        );
-    }
-
-    #[test]
-    fn keeps_non_github_urls_openable() {
-        assert_eq!(
-            normalize_remote_url("https://gitlab.com/owner/repo.git"),
-            Some("https://gitlab.com/owner/repo".to_string()),
-        );
-    }
-
-    #[test]
-    fn rejects_unsupported_remote_urls_for_opening() {
-        assert_eq!(
-            normalize_remote_url("ssh://git@example.com/owner/repo.git"),
-            None
-        );
-        assert_eq!(normalize_remote_url("file:///tmp/repo.git"), None);
-    }
-
-    #[test]
-    fn formats_change_labels_for_all_relations() {
-        let mut state = GitBranchState {
-            branch: "main".to_string(),
-            relation: RemoteRelation::LocalAhead,
-            ahead: 2,
-            behind: 0,
-            has_remote: true,
-            remote_url: None,
-        };
-        assert_eq!(change_label(&state), "↑ 2");
-
-        state.relation = RemoteRelation::RemoteAhead;
-        state.ahead = 0;
-        state.behind = 3;
-        assert_eq!(change_label(&state), "↓ 3");
-
-        state.relation = RemoteRelation::Diverged;
-        state.ahead = 2;
-        state.behind = 3;
-        assert_eq!(change_label(&state), "⇕ 5");
     }
 
     #[test]

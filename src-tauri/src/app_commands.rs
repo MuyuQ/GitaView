@@ -2,6 +2,7 @@ use crate::app_settings::{load_app_settings, save_app_settings};
 use crate::domain::repo::RepoStatusDto;
 use crate::domain::settings::AppSettings;
 use crate::git::commands::{branch_state, run_git};
+use crate::git::remote::normalize_remote_url;
 use crate::repo_operation::{validate_repo_git_operation, RepoGitOperation};
 use crate::repo_registry::{find_repo, repo_id_from_path};
 use crate::system_open::{open_directory, open_http_url};
@@ -180,7 +181,7 @@ pub async fn open_repo_remote(app: tauri::AppHandle, repo_id: String) -> Result<
     .await
     .map_err(|err| err.to_string())??;
     // 规范化 URL 并校验是否为可打开的 HTTP/HTTPS 地址
-    let remote = crate::git::commands::normalize_remote_url(&remote)
+    let remote = normalize_remote_url(&remote)
         .ok_or_else(|| "当前仓库没有可打开的 HTTP/HTTPS 远端地址".to_string())?;
     open_http_url(&remote)?;
     Ok(())

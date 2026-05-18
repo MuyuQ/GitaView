@@ -1,6 +1,7 @@
 use crate::domain::repo::{RepoRecord, RepoStatusDto};
 use crate::domain::status::RemoteRelation;
-use crate::git::commands::{branch_state, change_label, state_hint, GitBranchState};
+use crate::git::commands::{branch_state, GitBranchState};
+use crate::git::status_text::{change_label, state_hint};
 
 const STATUS_REFRESH_BATCH_SIZE: usize = 4;
 
