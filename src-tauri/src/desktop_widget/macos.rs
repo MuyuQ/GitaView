@@ -34,7 +34,7 @@ pub fn apply_desktop_widget_layer(window: &WebviewWindow) -> Result<(), String> 
 
             // 设置窗口层级：桌面图标层 + 1
             // 这使窗口位于桌面图标之上，但在普通应用窗口之下
-            let desktop_icon_level = kCGDesktopIconWindowLevel;
+            let desktop_icon_level = kCGDesktopIconWindowLevel as isize;
             ns_window.setLevel(desktop_icon_level + 1);
 
             // 设置 collection behavior

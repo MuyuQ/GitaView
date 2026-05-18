@@ -1,12 +1,5 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-
-const projectRoot = resolve(import.meta.dirname, "../..");
-
-function readProjectFile(path: string) {
-  return readFileSync(resolve(projectRoot, path), "utf8");
-}
+import { readProjectFile } from "./sourceContract";
 
 function declarationBlock(css: string, selector: string) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
