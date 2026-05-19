@@ -1,6 +1,7 @@
 pub mod app_commands;
 pub mod app_settings;
 pub mod desktop_widget;
+pub mod diagnostics;
 pub mod repo_operation;
 pub mod repo_registry;
 pub mod repo_status;
@@ -31,6 +32,32 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            let app_handle = app.handle().clone();
+            if let Ok(app_data_dir) = app.path().app_data_dir() {
+                diagnostics::init(app_data_dir.join("gitaview.log"));
+            }
+            diagnostics::log(
+                "app.setup.start",
+                format!(
+                    "exe={} cwd={}",
+                    std::env::current_exe()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|err| format!("error:{err}")),
+                    std::env::current_dir()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|err| format!("error:{err}")),
+                ),
+            );
+            match app_settings::settings_path(&app_handle) {
+                Ok(path) => diagnostics::log("app.setup.settings_path", path.display().to_string()),
+                Err(err) => diagnostics::log("app.setup.settings_path_error", err),
+            }
+            if let Some(window) = app.get_webview_window("main") {
+                diagnostics::log_window("app.setup.main_window", &window);
+            } else {
+                diagnostics::log("app.setup.main_window_missing", "main window not found");
+            }
+
             let tray_icon = include_image!("./icons/icon.png");
             let tray_menu = tray_status::loading_tray_menu(app)?;
 
@@ -58,7 +85,9 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            diagnostics::log("app.setup.tray_ready", "main tray created");
             tray_status::refresh_tray_menu_async(app.handle().clone());
+            diagnostics::log("app.setup.end", "setup completed");
 
             Ok(())
         })

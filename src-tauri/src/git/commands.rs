@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::domain::status::RemoteRelation;
 use crate::git::remote::normalize_remote_url;
@@ -44,6 +44,8 @@ fn run_command_with_timeout(mut command: Command, timeout: Duration) -> Result<O
 }
 
 pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
+    let started = Instant::now();
+    let command_label = args.join(" ");
     let mut command = Command::new("git");
     command.args(args);
     command.current_dir(repo_path);
@@ -52,9 +54,31 @@ pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
 
     let output = run_command_with_timeout(command, GIT_OPERATION_TIMEOUT)?;
     if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        crate::diagnostics::log_duration(
+            "git.command.ok",
+            started.elapsed(),
+            format!(
+                "cwd={} command={} stdout_len={}",
+                repo_path.display(),
+                command_label,
+                stdout.len()
+            ),
+        );
+        Ok(stdout)
     } else {
-        Err(format_git_failure(args, &output.stderr))
+        let err = format_git_failure(args, &output.stderr);
+        crate::diagnostics::log_duration(
+            "git.command.error",
+            started.elapsed(),
+            format!(
+                "cwd={} command={} error={}",
+                repo_path.display(),
+                command_label,
+                err
+            ),
+        );
+        Err(err)
     }
 }
 

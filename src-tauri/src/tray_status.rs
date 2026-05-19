@@ -59,6 +59,7 @@ fn error_tray_menu<R: Runtime, M: Manager<R>>(
 }
 
 pub fn set_loading_menu(app: &AppHandle) -> Result<(), String> {
+    crate::diagnostics::log("tray.set_loading.start", "");
     replace_tray_menu(app, loading_tray_menu)
 }
 
@@ -68,10 +69,15 @@ pub fn set_status_menu(app: &AppHandle, statuses: &[RepoStatusDto]) -> Result<()
 }
 
 fn set_status_menu_inner(app: &AppHandle, statuses: &[RepoStatusDto]) -> Result<(), String> {
+    crate::diagnostics::log(
+        "tray.set_status.start",
+        format!("statuses={}", statuses.len()),
+    );
     replace_tray_menu(app, |app| status_tray_menu(app, statuses))
 }
 
 fn set_error_menu_inner(app: &AppHandle, message: &str) -> Result<(), String> {
+    crate::diagnostics::log("tray.set_error.start", message);
     replace_tray_menu(app, |app| error_tray_menu(app, message))
 }
 
@@ -79,20 +85,30 @@ fn replace_tray_menu(
     app: &AppHandle,
     build_menu: impl FnOnce(&AppHandle) -> tauri::Result<Menu<tauri::Wry>>,
 ) -> Result<(), String> {
+    crate::diagnostics::log("tray.replace.start", "");
     let tray = app
         .tray_by_id(MAIN_TRAY_ID)
         .ok_or_else(|| "未找到主托盘图标".to_string())?;
     let menu = build_menu(app).map_err(|err| err.to_string())?;
-    tray.set_menu(Some(menu)).map_err(|err| err.to_string())
+    let result = tray.set_menu(Some(menu)).map_err(|err| err.to_string());
+    match &result {
+        Ok(()) => crate::diagnostics::log("tray.replace.ok", ""),
+        Err(err) => crate::diagnostics::log("tray.replace.error", err),
+    }
+    result
 }
 
 pub fn refresh_tray_menu_async(app: AppHandle) {
     let generation = next_tray_menu_generation();
+    crate::diagnostics::log("tray.refresh.schedule", format!("generation={generation}"));
     if let Err(err) = set_loading_menu(&app) {
         eprintln!("更新托盘读取状态失败: {err}");
+        crate::diagnostics::log("tray.refresh.loading_error", err);
     }
 
     tauri::async_runtime::spawn(async move {
+        let started = std::time::Instant::now();
+        crate::diagnostics::log("tray.refresh.start", format!("generation={generation}"));
         let result = match crate::app_settings::load_app_settings(&app) {
             Ok(settings) => tauri::async_runtime::spawn_blocking(move || {
                 crate::repo_status::collect_repo_statuses(settings.repos)
@@ -106,20 +122,40 @@ pub fn refresh_tray_menu_async(app: AppHandle) {
         match result {
             Ok(statuses) => {
                 if !is_current_tray_menu_generation(generation) {
+                    crate::diagnostics::log(
+                        "tray.refresh.stale",
+                        format!("generation={generation} statuses={}", statuses.len()),
+                    );
                     return;
                 }
                 if let Err(err) = set_status_menu_inner(&app, &statuses) {
                     eprintln!("更新托盘状态菜单失败: {err}");
+                    crate::diagnostics::log("tray.refresh.status_error", err);
                 }
+                crate::diagnostics::log_duration(
+                    "tray.refresh.ok",
+                    started.elapsed(),
+                    format!("generation={generation} statuses={}", statuses.len()),
+                );
             }
             Err(err) => {
                 eprintln!("读取托盘仓库状态失败: {err}");
                 if !is_current_tray_menu_generation(generation) {
+                    crate::diagnostics::log(
+                        "tray.refresh.error_stale",
+                        format!("generation={generation} error={err}"),
+                    );
                     return;
                 }
                 if let Err(menu_err) = set_error_menu_inner(&app, &err) {
                     eprintln!("更新托盘错误菜单失败: {menu_err}");
+                    crate::diagnostics::log("tray.refresh.error_menu_error", menu_err);
                 }
+                crate::diagnostics::log_duration(
+                    "tray.refresh.error",
+                    started.elapsed(),
+                    format!("generation={generation} error={err}"),
+                );
             }
         }
     });

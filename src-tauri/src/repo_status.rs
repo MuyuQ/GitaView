@@ -2,6 +2,7 @@ use crate::domain::repo::{RepoRecord, RepoStatusDto};
 use crate::domain::status::RemoteRelation;
 use crate::git::commands::{branch_state, GitBranchState};
 use crate::git::status_text::{change_label, state_hint};
+use std::time::Instant;
 
 const STATUS_REFRESH_BATCH_SIZE: usize = 4;
 
@@ -42,15 +43,40 @@ pub fn sort_repo_statuses(statuses: &mut [RepoStatusDto]) {
 }
 
 pub fn collect_repo_statuses(repos: Vec<RepoRecord>) -> Result<Vec<RepoStatusDto>, String> {
+    let started = Instant::now();
+    crate::diagnostics::log(
+        "repo_status.collect.start",
+        format!("repos={}", repos.len()),
+    );
     let mut statuses = Vec::with_capacity(repos.len());
     for batch in repos.chunks(STATUS_REFRESH_BATCH_SIZE) {
+        crate::diagnostics::log(
+            "repo_status.collect.batch",
+            format!("batch_size={}", batch.len()),
+        );
         let handles = batch
             .iter()
             .cloned()
             .map(|repo| {
                 std::thread::spawn(move || {
+                    let repo_started = Instant::now();
+                    let repo_id = repo.id.clone();
+                    let repo_path = repo.path.display().to_string();
+                    crate::diagnostics::log(
+                        "repo_status.repo.start",
+                        format!("repo_id={repo_id} path={repo_path}"),
+                    );
                     let state = branch_state(&repo.path);
-                    repo_status_from_branch_result(repo, state)
+                    let status = repo_status_from_branch_result(repo, state);
+                    crate::diagnostics::log_duration(
+                        "repo_status.repo.end",
+                        repo_started.elapsed(),
+                        format!(
+                            "repo_id={} relation={:?} hint={}",
+                            status.id, status.relation, status.hint
+                        ),
+                    );
+                    status
                 })
             })
             .collect::<Vec<_>>();
@@ -64,6 +90,11 @@ pub fn collect_repo_statuses(repos: Vec<RepoRecord>) -> Result<Vec<RepoStatusDto
         }
     }
     sort_repo_statuses(&mut statuses);
+    crate::diagnostics::log_duration(
+        "repo_status.collect.ok",
+        started.elapsed(),
+        format!("statuses={}", statuses.len()),
+    );
     Ok(statuses)
 }
 
