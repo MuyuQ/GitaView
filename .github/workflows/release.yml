@@ -34,6 +34,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -43,7 +45,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          target: ${{ matrix.target }}
+          cache-targets: ${{ matrix.target }}
 
       - name: Install frontend dependencies
         run: npm ci
