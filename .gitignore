@@ -6,3 +6,9 @@ src-tauri/target/
 *.log
 .DS_Store
 Thumbs.db
+
+# IDE/工具缓存
+.codex/
+.superpowers/
+__pycache__/
+*.pyc
