@@ -13,9 +13,15 @@ describe("native tray setup contract", () => {
     expect(lib).toContain(".on_menu_event(");
   });
 
-  it("does not reparent the webview into the Windows desktop shell from startup or tray actions", () => {
+  it("reapplies the native desktop widget layer during startup", () => {
     const lib = readProjectFileCompact("src-tauri/src/lib.rs");
 
-    expect(lib).not.toContain("reapply_desktop_widget_layer");
+    expect(lib).toContain("desktop_widget::reapply_desktop_widget_layer(app.handle())");
+  });
+
+  it("reserves tray generations before repository status collection begins", () => {
+    const commands = readProjectFileCompact("src-tauri/src/app_commands.rs");
+
+    expect(commands).toMatch(/begin_tray_menu_update\(\)[\s\S]*spawn_blocking[\s\S]*set_status_menu_if_current/);
   });
 });

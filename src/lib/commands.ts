@@ -114,7 +114,10 @@ export function getSettings(): Promise<AppSettings> {
 }
 
 export function saveSettings(settings: AppSettings): Promise<AppSettings> {
-  if (!hasTauriRuntime()) return previewResult(settings);
+  if (!hasTauriRuntime()) {
+    Object.assign(previewSettings, structuredClone(settings));
+    return previewResult(previewSettings);
+  }
   return invoke<AppSettings>("save_settings", { settings });
 }
 

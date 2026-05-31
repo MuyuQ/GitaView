@@ -27,7 +27,9 @@ describe("tray status menu contract", () => {
     const commands = readProjectFileCompact("src-tauri/src/app_commands.rs");
 
     expect(commands).toContain("crate::repo_status::collect_repo_statuses");
-    expect(commands).toContain("crate::tray_status::set_status_menu(&app, &statuses)");
+    expect(commands).toContain(
+      "crate::tray_status::set_status_menu_if_current(&app, tray_generation, &statuses)",
+    );
   });
 
   it("keeps tray status rendering platform neutral", () => {

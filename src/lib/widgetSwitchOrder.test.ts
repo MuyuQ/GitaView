@@ -29,11 +29,11 @@ describe("widget view switch ordering", () => {
     expect(capability).toContain('"core:window:allow-set-background-color"');
   });
 
-  it("grants the native always-on-top permission used by settings view", () => {
+  it("lets the native desktop layer own z-order instead of forcing settings always-on-top", () => {
     const app = readFileSync(resolve(projectRoot, "src/App.tsx"), "utf8");
     const capability = readFileSync(resolve(projectRoot, "src-tauri/capabilities/default.json"), "utf8");
 
-    expect(app).toContain("setAlwaysOnTop(nextView === \"settings\")");
-    expect(capability).toContain('"core:window:allow-set-always-on-top"');
+    expect(app).not.toContain("setAlwaysOnTop");
+    expect(capability).not.toContain('"core:window:allow-set-always-on-top"');
   });
 });

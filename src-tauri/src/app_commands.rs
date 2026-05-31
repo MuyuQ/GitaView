@@ -9,6 +9,14 @@ use crate::system_open::{open_directory, open_http_url};
 use dunce;
 use std::time::Instant;
 
+fn require_confirmation(action: &str, confirmed: bool) -> Result<(), String> {
+    if confirmed {
+        Ok(())
+    } else {
+        Err(format!("{action} 需要确认"))
+    }
+}
+
 #[tauri::command]
 pub async fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
     let started = Instant::now();
@@ -23,7 +31,7 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> 
         Err(err) => crate::diagnostics::log_duration(
             "command.get_settings.error",
             started.elapsed(),
-            format!("error={err}"),
+            format!("error_len={}", err.len()),
         ),
     }
     result
@@ -51,8 +59,11 @@ pub async fn save_settings(
 #[tauri::command]
 pub async fn scan_directory(path: String) -> Result<Vec<String>, String> {
     let started = Instant::now();
-    crate::diagnostics::log("command.scan_directory.start", format!("path={path}"));
     let root = std::path::PathBuf::from(&path);
+    crate::diagnostics::log(
+        "command.scan_directory.start",
+        format!("path={}", crate::diagnostics::redact_path(&root)),
+    );
     if !root.is_dir() {
         crate::diagnostics::log_duration(
             "command.scan_directory.error",
@@ -83,8 +94,11 @@ pub async fn add_repository(
     path: String,
 ) -> Result<crate::domain::repo::RepoRecord, String> {
     use crate::domain::repo::RepoRecord;
-    crate::diagnostics::log("command.add_repository.start", format!("path={path}"));
     let repo_path = std::path::PathBuf::from(&path);
+    crate::diagnostics::log(
+        "command.add_repository.start",
+        format!("path={}", crate::diagnostics::redact_path(&repo_path)),
+    );
     if !crate::git::discovery::is_git_repo(&repo_path) {
         crate::diagnostics::log("command.add_repository.error", "invalid git repository");
         return Err("请选择有效的 Git 仓库目录".to_string());
@@ -113,7 +127,11 @@ pub async fn add_repository(
     save_app_settings(&app, &settings)?;
     crate::diagnostics::log(
         "command.add_repository.ok",
-        format!("id={} path={}", record.id, record.path.display()),
+        format!(
+            "id={} path={}",
+            record.id,
+            crate::diagnostics::redact_path(&record.path)
+        ),
     );
     Ok(record)
 }
@@ -137,6 +155,7 @@ pub async fn remove_repository(app: tauri::AppHandle, repo_id: String) -> Result
 #[tauri::command]
 pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusDto>, String> {
     let started = Instant::now();
+    let tray_generation = crate::tray_status::begin_tray_menu_update();
     crate::diagnostics::log("command.list_repo_statuses.start", "");
     let settings = load_app_settings(&app)?;
     crate::diagnostics::log(
@@ -148,9 +167,19 @@ pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusD
     })
     .await
     .map_err(|err| err.to_string())??;
-    if let Err(err) = crate::tray_status::set_status_menu(&app, &statuses) {
-        eprintln!("更新托盘状态菜单失败: {err}");
-        crate::diagnostics::log("command.list_repo_statuses.tray_error", err);
+    match crate::tray_status::set_status_menu_if_current(&app, tray_generation, &statuses) {
+        Ok(false) => crate::diagnostics::log(
+            "command.list_repo_statuses.tray_stale",
+            format!("generation={tray_generation}"),
+        ),
+        Err(err) => {
+            eprintln!("更新托盘状态菜单失败: {err}");
+            crate::diagnostics::log(
+                "command.list_repo_statuses.tray_error",
+                format!("error_len={}", err.len()),
+            );
+        }
+        Ok(true) => {}
     }
     crate::diagnostics::log_duration(
         "command.list_repo_statuses.ok",
@@ -181,10 +210,8 @@ pub async fn pull_repo(
     repo_id: String,
     confirmed: bool,
 ) -> Result<String, String> {
+    require_confirmation("Pull", confirmed)?;
     let settings = load_app_settings(&app)?;
-    if settings.safety.confirm_pull && !confirmed {
-        return Err("Pull 需要确认".to_string());
-    }
     let repo = find_repo(&settings, &repo_id)?;
     let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -203,10 +230,8 @@ pub async fn push_repo(
     repo_id: String,
     confirmed: bool,
 ) -> Result<String, String> {
+    require_confirmation("Push", confirmed)?;
     let settings = load_app_settings(&app)?;
-    if settings.safety.confirm_push && !confirmed {
-        return Err("Push 需要确认".to_string());
-    }
     let repo = find_repo(&settings, &repo_id)?;
     let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -251,4 +276,23 @@ pub async fn open_repo_remote(app: tauri::AppHandle, repo_id: String) -> Result<
 #[tauri::command]
 pub async fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mutating_repository_actions_always_require_confirmation() {
+        assert_eq!(
+            require_confirmation("Pull", false),
+            Err("Pull 需要确认".to_string())
+        );
+        assert_eq!(
+            require_confirmation("Push", false),
+            Err("Push 需要确认".to_string())
+        );
+        assert_eq!(require_confirmation("Pull", true), Ok(()));
+        assert_eq!(require_confirmation("Push", true), Ok(()));
+    }
 }

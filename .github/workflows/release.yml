@@ -48,6 +48,21 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Validate release version
+        run: node scripts/validate-release-version.cjs
+
+      - name: Run frontend tests
+        run: npm test
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:

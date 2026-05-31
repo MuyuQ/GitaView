@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { getSettings, saveSettings } from "../../lib/commands";
+import { getSettings } from "../../lib/commands";
 import { notifySettingsUpdated, subscribeToSettingsUpdates } from "../../lib/settingsEvents";
+import { queueSettingsUpdate } from "../../lib/settingsMutations";
 import type { AppSettings } from "../../types";
 
 export function GroupSettings() {
@@ -16,11 +17,11 @@ export function GroupSettings() {
     return subscribeToSettingsUpdates(setSettings);
   }, []);
 
-  async function persist(nextSettings: AppSettings, successMessage: string) {
+  async function persist(patch: (settings: AppSettings) => AppSettings, successMessage: string) {
     setBusy(true);
     setMessage(null);
     try {
-      const savedSettings = await saveSettings(nextSettings);
+      const savedSettings = await queueSettingsUpdate(patch);
       setSettings(savedSettings);
       notifySettingsUpdated(savedSettings);
       setMessage(successMessage);
@@ -43,10 +44,10 @@ export function GroupSettings() {
       return;
     }
     await persist(
-      {
-        ...settings,
-        groups: [...settings.groups, { name: groupName, repoIds: [] }],
-      },
+      (currentSettings) => ({
+        ...currentSettings,
+        groups: [...currentSettings.groups, { name: groupName, repoIds: [] }],
+      }),
       "分组已创建",
     );
     setName("");
@@ -55,13 +56,13 @@ export function GroupSettings() {
   async function handleRemove(groupName: string) {
     if (!settings || groupName === settings.defaultGroup) return;
     await persist(
-      {
-        ...settings,
-        groups: settings.groups.filter((group) => group.name !== groupName),
-        repos: settings.repos.map((repo) =>
-          repo.group === groupName ? { ...repo, group: settings.defaultGroup } : repo,
+      (currentSettings) => ({
+        ...currentSettings,
+        groups: currentSettings.groups.filter((group) => group.name !== groupName),
+        repos: currentSettings.repos.map((repo) =>
+          repo.group === groupName ? { ...repo, group: currentSettings.defaultGroup } : repo,
         ),
-      },
+      }),
       "分组已删除，相关仓库已移回默认分组",
     );
   }
@@ -71,7 +72,12 @@ export function GroupSettings() {
       <h3>分组管理</h3>
       <p>创建分组后，可以在上方仓库列表里把仓库分配进去。</p>
       <div className="settings-group-create">
-        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="例如：工作、开源、实验" />
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="例如：工作、开源、实验"
+          aria-label="新分组名称"
+        />
         <button className="primary" onClick={handleCreate} disabled={busy || !settings}>新增分组</button>
       </div>
       {message && <p className="settings-message" role="status">{message}</p>}

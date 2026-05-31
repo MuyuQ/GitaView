@@ -59,7 +59,7 @@ export function SettingsShell({ onClose }: { onClose?: () => void }) {
           ))}
         </nav>
         <div className="settings-sidebar-footer">
-          <button className="settings-save-btn" onClick={onClose}>保存</button>
+          <button className="settings-save-btn" onClick={onClose}>关闭</button>
         </div>
       </aside>
       <main className="settings-main">

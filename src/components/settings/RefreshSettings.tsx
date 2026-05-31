@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { getSettings, saveSettings } from "../../lib/commands";
-import { notifySettingsUpdated } from "../../lib/settingsEvents";
+import { getSettings } from "../../lib/commands";
+import { notifySettingsUpdated, subscribeToSettingsUpdates } from "../../lib/settingsEvents";
+import { queueSettingsUpdate } from "../../lib/settingsMutations";
 import type { AppSettings } from "../../types";
 
 export function RefreshSettings() {
@@ -18,6 +19,7 @@ export function RefreshSettings() {
         setIntervalMinutes(nextSettings.refresh.intervalMinutes);
       })
       .catch((err) => setMessage(`加载刷新设置失败：${err}`));
+    return subscribeToSettingsUpdates(setSettings);
   }, []);
 
   async function handleSave() {
@@ -26,14 +28,13 @@ export function RefreshSettings() {
     setBusy(true);
     setMessage(null);
     try {
-      const nextSettings = {
-        ...settings,
+      const savedSettings = await queueSettingsUpdate((currentSettings) => ({
+        ...currentSettings,
         refresh: {
           lightweightRefreshEnabled: enabled,
           intervalMinutes: safeInterval,
         },
-      };
-      const savedSettings = await saveSettings(nextSettings);
+      }));
       setSettings(savedSettings);
       notifySettingsUpdated(savedSettings);
       setIntervalMinutes(safeInterval);
@@ -54,8 +55,9 @@ export function RefreshSettings() {
         </label>
       </div>
       <div className="settings-row">
-        <label>刷新间隔（分钟）</label>
+        <label htmlFor="refresh-interval-minutes">刷新间隔（分钟）</label>
         <input
+          id="refresh-interval-minutes"
           type="number"
           value={intervalMinutes}
           min={1}

@@ -6,6 +6,7 @@ import {
   summarizeCollapsed,
   sortRepos,
   filterRepos,
+  reconcileRelationFilter,
   toCollapsedBucket,
 } from "./statusModel";
 import type { RepoStatus } from "../types";
@@ -152,5 +153,15 @@ describe("statusModel", () => {
 
   it("shouldShowSettingsView does not auto-open settings when the initial load failed", () => {
     expect(shouldShowSettingsView("collapsed", 0, "读取失败", false)).toBe(false);
+  });
+
+  it("reconcileRelationFilter resets an unavailable relation after switching groups", () => {
+    const repos = [
+      withGroup("split", "diverged", "业务"),
+      withGroup("behind", "remote_ahead", "基础设施"),
+    ];
+
+    expect(reconcileRelationFilter(repos, "基础设施", "diverged")).toBe("all");
+    expect(reconcileRelationFilter(repos, "业务", "diverged")).toBe("diverged");
   });
 });

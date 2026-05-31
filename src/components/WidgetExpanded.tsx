@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { shouldPromoteExpandedDrag, shouldStartExpandedDrag } from "../lib/windowDrag";
-import { filterRepos } from "../lib/statusModel";
+import { filterRepos, reconcileRelationFilter } from "../lib/statusModel";
 import type { RemoteRelation, RepoStatus } from "../types";
 import { GroupFilters } from "./GroupFilters";
 import { StatusFilters } from "./StatusFilters";
@@ -53,6 +53,11 @@ export function WidgetExpanded({
     dragStart.current = null;
   }
 
+  function handleGroupSelect(nextGroup: string) {
+    setGroup(nextGroup);
+    setRelation((currentRelation) => reconcileRelationFilter(repos, nextGroup, currentRelation));
+  }
+
   return (
     <section
       className="expanded-widget"
@@ -85,7 +90,7 @@ export function WidgetExpanded({
         </div>
       </header>
       {refreshError && <p className="refresh-warning" role="status">刷新失败：{refreshError}</p>}
-      <GroupFilters repos={repos} selected={group} onSelect={setGroup} />
+      <GroupFilters repos={repos} selected={group} onSelect={handleGroupSelect} />
       <StatusFilters repos={groupRepos} selected={relation} onSelect={setRelation} />
       <div className="repo-results" key={resultMotionKey}>
         {visibleRepos.length === 0 ? (
