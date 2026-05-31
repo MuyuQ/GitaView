@@ -28,6 +28,18 @@ export function WidgetCollapsed({
     needs_attention: "status-dot red",
     no_remote: "status-dot slate",
   } as const;
+  const summaryLabel = {
+    synced: "同步",
+    syncable: "可同步",
+    needs_attention: "需关注",
+    no_remote: "无远端",
+  } as const;
+  const summaryShortLabel = {
+    synced: "同",
+    syncable: "可",
+    needs_attention: "需",
+    no_remote: "无",
+  } as const;
 
   function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
     if (!shouldStartCollapsedDrag(allowDrag, event.button)) return;
@@ -85,7 +97,9 @@ export function WidgetCollapsed({
         <span className="summary">
           {summary.map((item) => (
             <span className="summary-item" key={item.bucket}>
-              <span className={colorClass[item.bucket]} />
+              <span className={colorClass[item.bucket]} aria-hidden="true" />
+              <span className="sr-only">{summaryLabel[item.bucket]} </span>
+              <span className="summary-short-label" aria-hidden="true">{summaryShortLabel[item.bucket]}</span>
               <span>{item.count}</span>
             </span>
           ))}

@@ -41,21 +41,27 @@ pub fn run() {
                 format!(
                     "exe={} cwd={}",
                     std::env::current_exe()
-                        .map(|path| path.display().to_string())
+                        .map(|path| diagnostics::redact_path(&path))
                         .unwrap_or_else(|err| format!("error:{err}")),
                     std::env::current_dir()
-                        .map(|path| path.display().to_string())
+                        .map(|path| diagnostics::redact_path(&path))
                         .unwrap_or_else(|err| format!("error:{err}")),
                 ),
             );
             match app_settings::settings_path(&app_handle) {
-                Ok(path) => diagnostics::log("app.setup.settings_path", path.display().to_string()),
+                Ok(path) => {
+                    diagnostics::log("app.setup.settings_path", diagnostics::redact_path(&path))
+                }
                 Err(err) => diagnostics::log("app.setup.settings_path_error", err),
             }
             if let Some(window) = app.get_webview_window("main") {
                 diagnostics::log_window("app.setup.main_window", &window);
             } else {
                 diagnostics::log("app.setup.main_window_missing", "main window not found");
+            }
+            if let Err(err) = desktop_widget::reapply_desktop_widget_layer(app.handle()) {
+                diagnostics::log("app.setup.desktop_widget_error", &err);
+                eprintln!("应用桌面 widget 层失败，将作为普通窗口运行: {err}");
             }
 
             let tray_icon = include_image!("./icons/icon.png");

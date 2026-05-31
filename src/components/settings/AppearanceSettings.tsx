@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { getSettings, saveSettings } from "../../lib/commands";
-import { notifySettingsUpdated } from "../../lib/settingsEvents";
+import { getSettings } from "../../lib/commands";
+import { notifySettingsUpdated, subscribeToSettingsUpdates } from "../../lib/settingsEvents";
+import { queueSettingsUpdate } from "../../lib/settingsMutations";
 import type { AppSettings } from "../../types";
 
 export function AppearanceSettings() {
@@ -16,6 +17,7 @@ export function AppearanceSettings() {
         setAllowWidgetDrag(nextSettings.appearance.allowWidgetDrag);
       })
       .catch((err) => setMessage(`加载外观设置失败：${err}`));
+    return subscribeToSettingsUpdates(setSettings);
   }, []);
 
   async function handleSave() {
@@ -23,11 +25,10 @@ export function AppearanceSettings() {
     setBusy(true);
     setMessage(null);
     try {
-      const nextSettings = {
-        ...settings,
+      const savedSettings = await queueSettingsUpdate((currentSettings) => ({
+        ...currentSettings,
         appearance: { allowWidgetDrag },
-      };
-      const savedSettings = await saveSettings(nextSettings);
+      }));
       setSettings(savedSettings);
       notifySettingsUpdated(savedSettings);
       setMessage("外观设置已保存");

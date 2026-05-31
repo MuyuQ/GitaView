@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::domain::settings::AppSettings;
 
@@ -19,8 +19,43 @@ pub fn save_settings(path: &Path, settings: &AppSettings) -> Result<AppSettings,
     }
     let normalized = settings.clone().normalized();
     let text = serde_json::to_string_pretty(&normalized).map_err(|err| err.to_string())?;
-    fs::write(path, text).map_err(|err| err.to_string())?;
+    let temp_path = settings_temp_path(path);
+    let _ = fs::remove_file(&temp_path);
+    fs::write(&temp_path, text).map_err(|err| err.to_string())?;
+    replace_file(&temp_path, path)?;
     Ok(normalized)
+}
+
+fn settings_temp_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("settings.json");
+    path.with_file_name(format!(".{file_name}.tmp"))
+}
+
+#[cfg(target_os = "windows")]
+fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
+    use windows::core::HSTRING;
+    use windows::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+
+    let source = HSTRING::from(source.to_string_lossy().as_ref());
+    let destination = HSTRING::from(destination.to_string_lossy().as_ref());
+    unsafe {
+        MoveFileExW(
+            &source,
+            &destination,
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    }
+    .map_err(|err| err.to_string())
+}
+
+#[cfg(not(target_os = "windows"))]
+fn replace_file(source: &Path, destination: &Path) -> Result<(), String> {
+    fs::rename(source, destination).map_err(|err| err.to_string())
 }
 
 #[cfg(test)]
@@ -178,6 +213,20 @@ mod tests {
 
         assert!(!saved_text.contains("alwaysOnTop"));
         assert!(!saved_text.contains("compactMode"));
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn save_settings_removes_atomic_write_temporary_file() {
+        let path = std::env::temp_dir().join("gitaview_atomic_settings.json");
+        let temp_path = settings_temp_path(&path);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(&temp_path);
+
+        save_settings(&path, &AppSettings::default()).unwrap();
+
+        assert!(path.exists());
+        assert!(!temp_path.exists());
         let _ = fs::remove_file(&path);
     }
 }

@@ -120,6 +120,25 @@ impl AppSettings {
                 .collect();
         }
         self.refresh.interval_minutes = self.refresh.interval_minutes.clamp(1, 60);
+        self.safety.confirm_pull = true;
+        self.safety.confirm_push = true;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalization_restores_mandatory_confirmation_flags() {
+        let mut settings = AppSettings::default();
+        settings.safety.confirm_pull = false;
+        settings.safety.confirm_push = false;
+
+        let normalized = settings.normalized();
+
+        assert!(normalized.safety.confirm_pull);
+        assert!(normalized.safety.confirm_push);
     }
 }

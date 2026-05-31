@@ -10,5 +10,7 @@ Thumbs.db
 # IDE/工具缓存
 .codex/
 .superpowers/
+.playwright-cli/
+.sisyphus/
 __pycache__/
 *.pyc

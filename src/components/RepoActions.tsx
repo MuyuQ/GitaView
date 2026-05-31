@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { RepoStatus } from "../types";
-import { fetchRepo, getSettings, pullRepo, pushRepo, openRepoDirectory, openRepoRemote } from "../lib/commands";
+import { fetchRepo, pullRepo, pushRepo, openRepoDirectory, openRepoRemote } from "../lib/commands";
 import { getRepoActionAvailability } from "../lib/statusModel";
 
 export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: () => void }) {
@@ -8,21 +8,6 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
   const [result, setResult] = useState<string | null>(null);
   const [confirmPull, setConfirmPull] = useState(false);
   const [confirmPush, setConfirmPush] = useState(false);
-  const [requiresPullConfirm, setRequiresPullConfirm] = useState(true);
-  const [requiresPushConfirm, setRequiresPushConfirm] = useState(true);
-
-  useEffect(() => {
-    getSettings()
-      .then((settings) => {
-        setRequiresPullConfirm(settings.safety.confirmPull);
-        setRequiresPushConfirm(settings.safety.confirmPush);
-      })
-      .catch((err) => {
-        console.error("加载安全操作设置失败", err);
-        setRequiresPullConfirm(true);
-        setRequiresPushConfirm(true);
-      });
-  }, []);
 
   async function runAction(action: string, fn: () => Promise<string | void>) {
     setLoading(action);
@@ -40,7 +25,7 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
   }
 
   function handlePull() {
-    if (!requiresPullConfirm || confirmPull) {
+    if (confirmPull) {
       runAction("Pull", () => pullRepo(repo.id, true));
       setConfirmPull(false);
     } else {
@@ -49,7 +34,7 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
   }
 
   function handlePush() {
-    if (!requiresPushConfirm || confirmPush) {
+    if (confirmPush) {
       runAction("Push", () => pushRepo(repo.id, true));
       setConfirmPush(false);
     } else {
@@ -105,10 +90,10 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
           {loading === "Pull" ? "加载中..." : confirmPull ? "确认 Pull" : "Pull"}
         </button>
       )}
-      {requiresPullConfirm && confirmPull && (
+      {confirmPull && (
         <span className="action-warning">Pull 会修改当前仓库工作区，是否继续？</span>
       )}
-      {requiresPushConfirm && confirmPush && (
+      {confirmPush && (
         <span className="action-warning">Push 会更新远端分支，是否继续？</span>
       )}
       {result && <span className="action-result">{result}</span>}

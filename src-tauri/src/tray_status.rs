@@ -64,8 +64,24 @@ pub fn set_loading_menu(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn set_status_menu(app: &AppHandle, statuses: &[RepoStatusDto]) -> Result<(), String> {
-    next_tray_menu_generation();
+    begin_tray_menu_update();
     set_status_menu_inner(app, statuses)
+}
+
+pub fn begin_tray_menu_update() -> u64 {
+    next_tray_menu_generation()
+}
+
+pub fn set_status_menu_if_current(
+    app: &AppHandle,
+    generation: u64,
+    statuses: &[RepoStatusDto],
+) -> Result<bool, String> {
+    if !is_current_tray_menu_generation(generation) {
+        return Ok(false);
+    }
+    set_status_menu_inner(app, statuses)?;
+    Ok(true)
 }
 
 fn set_status_menu_inner(app: &AppHandle, statuses: &[RepoStatusDto]) -> Result<(), String> {
@@ -77,7 +93,10 @@ fn set_status_menu_inner(app: &AppHandle, statuses: &[RepoStatusDto]) -> Result<
 }
 
 fn set_error_menu_inner(app: &AppHandle, message: &str) -> Result<(), String> {
-    crate::diagnostics::log("tray.set_error.start", message);
+    crate::diagnostics::log(
+        "tray.set_error.start",
+        format!("error_len={}", message.len()),
+    );
     replace_tray_menu(app, |app| error_tray_menu(app, message))
 }
 
@@ -93,17 +112,22 @@ fn replace_tray_menu(
     let result = tray.set_menu(Some(menu)).map_err(|err| err.to_string());
     match &result {
         Ok(()) => crate::diagnostics::log("tray.replace.ok", ""),
-        Err(err) => crate::diagnostics::log("tray.replace.error", err),
+        Err(err) => {
+            crate::diagnostics::log("tray.replace.error", format!("error_len={}", err.len()))
+        }
     }
     result
 }
 
 pub fn refresh_tray_menu_async(app: AppHandle) {
-    let generation = next_tray_menu_generation();
+    let generation = begin_tray_menu_update();
     crate::diagnostics::log("tray.refresh.schedule", format!("generation={generation}"));
     if let Err(err) = set_loading_menu(&app) {
         eprintln!("更新托盘读取状态失败: {err}");
-        crate::diagnostics::log("tray.refresh.loading_error", err);
+        crate::diagnostics::log(
+            "tray.refresh.loading_error",
+            format!("error_len={}", err.len()),
+        );
     }
 
     tauri::async_runtime::spawn(async move {
@@ -130,7 +154,10 @@ pub fn refresh_tray_menu_async(app: AppHandle) {
                 }
                 if let Err(err) = set_status_menu_inner(&app, &statuses) {
                     eprintln!("更新托盘状态菜单失败: {err}");
-                    crate::diagnostics::log("tray.refresh.status_error", err);
+                    crate::diagnostics::log(
+                        "tray.refresh.status_error",
+                        format!("error_len={}", err.len()),
+                    );
                 }
                 crate::diagnostics::log_duration(
                     "tray.refresh.ok",
@@ -143,18 +170,21 @@ pub fn refresh_tray_menu_async(app: AppHandle) {
                 if !is_current_tray_menu_generation(generation) {
                     crate::diagnostics::log(
                         "tray.refresh.error_stale",
-                        format!("generation={generation} error={err}"),
+                        format!("generation={generation} error_len={}", err.len()),
                     );
                     return;
                 }
                 if let Err(menu_err) = set_error_menu_inner(&app, &err) {
                     eprintln!("更新托盘错误菜单失败: {menu_err}");
-                    crate::diagnostics::log("tray.refresh.error_menu_error", menu_err);
+                    crate::diagnostics::log(
+                        "tray.refresh.error_menu_error",
+                        format!("error_len={}", menu_err.len()),
+                    );
                 }
                 crate::diagnostics::log_duration(
                     "tray.refresh.error",
                     started.elapsed(),
-                    format!("generation={generation} error={err}"),
+                    format!("generation={generation} error_len={}", err.len()),
                 );
             }
         }

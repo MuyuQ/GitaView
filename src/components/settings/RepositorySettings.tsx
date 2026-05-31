@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { addRepository, getSettings, openRepoDirectory, removeRepository, saveSettings, scanDirectory } from "../../lib/commands";
+import { addRepository, getSettings, openRepoDirectory, removeRepository, scanDirectory } from "../../lib/commands";
 import { getRepositoryDisplayText, nextRevealedRepoId } from "../../lib/repositorySettingsView";
 import { notifySettingsUpdated, subscribeToSettingsUpdates } from "../../lib/settingsEvents";
+import { queueSettingsUpdate } from "../../lib/settingsMutations";
 import type { AppSettings, GroupRecord, RepoRecord } from "../../types";
 
 export function RepositorySettings() {
@@ -113,18 +114,19 @@ export function RepositorySettings() {
     setBusy(true);
     setMessage(null);
     try {
-      const nextRepos = settings.repos.map((repo) =>
-        repo.id === repoId ? { ...repo, group: groupName } : repo,
-      );
-      const nextGroups = settings.groups.map((group) => ({
-        ...group,
-        repoIds:
-          group.name === groupName
-            ? Array.from(new Set([...group.repoIds, repoId]))
-            : group.repoIds.filter((id) => id !== repoId),
-      }));
-      const nextSettings = { ...settings, repos: nextRepos, groups: nextGroups };
-      const savedSettings = await saveSettings(nextSettings);
+      const savedSettings = await queueSettingsUpdate((currentSettings) => {
+        const nextRepos = currentSettings.repos.map((repo) =>
+          repo.id === repoId ? { ...repo, group: groupName } : repo,
+        );
+        const nextGroups = currentSettings.groups.map((group) => ({
+          ...group,
+          repoIds:
+            group.name === groupName
+              ? Array.from(new Set([...group.repoIds, repoId]))
+              : group.repoIds.filter((id) => id !== repoId),
+        }));
+        return { ...currentSettings, repos: nextRepos, groups: nextGroups };
+      });
       applySettings(savedSettings);
       notifySettingsUpdated(savedSettings);
       setMessage("分组已更新");
@@ -165,7 +167,12 @@ export function RepositorySettings() {
               >
                 <span>{displayText}</span>
               </button>
-              <select value={repo.group} onChange={(event) => handleGroupChange(repo.id, event.target.value)} disabled={busy}>
+              <select
+                value={repo.group}
+                onChange={(event) => handleGroupChange(repo.id, event.target.value)}
+                disabled={busy}
+                aria-label={`${repo.name} 的仓库分组`}
+              >
                 {groups.map((group) => (
                   <option key={group.name} value={group.name}>
                     {group.name}
@@ -195,6 +202,7 @@ export function RepositorySettings() {
             value={path}
             onChange={(event) => setPath(event.target.value)}
             placeholder="输入或选择仓库目录"
+            aria-label="仓库目录"
           />
           <div className="settings-add-actions">
             <button className="pick-dir-btn" onClick={handlePickDirectory} disabled={busy}>选择目录</button>

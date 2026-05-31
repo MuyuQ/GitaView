@@ -13,7 +13,7 @@ Primary user goal:
 - See the health of many repositories at a glance.
 - Expand the widget to inspect exact Git state.
 - Quickly open a repo folder or remote URL.
-- Safely run `fetch` and `pull` on one selected repository.
+- Safely run `fetch`, `pull`, and guarded `push` on one selected repository.
 
 Target platforms:
 
@@ -128,6 +128,7 @@ Actions:
 - `远端`: open remote URL in browser.
 - `Fetch`: run `git fetch`.
 - `Pull`: run `git pull`.
+- `Push`: run `git push` only when the repository is local-ahead or diverged.
 
 Rules:
 
@@ -135,7 +136,7 @@ Rules:
 - `Pull` requires confirmation because it modifies the working tree.
 - `远端` is disabled if no remote URL exists.
 - Show loading and result feedback for actions longer than 300ms.
-- Do not implement `push` in v1.
+- Show `Push` only for local-ahead or diverged repositories and require confirmation before invoking it.
 - Do not implement arbitrary command panels in v1.
 
 ## 4. Settings UX
@@ -165,7 +166,7 @@ Common preferences shown in settings:
 
 - Lightweight timed refresh: on/off.
 - Refresh interval: default `5 分钟`.
-- Pull confirmation: default enabled.
+- Pull and Push confirmation: mandatory and not configurable.
 - Default group: default `全部分组`.
 
 ## 5. Visual Design System
@@ -229,7 +230,7 @@ Meaning:
 - `local_ahead`: local has commits not on upstream.
 - `remote_ahead`: upstream has commits not local.
 - `diverged`: both local and upstream have unique commits.
-- `no_remote`: branch has no upstream.
+- `no_remote`: branch has no supported `origin` comparison.
 
 Collapsed buckets:
 
@@ -370,6 +371,9 @@ Needed operations:
 - Remote origin URL.
 - `git fetch`
 - `git pull`
+- `git push`
+
+v1 reads and opens only the `origin` remote URL. Other remote topologies are out of scope.
 
 Operations must return structured success/error messages.
 
@@ -386,11 +390,13 @@ remove_repository(repoId: string): Promise<void>
 list_repo_statuses(): Promise<RepoStatus[]>
 fetch_repo(repoId: string): Promise<string>
 pull_repo(repoId: string, confirmed: boolean): Promise<string>
+push_repo(repoId: string, confirmed: boolean): Promise<string>
 open_repo_directory(repoId: string): Promise<void>
 open_repo_remote(repoId: string): Promise<void>
 ```
 
 `pull_repo` must reject when `confirmed` is false.
+`push_repo` must reject when `confirmed` is false.
 
 ## 10. Frontend Responsibilities
 
@@ -490,6 +496,7 @@ Required backend tests:
 - Repository scanning finds `.git` directories.
 - Missing settings file returns defaults.
 - `pull_repo` rejects when `confirmed` is false.
+- `push_repo` rejects when `confirmed` is false.
 
 Required frontend tests:
 
@@ -512,7 +519,7 @@ The implementation is acceptable when:
 - Expanded list shows exact five Git relation states.
 - `无远端` is gray and always last.
 - Branch column is visually lighter than numeric/change columns.
-- Selecting a repo shows `目录`, `远端`, `Fetch`, `Pull`.
+- Selecting a repo shows `目录`, `远端`, `Fetch`, and applicable guarded `Pull` or `Push` actions.
 - `Pull` requires confirmation.
 - Settings page includes `仓库`, `分组`, `刷新`, `安全操作`, `外观`.
 - Repository scanning and manual add work.

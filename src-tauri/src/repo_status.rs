@@ -61,7 +61,7 @@ pub fn collect_repo_statuses(repos: Vec<RepoRecord>) -> Result<Vec<RepoStatusDto
                 std::thread::spawn(move || {
                     let repo_started = Instant::now();
                     let repo_id = repo.id.clone();
-                    let repo_path = repo.path.display().to_string();
+                    let repo_path = crate::diagnostics::redact_path(&repo.path);
                     crate::diagnostics::log(
                         "repo_status.repo.start",
                         format!("repo_id={repo_id} path={repo_path}"),
@@ -71,10 +71,7 @@ pub fn collect_repo_statuses(repos: Vec<RepoRecord>) -> Result<Vec<RepoStatusDto
                     crate::diagnostics::log_duration(
                         "repo_status.repo.end",
                         repo_started.elapsed(),
-                        format!(
-                            "repo_id={} relation={:?} hint={}",
-                            status.id, status.relation, status.hint
-                        ),
+                        format!("repo_id={} relation={:?}", status.id, status.relation),
                     );
                     status
                 })
