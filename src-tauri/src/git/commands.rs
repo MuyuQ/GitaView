@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::thread;
@@ -17,30 +18,84 @@ pub struct GitBranchState {
 }
 
 fn run_command_with_timeout(mut command: Command, timeout: Duration) -> Result<Output, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|err| format!("failed to spawn command: {}", err))?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "failed to capture stdout".to_string())?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "failed to capture stderr".to_string())?;
+    let stdout_reader = thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stdout.read_to_end(&mut bytes).map(|_| bytes)
+    });
+    let stderr_reader = thread::spawn(move || {
+        let mut bytes = Vec::new();
+        stderr.read_to_end(&mut bytes).map(|_| bytes)
+    });
 
     let start = std::time::Instant::now();
     loop {
-        if child
+        if let Some(status) = child
             .try_wait()
             .map_err(|err| format!("failed to wait: {}", err))?
-            .is_some()
         {
-            return child
-                .wait_with_output()
-                .map_err(|err| format!("failed to collect output: {}", err));
+            let stdout = stdout_reader
+                .join()
+                .map_err(|_| "stdout reader panicked".to_string())?
+                .map_err(|err| format!("failed to collect stdout: {err}"))?;
+            let stderr = stderr_reader
+                .join()
+                .map_err(|_| "stderr reader panicked".to_string())?
+                .map_err(|err| format!("failed to collect stderr: {err}"))?;
+            return Ok(Output {
+                status,
+                stdout,
+                stderr,
+            });
         }
         if start.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
+            terminate_child_tree(&mut child);
             return Err("git command timed out".to_string());
         }
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+fn terminate_child_tree(child: &mut std::process::Child) {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .args(["-KILL", &format!("-{}", child.id())])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
@@ -60,7 +115,7 @@ pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
             started.elapsed(),
             format!(
                 "cwd={} command={} stdout_len={}",
-                repo_path.display(),
+                crate::diagnostics::redact_path(repo_path),
                 command_label,
                 stdout.len()
             ),
@@ -72,10 +127,10 @@ pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
             "git.command.error",
             started.elapsed(),
             format!(
-                "cwd={} command={} error={}",
-                repo_path.display(),
+                "cwd={} command={} error_len={}",
+                crate::diagnostics::redact_path(repo_path),
                 command_label,
-                err
+                err.len()
             ),
         );
         Err(err)
@@ -94,7 +149,9 @@ fn comparison_ref(repo_path: &Path, branch: &str, has_remote: bool) -> Option<St
         repo_path,
         &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
     ) {
-        return Some(upstream);
+        if upstream.starts_with("origin/") {
+            return Some(upstream);
+        }
     }
 
     if !has_remote {
@@ -246,9 +303,88 @@ mod tests {
     }
 
     #[test]
+    fn branch_state_treats_non_origin_upstream_as_unsupported_in_v1() {
+        let temp = unique_temp_dir("gitaview_non_origin_upstream_test");
+        let repo = temp.join("repo");
+        let remote = temp.join("upstream.git");
+        fs::create_dir_all(&repo).unwrap();
+        fs::create_dir_all(&remote).unwrap();
+
+        test_git(&remote, &["init", "--bare"]);
+        test_git(&repo, &["init", "-b", "main"]);
+        test_git(&repo, &["config", "user.email", "gitaview@example.test"]);
+        test_git(&repo, &["config", "user.name", "GitaView Test"]);
+        fs::write(repo.join("README.md"), "initial\n").unwrap();
+        test_git(&repo, &["add", "README.md"]);
+        test_git(&repo, &["commit", "-m", "initial"]);
+        test_git(
+            &repo,
+            &["remote", "add", "upstream", remote.to_str().unwrap()],
+        );
+        test_git(&repo, &["push", "-u", "upstream", "main"]);
+
+        let state = branch_state(&repo).unwrap();
+
+        assert_eq!(state.relation, RemoteRelation::NoRemote);
+        assert!(!state.has_remote);
+        assert_eq!(state.remote_url, None);
+
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
     fn branch_state_errors_for_missing_repo_path() {
         let missing = std::env::temp_dir().join("gitaview_missing_repo_path_for_branch_state");
         let _ = std::fs::remove_dir_all(&missing);
         assert!(branch_state(&missing).is_err());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn command_timeout_runner_drains_large_stdout_before_exit() {
+        let mut command = Command::new("cmd");
+        command.args([
+            "/C",
+            "for /L %i in (1,1,20000) do @echo 0123456789012345678901234567890123456789",
+        ]);
+
+        let output = run_command_with_timeout(command, Duration::from_secs(5)).unwrap();
+
+        assert!(output.status.success());
+        assert!(output.stdout.len() > 500_000);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn command_timeout_runner_terminates_descendant_processes() {
+        let temp = unique_temp_dir("gitaview_timeout_descendant");
+        let marker = temp.join("descendant-survived.txt");
+        let child_script = temp.join("child.ps1");
+        let parent_script = temp.join("parent.ps1");
+        fs::create_dir_all(&temp).unwrap();
+        fs::write(
+            &child_script,
+            format!(
+                "Start-Sleep -Seconds 2\nSet-Content -LiteralPath '{}' -Value alive\n",
+                marker.display()
+            ),
+        )
+        .unwrap();
+        fs::write(
+            &parent_script,
+            format!(
+                "Start-Process powershell -WindowStyle Hidden -ArgumentList '-NoProfile','-File','{}'\nStart-Sleep -Seconds 10\n",
+                child_script.display()
+            ),
+        )
+        .unwrap();
+        let mut command = Command::new("powershell");
+        command.args(["-NoProfile", "-File", parent_script.to_str().unwrap()]);
+
+        assert!(run_command_with_timeout(command, Duration::from_millis(300)).is_err());
+        thread::sleep(Duration::from_secs(3));
+
+        assert!(!marker.exists(), "timed out descendant process survived");
+        let _ = fs::remove_dir_all(&temp);
     }
 }

@@ -11,16 +11,17 @@ pub fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Strin
 
 pub fn load_app_settings(app: &tauri::AppHandle) -> Result<AppSettings, String> {
     let path = settings_path(app)?;
-    crate::diagnostics::log("settings.load.start", path.display().to_string());
+    let redacted_path = crate::diagnostics::redact_path(&path);
+    crate::diagnostics::log("settings.load.start", &redacted_path);
     let result = crate::storage::store::load_settings(&path);
     match &result {
         Ok(settings) => crate::diagnostics::log(
             "settings.load.ok",
-            format!("path={} repos={}", path.display(), settings.repos.len()),
+            format!("path={redacted_path} repos={}", settings.repos.len()),
         ),
         Err(err) => crate::diagnostics::log(
             "settings.load.error",
-            format!("path={} error={err}", path.display()),
+            format!("path={redacted_path} error_len={}", err.len()),
         ),
     }
     result
@@ -31,19 +32,20 @@ pub fn save_app_settings(
     settings: &AppSettings,
 ) -> Result<AppSettings, String> {
     let path = settings_path(app)?;
+    let redacted_path = crate::diagnostics::redact_path(&path);
     crate::diagnostics::log(
         "settings.save.start",
-        format!("path={} repos={}", path.display(), settings.repos.len()),
+        format!("path={redacted_path} repos={}", settings.repos.len()),
     );
     let result = crate::storage::store::save_settings(&path, settings);
     match &result {
         Ok(saved) => crate::diagnostics::log(
             "settings.save.ok",
-            format!("path={} repos={}", path.display(), saved.repos.len()),
+            format!("path={redacted_path} repos={}", saved.repos.len()),
         ),
         Err(err) => crate::diagnostics::log(
             "settings.save.error",
-            format!("path={} error={err}", path.display()),
+            format!("path={redacted_path} error_len={}", err.len()),
         ),
     }
     result

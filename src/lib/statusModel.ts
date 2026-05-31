@@ -58,6 +58,16 @@ export function filterRepos(
   return sortRepos(relationRepos);
 }
 
+export function reconcileRelationFilter(
+  repos: RepoStatus[],
+  group: string,
+  relation: RemoteRelation | "all",
+): RemoteRelation | "all" {
+  if (relation === "all") return relation;
+  const groupRepos = group === "全部分组" ? repos : repos.filter((repo) => repo.group === group);
+  return groupRepos.some((repo) => repo.relation === relation) ? relation : "all";
+}
+
 export function getRepoActionAvailability(repo: RepoStatus) {
   return {
     canOpenDirectory: true,

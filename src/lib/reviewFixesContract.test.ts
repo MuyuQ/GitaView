@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { getSettings, listRepoStatuses } from "./commands";
+import { getSettings, listRepoStatuses, saveSettings } from "./commands";
 
 const projectRoot = resolve(__dirname, "../..");
 
@@ -19,14 +19,14 @@ describe("review follow-up contracts", () => {
     expect(paths.every((path) => !path.includes("E:/Git_Repositories"))).toBe(true);
   });
 
-  it("logs settings and exit failures instead of swallowing them silently", () => {
+  it("logs app settings and exit failures instead of swallowing them silently", () => {
     const app = readFileSync(resolve(projectRoot, "src/App.tsx"), "utf8");
     const repoActions = readFileSync(resolve(projectRoot, "src/components/RepoActions.tsx"), "utf8");
 
     expect(app).not.toContain(".catch(() => {})");
     expect(app).toContain("console.error(\"加载设置失败\"");
     expect(app).toContain("console.error(\"退出应用失败\"");
-    expect(repoActions).toContain("console.error(\"加载安全操作设置失败\"");
+    expect(repoActions).not.toContain("getSettings");
   });
 
   it("documents error as an app read-failure state rather than a sixth Git relation", () => {
@@ -35,5 +35,20 @@ describe("review follow-up contracts", () => {
     expect(readme).toContain("error");
     expect(readme).toContain("读取失败");
     expect(readme).toContain("应用层状态");
+  });
+
+  it("persists settings changes in browser preview mode", async () => {
+    const settings = await getSettings();
+    const original = settings.refresh.intervalMinutes;
+    const updated = original === 60 ? 59 : original + 1;
+
+    await saveSettings({
+      ...settings,
+      refresh: { ...settings.refresh, intervalMinutes: updated },
+    });
+
+    expect((await getSettings()).refresh.intervalMinutes).toBe(updated);
+
+    await saveSettings(settings);
   });
 });

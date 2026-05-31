@@ -5,6 +5,7 @@ import { listRepoStatuses, getSettings, exitApp } from "./lib/commands";
 import { subscribeToSettingsUpdates } from "./lib/settingsEvents";
 import { hasTauriRuntime } from "./lib/runtime";
 import { shouldShowSettingsView } from "./lib/statusModel";
+import { resolveRefreshCompletion } from "./lib/refreshGeneration";
 import { resolveAnchoredWindowPosition } from "./lib/windowMotion";
 import type { WindowSizeValue } from "./lib/windowMotion";
 import { getTransitionMode, isWidgetTransitionView } from "./lib/widgetTransition";
@@ -37,6 +38,7 @@ export default function App() {
   const [emptySettingsDismissed, setEmptySettingsDismissed] = useState(false);
   const hasLoadedOnce = useRef(false);
   const resizeGuardTimer = useRef<number | null>(null);
+  const latestRefreshGeneration = useRef(0);
 
   function applySettings(settings: AppSettings) {
     setRefreshSettings(settings.refresh);
@@ -72,11 +74,6 @@ export default function App() {
         });
       }, resizeGuardRestoreMs);
     };
-
-    // 设置窗口置顶状态：settings 视图置顶，其他不置顶
-    appWindow.setAlwaysOnTop(nextView === "settings").catch((err) => {
-      console.error("设置窗口置顶状态失败", err);
-    });
 
     const prepareResizeBackground = shouldUseResizeGuard
       ? appWindow.setBackgroundColor(resizeGuardBackground).catch((err) => {
@@ -153,6 +150,7 @@ export default function App() {
   }
 
   const refreshRepos = useCallback((opts: { initial: boolean }) => {
+    const requestGeneration = ++latestRefreshGeneration.current;
     if (opts.initial) {
       setInitialLoading(true);
     }
@@ -160,6 +158,7 @@ export default function App() {
     setRefreshError(null);
     listRepoStatuses()
       .then((data) => {
+        if (!resolveRefreshCompletion(requestGeneration, latestRefreshGeneration.current)) return;
         setRepos(data);
         if (data.length > 0) {
           setEmptySettingsDismissed(false);
@@ -168,6 +167,7 @@ export default function App() {
         setInitialError(null);
       })
       .catch((err) => {
+        if (!resolveRefreshCompletion(requestGeneration, latestRefreshGeneration.current)) return;
         const message = String(err);
         if (opts.initial && !hasLoadedOnce.current) {
           setInitialError(message);
@@ -176,6 +176,7 @@ export default function App() {
         }
       })
       .finally(() => {
+        if (!resolveRefreshCompletion(requestGeneration, latestRefreshGeneration.current)) return;
         setInitialLoading(false);
         setRefreshing(false);
         hasLoadedOnce.current = true;
@@ -188,9 +189,12 @@ export default function App() {
 
   useEffect(() => {
     if (!hasTauriRuntime()) return;
-    const targetView = shouldShowSettingsView(windowView, repos.length, initialError, emptySettingsDismissed) ? "settings" : windowView;
+    if (initialLoading) return;
+    const targetView = initialError && repos.length === 0
+      ? "expanded"
+      : shouldShowSettingsView(windowView, repos.length, initialError, emptySettingsDismissed) ? "settings" : windowView;
     syncNativeWindowFrame(targetView);
-  }, [windowView, repos.length, initialError, emptySettingsDismissed, syncNativeWindowFrame]);
+  }, [windowView, repos.length, initialError, emptySettingsDismissed, initialLoading, syncNativeWindowFrame]);
 
   useEffect(() => {
     reloadSettings();
