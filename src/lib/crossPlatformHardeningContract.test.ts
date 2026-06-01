@@ -90,6 +90,9 @@ describe("cross-platform CI and release trust contract", () => {
   it("allows only explicit unsigned tags to bypass signing as draft prereleases", () => {
     const release = readProjectFile(".github/workflows/release.yml");
     const releaseVersion = readProjectFile("scripts/validate-release-version.cjs");
+    const unsignedBuild = release.match(
+      /- name: Build unsigned Tauri app([\s\S]*?)- name: Verify Windows installer signatures/,
+    )?.[1];
 
     expect(releaseVersion).toContain("const unsignedTag = `${expectedTag}-unsigned`;");
     expect(releaseVersion).toContain("fs.appendFileSync(process.env.GITHUB_OUTPUT, `unsigned=${unsigned}\\n`);");
@@ -98,5 +101,7 @@ describe("cross-platform CI and release trust contract", () => {
     expect(release).toContain("if: startsWith(matrix.platform, 'windows') && steps.release_mode.outputs.unsigned != 'true'");
     expect(release).toContain("prerelease: ${{ steps.release_mode.outputs.unsigned == 'true' }}");
     expect(release).toContain("Unsigned test build");
+    expect(unsignedBuild).toBeDefined();
+    expect(unsignedBuild).not.toContain("APPLE_CERTIFICATE:");
   });
 });
