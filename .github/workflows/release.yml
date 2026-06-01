@@ -49,9 +49,11 @@ jobs:
         run: npm ci
 
       - name: Validate release version
+        id: release_mode
         run: node scripts/validate-release-version.cjs
 
       - name: Validate release signing secrets
+        if: steps.release_mode.outputs.unsigned != 'true'
         run: node scripts/validate-release-signing.cjs
         env:
           RELEASE_PLATFORM: ${{ matrix.platform }}
@@ -67,7 +69,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Configure Windows signing certificate
-        if: startsWith(matrix.platform, 'windows')
+        if: startsWith(matrix.platform, 'windows') && steps.release_mode.outputs.unsigned != 'true'
         run: ./scripts/configure-windows-signing.ps1
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
@@ -105,6 +107,8 @@ jobs:
           releaseName: 'GitaView ${{ github.ref_name }}'
           releaseBody: |
             ## GitaView ${{ github.ref_name }}
+
+            ${{ steps.release_mode.outputs.unsigned == 'true' && '### Warning: Unsigned test build. Windows SmartScreen and macOS Gatekeeper may block installation. Do not present these artifacts as a stable release.' || '### Signed release candidate.' }}
             
             ### Downloads
             - **Windows**: `.exe` installer or `.msi` package
@@ -113,9 +117,9 @@ jobs:
             
             See commit history for details.
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ steps.release_mode.outputs.unsigned == 'true' }}
           args: ${{ matrix.args }}
 
       - name: Verify Windows installer signatures
-        if: startsWith(matrix.platform, 'windows')
+        if: startsWith(matrix.platform, 'windows') && steps.release_mode.outputs.unsigned != 'true'
         run: ./scripts/verify-windows-signatures.ps1
