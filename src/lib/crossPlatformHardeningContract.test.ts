@@ -86,4 +86,17 @@ describe("cross-platform CI and release trust contract", () => {
     expect(windowsSigning).toContain("Import-PfxCertificate");
     expect(windowsSigning).toContain("certificateThumbprint");
   });
+
+  it("allows only explicit unsigned tags to bypass signing as draft prereleases", () => {
+    const release = readProjectFile(".github/workflows/release.yml");
+    const releaseVersion = readProjectFile("scripts/validate-release-version.cjs");
+
+    expect(releaseVersion).toContain("const unsignedTag = `${expectedTag}-unsigned`;");
+    expect(releaseVersion).toContain("fs.appendFileSync(process.env.GITHUB_OUTPUT, `unsigned=${unsigned}\\n`);");
+    expect(release).toContain("id: release_mode");
+    expect(release).toContain("if: steps.release_mode.outputs.unsigned != 'true'");
+    expect(release).toContain("if: startsWith(matrix.platform, 'windows') && steps.release_mode.outputs.unsigned != 'true'");
+    expect(release).toContain("prerelease: ${{ steps.release_mode.outputs.unsigned == 'true' }}");
+    expect(release).toContain("Unsigned test build");
+  });
 });

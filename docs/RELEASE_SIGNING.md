@@ -1,6 +1,16 @@
 # Release Signing
 
-GitaView blocks tag releases until platform signing credentials are configured. Do not publish artifacts generated before these secrets are present.
+GitaView requires platform signing credentials for ordinary version tags such as `v0.3.0`. Do not publish ordinary release artifacts generated without these secrets.
+
+## Unsigned Draft Prerelease Channel
+
+Early test builds may use a tag ending in `-unsigned`, such as `v0.3.0-unsigned`. This explicit suffix is the only way to bypass signing preflight. The workflow skips Windows certificate import and signature verification, builds without macOS signing credentials, marks the GitHub release as a draft prerelease, and adds an unsigned-artifact warning to the release notes.
+
+Unsigned artifacts are for testing only:
+
+- Windows SmartScreen may warn or block installation.
+- macOS Gatekeeper may warn or block installation.
+- Do not present unsigned artifacts as stable releases or signed release candidates.
 
 ## Windows Secrets
 
@@ -36,13 +46,15 @@ After confirming the stale draft can be discarded, delete it and its tag explici
 gh release delete v0.2.2 --cleanup-tag
 ```
 
-Create a fresh version commit and tag after the signing secrets are installed.
+Create a fresh version commit and either a signed ordinary tag or an explicitly unsigned testing tag.
 
 ## Real-Device Smoke Checks
 
-Before publishing a draft:
+Before publishing a signed draft:
 
 - Verify the Windows installer has a valid Authenticode signature and opens without console-window flashes during refresh.
 - Verify the Windows widget remains anchored after resizing, multi-monitor movement, and Explorer restart.
 - Verify each macOS DMG installs on its target architecture and passes Gatekeeper checks.
 - Verify the macOS menu-bar icon adapts to light and dark menu bars, opens on left click, and does not appear in Dock or Cmd+Tab.
+
+For an unsigned draft prerelease, perform the widget behavior checks on each target platform and keep the draft unpublished. Signing and Gatekeeper checks remain required before creating a stable release candidate.
