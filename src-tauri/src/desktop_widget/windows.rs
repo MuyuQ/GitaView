@@ -14,18 +14,22 @@
 //! 5. 将 GitaView 作为该宿主的子窗口，即可实现桌面 widget 行为
 
 use std::cell::Cell;
+use std::time::Duration;
 use tauri::{Manager, WebviewWindow};
 use windows::core::{w, BOOL, PCWSTR};
-use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, POINT, WPARAM};
+use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowW, GetWindow, GetWindowLongPtrW, SendMessageTimeoutW, SetParent,
-    SetWindowLongPtrW, SetWindowPos, ShowWindowAsync, GWL_EXSTYLE, GWL_STYLE, GW_CHILD,
-    GW_HWNDNEXT, HWND_TOP, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_SHOWWINDOW, SW_SHOW, WS_CHILD, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_POPUP, WS_VISIBLE,
+    EnumWindows, FindWindowW, GetParent, GetWindow, GetWindowLongPtrW, IsWindow,
+    SendMessageTimeoutW, SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindowAsync, GWL_EXSTYLE,
+    GWL_STYLE, GW_CHILD, GW_HWNDNEXT, HWND_TOP, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_SHOW, WS_CHILD, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+    WS_POPUP, WS_VISIBLE,
 };
 
 /// 消息码：通知 Progman 创建 WorkerW 窗口
 const WM_CREATE_DESKTOP_WORKER: u32 = 0x052C;
+const WATCHDOG_INTERVAL: Duration = Duration::from_secs(5);
 
 /// 应用桌面 widget 层级到指定窗口 (Windows)
 ///
@@ -72,14 +76,14 @@ pub fn apply_desktop_widget_layer(window: &WebviewWindow) -> Result<(), String> 
         return Err("无法找到桌面图标宿主窗口".to_string());
     }
 
-    // 步骤 5：重设父窗口
+    // 步骤 5：先调整样式，再重设父窗口
+    // Win32 要求调用 SetParent 前由调用方切换 WS_CHILD / WS_POPUP。
+    adjust_window_styles(gitaview_hwnd)?;
+
     let _previous_parent = unsafe { SetParent(gitaview_hwnd, Some(desktop_host)) }
         .map_err(|e| format!("SetParent 失败: {}", e))?;
 
-    // 步骤 6：调整窗口样式
-    adjust_window_styles(gitaview_hwnd)?;
-
-    // 步骤 7：设置 z-order
+    // 步骤 6：设置 z-order
     // 将窗口放在桌面图标宿主的子窗口顶部
     unsafe {
         SetWindowPos(
@@ -111,6 +115,82 @@ pub fn reapply_desktop_widget_layer(app: &tauri::AppHandle) -> Result<(), String
         return Err("未找到 main 窗口".to_string());
     };
 
+    apply_desktop_widget_layer(&window)
+}
+
+pub fn sync_desktop_widget_frame(
+    window: &WebviewWindow,
+    x: Option<i32>,
+    y: Option<i32>,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    let hwnd = window
+        .hwnd()
+        .map_err(|err| format!("获取窗口句柄失败: {err}"))?;
+    let (frame_x, frame_y, move_flag) = match (x, y) {
+        (Some(x), Some(y)) => {
+            let (x, y) = child_position_from_screen(hwnd, x, y)?;
+            (x, y, SWP_NOZORDER | SWP_NOACTIVATE)
+        }
+        _ => (0, 0, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE),
+    };
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            frame_x,
+            frame_y,
+            width as i32,
+            height as i32,
+            move_flag,
+        )
+    }
+    .map_err(|err| format!("同步窗口位置失败: {err}"))
+}
+
+fn child_position_from_screen(hwnd: HWND, x: i32, y: i32) -> Result<(i32, i32), String> {
+    let parent = unsafe { GetParent(hwnd) }.ok();
+    let Some(parent) = parent.filter(|parent| !parent.is_invalid()) else {
+        return Ok((x, y));
+    };
+    if !unsafe { IsWindow(Some(parent)) }.as_bool() {
+        return Ok((x, y));
+    }
+    let mut point = POINT { x, y };
+    if !unsafe { ScreenToClient(parent, &mut point) }.as_bool() {
+        return Err("无法将屏幕坐标转换为桌面宿主坐标".to_string());
+    }
+    Ok((point.x, point.y))
+}
+
+pub fn start_desktop_widget_watchdog(app: tauri::AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(WATCHDOG_INTERVAL);
+        if let Err(err) = ensure_desktop_widget_layer(&app) {
+            crate::diagnostics::log(
+                "desktop_widget.watchdog.error",
+                format!("error_len={}", err.len()),
+            );
+        }
+    });
+}
+
+fn ensure_desktop_widget_layer(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Err("未找到 main 窗口".to_string());
+    };
+    let hwnd = window
+        .hwnd()
+        .map_err(|err| format!("获取窗口句柄失败: {err}"))?;
+    let parent = unsafe { GetParent(hwnd) }.ok();
+    if parent
+        .filter(|parent| !parent.is_invalid())
+        .is_some_and(|parent| unsafe { IsWindow(Some(parent)) }.as_bool())
+    {
+        return Ok(());
+    }
+    crate::diagnostics::log("desktop_widget.watchdog.reapply", "");
     apply_desktop_widget_layer(&window)
 }
 

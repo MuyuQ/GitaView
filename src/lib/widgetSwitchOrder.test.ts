@@ -19,7 +19,7 @@ describe("widget view switch ordering", () => {
 
     expect(app).toContain("const resizeGuardBackground");
     expect(app).toContain("const transparentWindowBackground");
-    expect(syncNativeWindowFrame?.[0]).toMatch(/setBackgroundColor\(resizeGuardBackground\)[\s\S]*setSize\(targetLogicalSize\)/);
+    expect(syncNativeWindowFrame?.[0]).toMatch(/setBackgroundColor\(resizeGuardBackground\)[\s\S]*syncDesktopWidgetFrame\(/);
     expect(syncNativeWindowFrame?.[0]).toMatch(/setTimeout\([\s\S]*setBackgroundColor\(transparentWindowBackground\)/);
   });
 
