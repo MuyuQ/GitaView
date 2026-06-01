@@ -110,4 +110,11 @@ describe("review remediation contracts", () => {
     expect(spec).toContain("`push_repo`");
     expect(spec).toContain("`origin`");
   });
+
+  it("broadcasts repository additions and removals to mounted settings cards", () => {
+    const repositories = readProjectFile("src/components/settings/RepositorySettings.tsx");
+
+    expect(repositories.match(/const nextSettings = await reload\(\);/g) ?? []).toHaveLength(2);
+    expect(repositories.match(/notifySettingsUpdated\(nextSettings\);/g) ?? []).toHaveLength(2);
+  });
 });

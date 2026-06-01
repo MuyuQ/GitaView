@@ -23,6 +23,15 @@ describe("cross-platform desktop hardening contract", () => {
     expect(windowsWidget).toMatch(/adjust_window_styles\(gitaview_hwnd\)\?;[\s\S]*SetParent\(gitaview_hwnd/);
   });
 
+  it("rolls back partial Windows desktop attachment failures", () => {
+    const windowsWidget = readProjectFileCompact("src-tauri/src/desktop_widget/windows.rs");
+
+    expect(windowsWidget).toContain("struct WindowAttachmentSnapshot");
+    expect(windowsWidget).toContain("capture_window_attachment(");
+    expect(windowsWidget).toContain("rollback_window_attachment(");
+    expect(windowsWidget).toContain("SWP_FRAMECHANGED");
+  });
+
   it("starts Windows host recovery and reapplies the layer when showing the tray window", () => {
     const lib = readProjectFileCompact("src-tauri/src/lib.rs");
     const desktopWidget = readProjectFileCompact("src-tauri/src/desktop_widget/mod.rs");

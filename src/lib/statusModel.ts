@@ -52,10 +52,20 @@ export function filterRepos(
   repos: RepoStatus[],
   group: string,
   relation: RemoteRelation | "all",
+  query = "",
 ): RepoStatus[] {
   const groupRepos = group === "全部分组" ? repos : repos.filter((repo) => repo.group === group);
   const relationRepos = relation === "all" ? groupRepos : groupRepos.filter((repo) => repo.relation === relation);
-  return sortRepos(relationRepos);
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchingRepos = normalizedQuery
+    ? relationRepos.filter((repo) =>
+      [repo.name, repo.path, repo.branch, repo.group]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery),
+    )
+    : relationRepos;
+  return sortRepos(matchingRepos);
 }
 
 export function reconcileRelationFilter(
@@ -66,6 +76,20 @@ export function reconcileRelationFilter(
   if (relation === "all") return relation;
   const groupRepos = group === "全部分组" ? repos : repos.filter((repo) => repo.group === group);
   return groupRepos.some((repo) => repo.relation === relation) ? relation : "all";
+}
+
+export function reconcileExpandedFilters(
+  repos: RepoStatus[],
+  group: string,
+  relation: RemoteRelation | "all",
+) {
+  const nextGroup = group === "全部分组" || repos.some((repo) => repo.group === group)
+    ? group
+    : "全部分组";
+  return {
+    group: nextGroup,
+    relation: reconcileRelationFilter(repos, nextGroup, relation),
+  };
 }
 
 export function getRepoActionAvailability(repo: RepoStatus) {

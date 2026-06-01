@@ -1,7 +1,9 @@
 use crate::app_settings::{load_app_settings, save_app_settings};
 use crate::domain::repo::RepoStatusDto;
 use crate::domain::settings::AppSettings;
-use crate::git::commands::{branch_state, run_git};
+use crate::git::commands::{
+    branch_state, origin_fetch_args, origin_pull_args, origin_push_args, run_git, run_git_args,
+};
 use crate::git::remote::normalize_remote_url;
 use crate::repo_operation::{validate_repo_git_operation, RepoGitOperation};
 use crate::repo_registry::{find_repo, repo_id_from_path};
@@ -198,7 +200,7 @@ pub async fn fetch_repo(app: tauri::AppHandle, repo_id: String) -> Result<String
     tauri::async_runtime::spawn_blocking(move || {
         let state = branch_state(&repo_path)?;
         validate_repo_git_operation(RepoGitOperation::Fetch, state.relation, state.has_remote)?;
-        run_git(&repo_path, &["fetch"])
+        run_git_args(&repo_path, origin_fetch_args())
     })
     .await
     .map_err(|err| err.to_string())??;
@@ -218,7 +220,7 @@ pub async fn pull_repo(
     tauri::async_runtime::spawn_blocking(move || {
         let state = branch_state(&repo_path)?;
         validate_repo_git_operation(RepoGitOperation::Pull, state.relation, state.has_remote)?;
-        run_git(&repo_path, &["pull"])
+        run_git_args(&repo_path, origin_pull_args(&state.branch))
     })
     .await
     .map_err(|err| err.to_string())??;
@@ -238,7 +240,7 @@ pub async fn push_repo(
     tauri::async_runtime::spawn_blocking(move || {
         let state = branch_state(&repo_path)?;
         validate_repo_git_operation(RepoGitOperation::Push, state.relation, state.has_remote)?;
-        run_git(&repo_path, &["push"])
+        run_git_args(&repo_path, origin_push_args(&state.branch))
     })
     .await
     .map_err(|err| err.to_string())??;

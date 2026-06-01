@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { shouldPromoteExpandedDrag, shouldStartExpandedDrag } from "../lib/windowDrag";
-import { filterRepos, reconcileRelationFilter } from "../lib/statusModel";
+import { filterRepos, reconcileExpandedFilters, reconcileRelationFilter } from "../lib/statusModel";
 import type { RemoteRelation, RepoStatus } from "../types";
 import { GroupFilters } from "./GroupFilters";
 import { StatusFilters } from "./StatusFilters";
@@ -30,11 +30,20 @@ export function WidgetExpanded({
   const [group, setGroup] = useState("全部分组");
   const [relation, setRelation] = useState<RemoteRelation | "all">("all");
   const [selectedRepoId, setSelectedRepoId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const dragStart = useRef<{ x: number; y: number } | null>(null);
 
+  const deferredQuery = useDeferredValue(query);
   const groupRepos = group === "全部分组" ? repos : repos.filter((repo) => repo.group === group);
-  const visibleRepos = filterRepos(repos, group, relation);
-  const resultMotionKey = `${group}:${relation}`;
+  const visibleRepos = filterRepos(repos, group, relation, deferredQuery);
+  const resultMotionKey = `${group}:${relation}:${deferredQuery.trim()}`;
+
+  useEffect(() => {
+    const nextFilters = reconcileExpandedFilters(repos, group, relation);
+    if (nextFilters.group !== group) setGroup(nextFilters.group);
+    if (nextFilters.relation !== relation) setRelation(nextFilters.relation);
+    setSelectedRepoId((current) => current && repos.some((repo) => repo.id === current) ? current : null);
+  }, [repos, group, relation]);
 
   function handleMouseDown(event: React.MouseEvent<HTMLElement>) {
     if (!shouldStartExpandedDrag(allowDrag, event.button, event.target)) return;
@@ -71,6 +80,14 @@ export function WidgetExpanded({
         <div>
           <h1>仓库状态</h1>
           <p>{lastRefreshAt ? `刷新时间 ${lastRefreshAt.toLocaleTimeString("zh-CN", { hour12: false })}` : "尚未刷新"}</p>
+        </div>
+        <div className="search-control">
+          <input
+            aria-label="搜索仓库"
+            placeholder="搜索或分组"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
         </div>
         <div className="widget-toolbar-actions">
           <button className="collapse-btn refresh-btn" onClick={onRefresh} disabled={refreshing} aria-label="刷新">

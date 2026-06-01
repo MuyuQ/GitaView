@@ -6,6 +6,7 @@ import {
   summarizeCollapsed,
   sortRepos,
   filterRepos,
+  reconcileExpandedFilters,
   reconcileRelationFilter,
   toCollapsedBucket,
 } from "./statusModel";
@@ -107,6 +108,18 @@ describe("statusModel", () => {
     expect(result[result.length - 1].relation).toBe("no_remote");
   });
 
+  it("filterRepos matches search text across repository metadata", () => {
+    const repos = [
+      { ...withGroup("frontend", "synced", "Web"), branch: "release", path: "E:/projects/portal" },
+      { ...withGroup("backend", "synced", "服务端"), branch: "main", path: "E:/projects/api" },
+    ];
+
+    expect(filterRepos(repos, "全部分组", "all", "FRONT").map((repo) => repo.name)).toEqual(["frontend"]);
+    expect(filterRepos(repos, "全部分组", "all", "web").map((repo) => repo.name)).toEqual(["frontend"]);
+    expect(filterRepos(repos, "全部分组", "all", "release").map((repo) => repo.name)).toEqual(["frontend"]);
+    expect(filterRepos(repos, "全部分组", "all", "portal").map((repo) => repo.name)).toEqual(["frontend"]);
+  });
+
   it("buildGroupOptions keeps 全部分组 first without duplicating it", () => {
     const repos = [
       withGroup("a", "synced", "全部分组"),
@@ -163,5 +176,21 @@ describe("statusModel", () => {
 
     expect(reconcileRelationFilter(repos, "基础设施", "diverged")).toBe("all");
     expect(reconcileRelationFilter(repos, "业务", "diverged")).toBe("diverged");
+  });
+
+  it("reconcileExpandedFilters resets filters invalidated by refreshed repositories", () => {
+    const repos = [
+      withGroup("ready", "synced", "业务"),
+      withGroup("behind", "remote_ahead", "基础设施"),
+    ];
+
+    expect(reconcileExpandedFilters(repos, "已删除", "diverged")).toEqual({
+      group: "全部分组",
+      relation: "all",
+    });
+    expect(reconcileExpandedFilters(repos, "业务", "diverged")).toEqual({
+      group: "业务",
+      relation: "all",
+    });
   });
 });
