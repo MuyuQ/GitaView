@@ -55,7 +55,7 @@ describe("review remediation contracts", () => {
     expect(workflow).toContain("npm test");
     expect(workflow).toContain("cargo test --manifest-path src-tauri/Cargo.toml");
     expect(workflow).toContain("cargo fmt --manifest-path src-tauri/Cargo.toml -- --check");
-    expect(workflow).toContain("cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings");
+    expect(workflow).toContain("cargo clippy --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --all-targets -- -D warnings");
     expect(workflow).toContain("Validate release version");
     expect(workflow).toContain("node scripts/validate-release-version.cjs");
     expect(releaseVersionScript).toContain("GITHUB_REF_NAME");
@@ -109,5 +109,12 @@ describe("review remediation contracts", () => {
     expect(spec).not.toContain("Do not implement `push` in v1.");
     expect(spec).toContain("`push_repo`");
     expect(spec).toContain("`origin`");
+  });
+
+  it("broadcasts repository additions and removals to mounted settings cards", () => {
+    const repositories = readProjectFile("src/components/settings/RepositorySettings.tsx");
+
+    expect(repositories.match(/const nextSettings = await reload\(\);/g) ?? []).toHaveLength(2);
+    expect(repositories.match(/notifySettingsUpdated\(nextSettings\);/g) ?? []).toHaveLength(2);
   });
 });

@@ -73,6 +73,17 @@ fn run_command_with_timeout(mut command: Command, timeout: Duration) -> Result<O
     }
 }
 
+#[cfg(target_os = "windows")]
+fn configure_git_child_process(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_git_child_process(_command: &mut Command) {}
+
 fn terminate_child_tree(child: &mut std::process::Child) {
     #[cfg(target_os = "windows")]
     {
@@ -106,6 +117,7 @@ pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
     command.current_dir(repo_path);
     command.env("GIT_TERMINAL_PROMPT", "0");
     command.env("GCM_INTERACTIVE", "Never");
+    configure_git_child_process(&mut command);
 
     let output = run_command_with_timeout(command, GIT_OPERATION_TIMEOUT)?;
     if output.status.success() {
@@ -135,6 +147,27 @@ pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
         );
         Err(err)
     }
+}
+
+pub(crate) fn origin_fetch_args() -> Vec<String> {
+    vec!["fetch".to_string(), "origin".to_string()]
+}
+
+pub(crate) fn origin_pull_args(branch: &str) -> Vec<String> {
+    vec!["pull".to_string(), "origin".to_string(), branch.to_string()]
+}
+
+pub(crate) fn origin_push_args(branch: &str) -> Vec<String> {
+    vec![
+        "push".to_string(),
+        "origin".to_string(),
+        format!("HEAD:refs/heads/{branch}"),
+    ]
+}
+
+pub(crate) fn run_git_args(repo_path: &Path, args: Vec<String>) -> Result<String, String> {
+    let borrowed_args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_git(repo_path, &borrowed_args)
 }
 
 pub fn format_git_failure(args: &[&str], stderr: &[u8]) -> String {
@@ -265,6 +298,16 @@ mod tests {
         let cwd = std::env::current_dir().unwrap();
         let output = run_git(&cwd, &["--version"]).unwrap();
         assert!(output.starts_with("git version"));
+    }
+
+    #[test]
+    fn origin_action_args_pin_remote_and_branch() {
+        assert_eq!(origin_fetch_args(), vec!["fetch", "origin"]);
+        assert_eq!(origin_pull_args("main"), vec!["pull", "origin", "main"]);
+        assert_eq!(
+            origin_push_args("main"),
+            vec!["push", "origin", "HEAD:refs/heads/main"],
+        );
     }
 
     #[test]

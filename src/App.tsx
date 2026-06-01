@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { currentMonitor, getCurrentWindow, LogicalSize, PhysicalPosition } from "@tauri-apps/api/window";
-import { listRepoStatuses, getSettings, exitApp } from "./lib/commands";
+import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
+import { listRepoStatuses, getSettings, exitApp, syncDesktopWidgetFrame } from "./lib/commands";
 import { subscribeToSettingsUpdates } from "./lib/settingsEvents";
 import { hasTauriRuntime } from "./lib/runtime";
 import { shouldShowSettingsView } from "./lib/statusModel";
@@ -56,7 +56,6 @@ export default function App() {
   const syncNativeWindowFrame = useCallback((nextView: WidgetStableView) => {
     if (!hasTauriRuntime()) return;
     const size = windowSizes[nextView];
-    const targetLogicalSize = new LogicalSize(size.width, size.height);
     const appWindow = getCurrentWindow();
     const shouldUseResizeGuard = nextView !== "collapsed";
 
@@ -83,14 +82,23 @@ export default function App() {
         console.error("恢复透明窗口背景失败", err);
       });
 
+    const syncSizeOnly = () => appWindow.scaleFactor().then((scaleFactor) => syncDesktopWidgetFrame({
+      width: Math.round(size.width * scaleFactor),
+      height: Math.round(size.height * scaleFactor),
+    }));
+
     prepareResizeBackground.then(() => Promise.all([
       appWindow.outerPosition(),
       appWindow.outerSize(),
       appWindow.scaleFactor(),
       currentMonitor(),
     ])).then(([position, currentSize, scaleFactor, monitor]) => {
+      const targetSize = {
+        width: Math.round(size.width * scaleFactor),
+        height: Math.round(size.height * scaleFactor),
+      };
       if (!monitor) {
-        return appWindow.setSize(targetLogicalSize);
+        return syncDesktopWidgetFrame(targetSize);
       }
 
       const nextPosition = resolveAnchoredWindowPosition(
@@ -112,14 +120,12 @@ export default function App() {
         },
       );
 
-      return appWindow
-        .setPosition(new PhysicalPosition(nextPosition.x, nextPosition.y))
-        .then(() => appWindow.setSize(targetLogicalSize));
+      return syncDesktopWidgetFrame({ ...nextPosition, ...targetSize });
     }).then(() => {
       restoreTransparentBackground();
     }).catch((err) => {
       console.error("同步窗口位置失败", err);
-      appWindow.setSize(targetLogicalSize).catch((sizeErr) => {
+      syncSizeOnly().catch((sizeErr) => {
         console.error("调整窗口尺寸失败", sizeErr);
       }).finally(() => {
         restoreTransparentBackground();

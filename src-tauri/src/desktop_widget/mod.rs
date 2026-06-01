@@ -68,3 +68,40 @@ pub fn reapply_desktop_widget_layer(app: &tauri::AppHandle) -> Result<(), String
 pub fn reapply_desktop_widget_layer(app: &tauri::AppHandle) -> Result<(), String> {
     unsupported::reapply_desktop_widget_layer(app)
 }
+
+#[cfg(target_os = "windows")]
+pub fn sync_desktop_widget_frame(
+    window: &tauri::WebviewWindow,
+    x: Option<i32>,
+    y: Option<i32>,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    windows::sync_desktop_widget_frame(window, x, y, width, height)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn sync_desktop_widget_frame(
+    window: &tauri::WebviewWindow,
+    x: Option<i32>,
+    y: Option<i32>,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    if let (Some(x), Some(y)) = (x, y) {
+        window
+            .set_position(tauri::PhysicalPosition::new(x, y))
+            .map_err(|err| err.to_string())?;
+    }
+    window
+        .set_size(tauri::PhysicalSize::new(width, height))
+        .map_err(|err| err.to_string())
+}
+
+#[cfg(target_os = "windows")]
+pub fn start_desktop_widget_watchdog(app: tauri::AppHandle) {
+    windows::start_desktop_widget_watchdog(app);
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn start_desktop_widget_watchdog(_app: tauri::AppHandle) {}

@@ -25,6 +25,7 @@ export function RepositorySettings() {
   async function reload() {
     const nextSettings = await getSettings();
     applySettings(nextSettings);
+    return nextSettings;
   }
 
   async function handlePickDirectory() {
@@ -72,7 +73,8 @@ export function RepositorySettings() {
       await addRepository(targetPath);
       setPath("");
       setScanResults((prev) => prev.filter((p) => p !== targetPath));
-      await reload();
+      const nextSettings = await reload();
+      notifySettingsUpdated(nextSettings);
       setMessage("仓库已添加");
     } catch (err) {
       setMessage(`添加失败：${err}`);
@@ -87,7 +89,8 @@ export function RepositorySettings() {
     try {
       await removeRepository(repoId);
       setRevealedRepoId((current) => (current === repoId ? null : current));
-      await reload();
+      const nextSettings = await reload();
+      notifySettingsUpdated(nextSettings);
       setMessage("仓库已移除");
     } catch (err) {
       setMessage(`移除失败：${err}`);
