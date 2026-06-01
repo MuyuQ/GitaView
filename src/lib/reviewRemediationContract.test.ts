@@ -49,9 +49,9 @@ describe("review remediation contracts", () => {
     const workflow = readProjectFile(".github/workflows/release.yml");
     const releaseVersionScript = readProjectFile("scripts/validate-release-version.cjs");
 
-    expect(packageJson.version).toBe("0.2.2");
-    expect(tauriConfig.version).toBe("0.2.2");
-    expect(cargo).toContain('version = "0.2.2"');
+    expect(packageJson.version).toBe("0.3.0");
+    expect(tauriConfig.version).toBe("0.3.0");
+    expect(cargo).toContain('version = "0.3.0"');
     expect(workflow).toContain("npm test");
     expect(workflow).toContain("cargo test --manifest-path src-tauri/Cargo.toml");
     expect(workflow).toContain("cargo fmt --manifest-path src-tauri/Cargo.toml -- --check");
