@@ -8,6 +8,7 @@ use crate::repo_registry::{find_repo, repo_id_from_path};
 use crate::system_open::{open_directory, open_http_url};
 use dunce;
 use std::time::Instant;
+use tauri::Manager;
 
 fn require_confirmation(action: &str, confirmed: bool) -> Result<(), String> {
     if confirmed {
@@ -271,6 +272,23 @@ pub async fn open_repo_remote(app: tauri::AppHandle, repo_id: String) -> Result<
         .ok_or_else(|| "当前仓库没有可打开的 HTTP/HTTPS 远端地址".to_string())?;
     open_http_url(&remote)?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn sync_desktop_widget_frame(
+    app: tauri::AppHandle,
+    x: Option<i32>,
+    y: Option<i32>,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    if width == 0 || height == 0 {
+        return Err("窗口尺寸必须大于零".to_string());
+    }
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "未找到 main 窗口".to_string())?;
+    crate::desktop_widget::sync_desktop_widget_frame(&window, x, y, width, height)
 }
 
 #[tauri::command]

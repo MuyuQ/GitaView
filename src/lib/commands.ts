@@ -169,6 +169,18 @@ export function openRepoRemote(repoId: string): Promise<void> {
   return invoke<void>("open_repo_remote", { repoId });
 }
 
+export interface DesktopWidgetFrame {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+}
+
+export function syncDesktopWidgetFrame(frame: DesktopWidgetFrame): Promise<void> {
+  if (!hasTauriRuntime()) return Promise.resolve();
+  return invoke<void>("sync_desktop_widget_frame", { ...frame });
+}
+
 export function exitApp(): Promise<void> {
   if (!hasTauriRuntime()) return Promise.resolve();
   return invoke<void>("exit_app");

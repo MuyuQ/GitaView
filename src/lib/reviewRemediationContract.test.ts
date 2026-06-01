@@ -55,7 +55,7 @@ describe("review remediation contracts", () => {
     expect(workflow).toContain("npm test");
     expect(workflow).toContain("cargo test --manifest-path src-tauri/Cargo.toml");
     expect(workflow).toContain("cargo fmt --manifest-path src-tauri/Cargo.toml -- --check");
-    expect(workflow).toContain("cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings");
+    expect(workflow).toContain("cargo clippy --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --all-targets -- -D warnings");
     expect(workflow).toContain("Validate release version");
     expect(workflow).toContain("node scripts/validate-release-version.cjs");
     expect(releaseVersionScript).toContain("GITHUB_REF_NAME");
