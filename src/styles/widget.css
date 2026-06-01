@@ -201,6 +201,30 @@
   margin: 2px 0 0;
 }
 
+.search-control {
+  flex: 0 1 220px;
+  min-width: 120px;
+}
+
+.search-control input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--gv-line);
+  border-radius: 6px;
+  background: var(--gv-bg);
+  color: var(--gv-ink);
+  font-family: inherit;
+  font-size: 12px;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.search-control input:focus {
+  outline: none;
+  border-color: rgba(47, 159, 103, 0.58);
+  background: white;
+  box-shadow: 0 0 0 3px rgba(47, 159, 103, 0.1);
+}
+
 .widget-toolbar-actions {
   margin-left: auto;
   display: flex;

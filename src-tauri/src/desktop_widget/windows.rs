@@ -14,18 +14,31 @@
 //! 5. 将 GitaView 作为该宿主的子窗口，即可实现桌面 widget 行为
 
 use std::cell::Cell;
+use std::time::Duration;
 use tauri::{Manager, WebviewWindow};
 use windows::core::{w, BOOL, PCWSTR};
-use windows::Win32::Foundation::{GetLastError, HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{
+    GetLastError, SetLastError, HWND, LPARAM, POINT, WIN32_ERROR, WPARAM,
+};
+use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, FindWindowW, GetWindow, GetWindowLongPtrW, SendMessageTimeoutW, SetParent,
-    SetWindowLongPtrW, SetWindowPos, ShowWindowAsync, GWL_EXSTYLE, GWL_STYLE, GW_CHILD,
-    GW_HWNDNEXT, HWND_TOP, SMTO_ABORTIFHUNG, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-    SWP_SHOWWINDOW, SW_SHOW, WS_CHILD, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_POPUP, WS_VISIBLE,
+    EnumWindows, FindWindowW, GetParent, GetWindow, GetWindowLongPtrW, IsWindow,
+    SendMessageTimeoutW, SetParent, SetWindowLongPtrW, SetWindowPos, ShowWindowAsync, GWL_EXSTYLE,
+    GWL_STYLE, GW_CHILD, GW_HWNDNEXT, HWND_TOP, SMTO_ABORTIFHUNG, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_SHOW, WINDOW_LONG_PTR_INDEX, WS_CHILD,
+    WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_POPUP, WS_VISIBLE,
 };
 
 /// 消息码：通知 Progman 创建 WorkerW 窗口
 const WM_CREATE_DESKTOP_WORKER: u32 = 0x052C;
+const WATCHDOG_INTERVAL: Duration = Duration::from_secs(5);
+
+#[derive(Clone, Copy)]
+struct WindowAttachmentSnapshot {
+    parent: Option<HWND>,
+    style: isize,
+    ex_style: isize,
+}
 
 /// 应用桌面 widget 层级到指定窗口 (Windows)
 ///
@@ -72,27 +85,30 @@ pub fn apply_desktop_widget_layer(window: &WebviewWindow) -> Result<(), String> 
         return Err("无法找到桌面图标宿主窗口".to_string());
     }
 
-    // 步骤 5：重设父窗口
-    let _previous_parent = unsafe { SetParent(gitaview_hwnd, Some(desktop_host)) }
-        .map_err(|e| format!("SetParent 失败: {}", e))?;
+    let snapshot = capture_window_attachment(gitaview_hwnd)?;
+    let attachment_result: Result<(), String> = (|| {
+        // Win32 要求调用 SetParent 前由调用方切换 WS_CHILD / WS_POPUP。
+        adjust_window_styles(gitaview_hwnd)?;
+        let _previous_parent = unsafe { SetParent(gitaview_hwnd, Some(desktop_host)) }
+            .map_err(|e| format!("SetParent 失败: {}", e))?;
 
-    // 步骤 6：调整窗口样式
-    adjust_window_styles(gitaview_hwnd)?;
-
-    // 步骤 7：设置 z-order
-    // 将窗口放在桌面图标宿主的子窗口顶部
-    unsafe {
-        SetWindowPos(
-            gitaview_hwnd,
-            Some(HWND_TOP),
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-        )
+        // 将窗口放在桌面图标宿主的子窗口顶部。
+        unsafe {
+            SetWindowPos(
+                gitaview_hwnd,
+                Some(HWND_TOP),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            )
+        }
+        .map_err(|e| format!("设置窗口 z-order 失败: {}", e))
+    })();
+    if let Err(err) = attachment_result {
+        return Err(attachment_error_with_rollback(gitaview_hwnd, snapshot, err));
     }
-    .map_err(|e| format!("设置窗口 z-order 失败: {}", e))?;
 
     eprintln!(
         "[desktop_widget] 已应用桌面层级: HWND {:?} -> 父窗口 HWND {:?}",
@@ -111,6 +127,82 @@ pub fn reapply_desktop_widget_layer(app: &tauri::AppHandle) -> Result<(), String
         return Err("未找到 main 窗口".to_string());
     };
 
+    apply_desktop_widget_layer(&window)
+}
+
+pub fn sync_desktop_widget_frame(
+    window: &WebviewWindow,
+    x: Option<i32>,
+    y: Option<i32>,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    let hwnd = window
+        .hwnd()
+        .map_err(|err| format!("获取窗口句柄失败: {err}"))?;
+    let (frame_x, frame_y, move_flag) = match (x, y) {
+        (Some(x), Some(y)) => {
+            let (x, y) = child_position_from_screen(hwnd, x, y)?;
+            (x, y, SWP_NOZORDER | SWP_NOACTIVATE)
+        }
+        _ => (0, 0, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE),
+    };
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            frame_x,
+            frame_y,
+            width as i32,
+            height as i32,
+            move_flag,
+        )
+    }
+    .map_err(|err| format!("同步窗口位置失败: {err}"))
+}
+
+fn child_position_from_screen(hwnd: HWND, x: i32, y: i32) -> Result<(i32, i32), String> {
+    let parent = unsafe { GetParent(hwnd) }.ok();
+    let Some(parent) = parent.filter(|parent| !parent.is_invalid()) else {
+        return Ok((x, y));
+    };
+    if !unsafe { IsWindow(Some(parent)) }.as_bool() {
+        return Ok((x, y));
+    }
+    let mut point = POINT { x, y };
+    if !unsafe { ScreenToClient(parent, &mut point) }.as_bool() {
+        return Err("无法将屏幕坐标转换为桌面宿主坐标".to_string());
+    }
+    Ok((point.x, point.y))
+}
+
+pub fn start_desktop_widget_watchdog(app: tauri::AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(WATCHDOG_INTERVAL);
+        if let Err(err) = ensure_desktop_widget_layer(&app) {
+            crate::diagnostics::log(
+                "desktop_widget.watchdog.error",
+                format!("error_len={}", err.len()),
+            );
+        }
+    });
+}
+
+fn ensure_desktop_widget_layer(app: &tauri::AppHandle) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Err("未找到 main 窗口".to_string());
+    };
+    let hwnd = window
+        .hwnd()
+        .map_err(|err| format!("获取窗口句柄失败: {err}"))?;
+    let parent = unsafe { GetParent(hwnd) }.ok();
+    if parent
+        .filter(|parent| !parent.is_invalid())
+        .is_some_and(|parent| unsafe { IsWindow(Some(parent)) }.as_bool())
+    {
+        return Ok(());
+    }
+    crate::diagnostics::log("desktop_widget.watchdog.reapply", "");
     apply_desktop_widget_layer(&window)
 }
 
@@ -203,6 +295,91 @@ fn is_window_class(hwnd: HWND, class_name: &[u16]) -> bool {
     window_class == class_name_without_null
 }
 
+fn get_window_long_ptr(
+    hwnd: HWND,
+    index: WINDOW_LONG_PTR_INDEX,
+    label: &str,
+) -> Result<isize, String> {
+    unsafe { SetLastError(WIN32_ERROR(0)) };
+    let value = unsafe { GetWindowLongPtrW(hwnd, index) };
+    let error = unsafe { GetLastError() };
+    if value == 0 && error.0 != 0 {
+        Err(format!("读取窗口 {label} 失败: 错误码 {}", error.0))
+    } else {
+        Ok(value)
+    }
+}
+
+fn set_window_long_ptr(
+    hwnd: HWND,
+    index: WINDOW_LONG_PTR_INDEX,
+    value: isize,
+    label: &str,
+) -> Result<(), String> {
+    unsafe { SetLastError(WIN32_ERROR(0)) };
+    let previous = unsafe { SetWindowLongPtrW(hwnd, index, value) };
+    let error = unsafe { GetLastError() };
+    if previous == 0 && error.0 != 0 {
+        Err(format!("写入窗口 {label} 失败: 错误码 {}", error.0))
+    } else {
+        Ok(())
+    }
+}
+
+fn apply_window_styles(hwnd: HWND, style: isize, ex_style: isize) -> Result<(), String> {
+    set_window_long_ptr(hwnd, GWL_STYLE, style, "style")?;
+    set_window_long_ptr(hwnd, GWL_EXSTYLE, ex_style, "ex_style")?;
+    unsafe {
+        SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        )
+    }
+    .map_err(|err| format!("刷新窗口样式失败: {err}"))
+}
+
+fn capture_window_attachment(hwnd: HWND) -> Result<WindowAttachmentSnapshot, String> {
+    Ok(WindowAttachmentSnapshot {
+        parent: unsafe { GetParent(hwnd) }
+            .ok()
+            .filter(|parent| !parent.is_invalid()),
+        style: get_window_long_ptr(hwnd, GWL_STYLE, "style")?,
+        ex_style: get_window_long_ptr(hwnd, GWL_EXSTYLE, "ex_style")?,
+    })
+}
+
+fn rollback_window_attachment(
+    hwnd: HWND,
+    snapshot: WindowAttachmentSnapshot,
+) -> Result<(), String> {
+    let parent_result = unsafe { SetParent(hwnd, snapshot.parent) }
+        .map(|_| ())
+        .map_err(|err| format!("恢复窗口父级失败: {err}"));
+    let style_result = apply_window_styles(hwnd, snapshot.style, snapshot.ex_style);
+    match (parent_result, style_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(parent_err), Ok(())) => Err(parent_err),
+        (Ok(()), Err(style_err)) => Err(style_err),
+        (Err(parent_err), Err(style_err)) => Err(format!("{parent_err}; {style_err}")),
+    }
+}
+
+fn attachment_error_with_rollback(
+    hwnd: HWND,
+    snapshot: WindowAttachmentSnapshot,
+    attachment_error: String,
+) -> String {
+    match rollback_window_attachment(hwnd, snapshot) {
+        Ok(()) => attachment_error,
+        Err(rollback_error) => format!("{attachment_error}; 回滚失败: {rollback_error}"),
+    }
+}
+
 /// 调整窗口样式以适应桌面 widget 模式
 ///
 /// 需要做的调整：
@@ -213,8 +390,8 @@ fn is_window_class(hwnd: HWND, class_name: &[u16]) -> bool {
 /// - 移除 WS_EX_APPWINDOW 样式（不作为独立应用窗口）
 fn adjust_window_styles(hwnd: HWND) -> Result<(), String> {
     // 获取当前样式
-    let current_style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) };
-    let current_ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) };
+    let current_style = get_window_long_ptr(hwnd, GWL_STYLE, "style")?;
+    let current_ex_style = get_window_long_ptr(hwnd, GWL_EXSTYLE, "ex_style")?;
 
     // 计算新样式
     // 添加 WS_CHILD | WS_VISIBLE
@@ -226,11 +403,8 @@ fn adjust_window_styles(hwnd: HWND) -> Result<(), String> {
     let new_ex_style =
         (current_ex_style | WS_EX_TOOLWINDOW.0 as isize) & !(WS_EX_APPWINDOW.0 as isize);
 
-    // 应用新样式
-    unsafe {
-        SetWindowLongPtrW(hwnd, GWL_STYLE, new_style);
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex_style);
-    }
+    // 应用新样式并通知 Win32 重新计算窗口框架。
+    apply_window_styles(hwnd, new_style, new_ex_style)?;
 
     // 确保窗口可见
     unsafe {

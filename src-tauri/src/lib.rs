@@ -33,6 +33,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
+            #[cfg(target_os = "macos")]
+            app.handle()
+                .set_activation_policy(tauri::ActivationPolicy::Accessory)?;
             if let Ok(app_data_dir) = app.path().app_data_dir() {
                 diagnostics::init(app_data_dir.join("gitaview.log"));
             }
@@ -63,20 +66,34 @@ pub fn run() {
                 diagnostics::log("app.setup.desktop_widget_error", &err);
                 eprintln!("应用桌面 widget 层失败，将作为普通窗口运行: {err}");
             }
+            desktop_widget::start_desktop_widget_watchdog(app.handle().clone());
 
+            #[cfg(target_os = "macos")]
+            let tray_icon = include_image!("./icons/tray-template.png");
+            #[cfg(not(target_os = "macos"))]
             let tray_icon = include_image!("./icons/icon.png");
             let tray_menu = tray_status::loading_tray_menu(app)?;
 
-            let _tray = tauri::tray::TrayIconBuilder::with_id(tray_status::MAIN_TRAY_ID)
+            let tray_builder = tauri::tray::TrayIconBuilder::with_id(tray_status::MAIN_TRAY_ID)
                 .icon(tray_icon)
                 .menu(&tray_menu)
-                .tooltip("GitaView")
-                .show_menu_on_left_click(false)
+                .tooltip("GitaView");
+            #[cfg(target_os = "macos")]
+            let tray_builder = tray_builder
+                .icon_as_template(true)
+                .show_menu_on_left_click(true);
+            #[cfg(not(target_os = "macos"))]
+            let tray_builder = tray_builder.show_menu_on_left_click(false);
+
+            let _tray = tray_builder
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     tray_status::TRAY_REFRESH_ID => {
                         tray_status::refresh_tray_menu_async(app.clone());
                     }
                     tray_status::TRAY_SHOW_ID => {
+                        if let Err(err) = desktop_widget::reapply_desktop_widget_layer(app) {
+                            eprintln!("重新应用桌面 widget 层失败: {err}");
+                        }
                         if let Some(window) = app.get_webview_window("main") {
                             if let Err(err) = window.show() {
                                 eprintln!("显示主窗口失败: {err}");
@@ -109,6 +126,7 @@ pub fn run() {
             app_commands::push_repo,
             app_commands::open_repo_directory,
             app_commands::open_repo_remote,
+            app_commands::sync_desktop_widget_frame,
             app_commands::exit_app,
         ])
         .run(tauri::generate_context!())

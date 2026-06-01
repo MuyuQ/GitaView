@@ -26,4 +26,12 @@ describe("expanded widget toolbar layout", () => {
     expect(actions).toContain("display: flex;");
     expect(actions).toContain("align-items: center;");
   });
+
+  it("keeps repository search available in the expanded toolbar", () => {
+    const component = readProjectFile("src/components/WidgetExpanded.tsx");
+
+    expect(component).toContain('aria-label="搜索仓库"');
+    expect(component).toContain('placeholder="搜索或分组"');
+    expect(component).toContain("deferredQuery");
+  });
 });
