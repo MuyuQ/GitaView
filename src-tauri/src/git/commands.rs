@@ -149,6 +149,27 @@ pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
+pub(crate) fn origin_fetch_args() -> Vec<String> {
+    vec!["fetch".to_string(), "origin".to_string()]
+}
+
+pub(crate) fn origin_pull_args(branch: &str) -> Vec<String> {
+    vec!["pull".to_string(), "origin".to_string(), branch.to_string()]
+}
+
+pub(crate) fn origin_push_args(branch: &str) -> Vec<String> {
+    vec![
+        "push".to_string(),
+        "origin".to_string(),
+        format!("HEAD:refs/heads/{branch}"),
+    ]
+}
+
+pub(crate) fn run_git_args(repo_path: &Path, args: Vec<String>) -> Result<String, String> {
+    let borrowed_args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_git(repo_path, &borrowed_args)
+}
+
 pub fn format_git_failure(args: &[&str], stderr: &[u8]) -> String {
     let stderr_str = String::from_utf8_lossy(stderr).trim().to_string();
     format!("git {} failed: {}", args.join(" "), stderr_str)
@@ -277,6 +298,16 @@ mod tests {
         let cwd = std::env::current_dir().unwrap();
         let output = run_git(&cwd, &["--version"]).unwrap();
         assert!(output.starts_with("git version"));
+    }
+
+    #[test]
+    fn origin_action_args_pin_remote_and_branch() {
+        assert_eq!(origin_fetch_args(), vec!["fetch", "origin"]);
+        assert_eq!(origin_pull_args("main"), vec!["pull", "origin", "main"]);
+        assert_eq!(
+            origin_push_args("main"),
+            vec!["push", "origin", "HEAD:refs/heads/main"],
+        );
     }
 
     #[test]
