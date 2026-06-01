@@ -92,7 +92,8 @@ jobs:
       - name: Run target Clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --all-targets -- -D warnings
 
-      - name: Build Tauri app
+      - name: Build signed Tauri app
+        if: steps.release_mode.outputs.unsigned != 'true'
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -109,6 +110,29 @@ jobs:
             ## GitaView ${{ github.ref_name }}
 
             ${{ steps.release_mode.outputs.unsigned == 'true' && '### Warning: Unsigned test build. Windows SmartScreen and macOS Gatekeeper may block installation. Do not present these artifacts as a stable release.' || '### Signed release candidate.' }}
+
+            ### Downloads
+            - **Windows**: `.exe` installer or `.msi` package
+            - **macOS (Apple Silicon)**: `.dmg` for M1/M2/M3 Macs
+            - **macOS (Intel)**: `.dmg` for Intel Macs
+
+            See commit history for details.
+          releaseDraft: true
+          prerelease: ${{ steps.release_mode.outputs.unsigned == 'true' }}
+          args: ${{ matrix.args }}
+
+      - name: Build unsigned Tauri app
+        if: steps.release_mode.outputs.unsigned == 'true'
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'GitaView ${{ github.ref_name }}'
+          releaseBody: |
+            ## GitaView ${{ github.ref_name }}
+
+            ### Warning: Unsigned test build. Windows SmartScreen and macOS Gatekeeper may block installation. Do not present these artifacts as a stable release.
             
             ### Downloads
             - **Windows**: `.exe` installer or `.msi` package
@@ -117,7 +141,7 @@ jobs:
             
             See commit history for details.
           releaseDraft: true
-          prerelease: ${{ steps.release_mode.outputs.unsigned == 'true' }}
+          prerelease: true
           args: ${{ matrix.args }}
 
       - name: Verify Windows installer signatures
