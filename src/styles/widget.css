@@ -19,7 +19,7 @@
 
 .collapsed-widget {
   height: 40px;
-  width: 218px;
+  width: 312px;
   min-width: 0;
   border-radius: 14px;
   border: 1px solid transparent;
@@ -75,6 +75,12 @@
   font-family: "JetBrains Mono", "SF Mono", "Cascadia Mono", monospace;
 }
 
+.repo-word {
+  color: var(--gv-muted);
+  font-size: 11px;
+  font-family: "Noto Sans SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", sans-serif;
+}
+
 .summary {
   display: flex;
   gap: 3px;
@@ -100,11 +106,6 @@
 .status-dot.amber { background: var(--gv-amber); }
 .status-dot.red { background: var(--gv-red); }
 .status-dot.slate { background: var(--gv-slate); }
-
-.summary-short-label {
-  color: var(--gv-muted);
-  font-family: "Noto Sans SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", sans-serif;
-}
 
 .sr-only {
   position: absolute;
@@ -146,7 +147,7 @@
 .transition-capsule {
   position: absolute;
   inset: 0 auto auto 0;
-  width: 218px;
+  width: 312px;
   height: 40px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.9);

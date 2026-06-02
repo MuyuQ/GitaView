@@ -16,7 +16,7 @@ import { WidgetExpanded } from "./components/WidgetExpanded";
 import { SettingsShell } from "./components/settings/SettingsShell";
 
 const windowSizes: Record<WidgetStableView, WindowSizeValue> = {
-  collapsed: { width: 218, height: 40 },
+  collapsed: { width: 312, height: 40 },
   expanded: { width: 900, height: 560 },
   settings: { width: 760, height: 540 },
 } as const;
