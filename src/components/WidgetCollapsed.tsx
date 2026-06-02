@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { showCollapsedNativeContextMenu } from "../lib/collapsedContextMenu";
+import { summarizeActionableCollapsed } from "../lib/collapsedSummary";
 import { shouldPromoteCollapsedDrag, shouldStartCollapsedDrag } from "../lib/windowDrag";
-import { summarizeCollapsed } from "../lib/statusModel";
 import type { RepoStatus } from "../types";
 
 export function WidgetCollapsed({
@@ -21,24 +21,11 @@ export function WidgetCollapsed({
 }) {
   const dragStart = useRef<{ x: number; y: number } | null>(null);
   const suppressNextClick = useRef(false);
-  const summary = summarizeCollapsed(repos);
+  const summary = summarizeActionableCollapsed(repos);
   const colorClass = {
-    synced: "status-dot green",
     syncable: "status-dot amber",
     needs_attention: "status-dot red",
     no_remote: "status-dot slate",
-  } as const;
-  const summaryLabel = {
-    synced: "同步",
-    syncable: "可同步",
-    needs_attention: "需关注",
-    no_remote: "无远端",
-  } as const;
-  const summaryShortLabel = {
-    synced: "同",
-    syncable: "可",
-    needs_attention: "需",
-    no_remote: "无",
   } as const;
 
   function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
@@ -93,13 +80,13 @@ export function WidgetCollapsed({
         title={allowDrag ? "点击展开，拖动移动，右键菜单" : "点击展开，右键菜单"}
       >
         <span className="brand">GitaView</span>
+        <span className="repo-word">仓库</span>
         <span className="total">{repos.length}</span>
         <span className="summary">
           {summary.map((item) => (
             <span className="summary-item" key={item.bucket}>
               <span className={colorClass[item.bucket]} aria-hidden="true" />
-              <span className="sr-only">{summaryLabel[item.bucket]} </span>
-              <span className="summary-short-label" aria-hidden="true">{summaryShortLabel[item.bucket]}</span>
+              <span>{item.label}</span>
               <span>{item.count}</span>
             </span>
           ))}
