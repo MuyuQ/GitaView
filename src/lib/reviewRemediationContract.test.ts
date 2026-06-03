@@ -63,7 +63,6 @@ describe("review remediation contracts", () => {
 
   it("exposes collapsed status names and removes unstable hover movement", () => {
     const collapsed = readProjectFile("src/components/WidgetCollapsed.tsx");
-    const transition = readProjectFile("src/components/TransitionSurface.tsx");
     const styles = readProjectFile("src/styles/widget.css");
     const index = readProjectFile("index.html");
 
@@ -72,9 +71,9 @@ describe("review remediation contracts", () => {
     expect(collapsed).toContain("{item.label}");
     expect(collapsed).not.toContain("summaryShortLabel");
     expect(styles).not.toContain(".summary-short-label");
-    expect(transition).toContain("summarizeActionableCollapsed");
-    expect(transition).toContain('className="repo-word">仓库</span>');
-    expect(transition).toContain("{item.label}");
+    expect(styles).not.toContain("transition-stage");
+    expect(styles).not.toContain("transition-surface");
+    expect(styles).not.toContain("transition-capsule");
     expect(styles).not.toContain("var(--gv-blue)");
     expect(styles).not.toContain("translateY(-1px)");
     expect(styles).not.toContain("translateX(2px)");

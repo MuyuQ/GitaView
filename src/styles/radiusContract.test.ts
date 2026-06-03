@@ -22,7 +22,6 @@ describe("window radius style contract", () => {
     expect(tokens).toContain("--gv-window-radius: 18px;");
     expect(tokens).toMatch(/body\s*{[^}]*background:\s*transparent;/);
     expect(widget).toMatch(/\.expanded-widget\s*{[\s\S]*border-radius:\s*var\(--gv-window-radius\)/);
-    expect(widget).toMatch(/\.transition-surface\s*{[\s\S]*border-radius:\s*var\(--gv-window-radius\)/);
     expect(settings).toMatch(/\.settings-window\s*{[\s\S]*border-radius:\s*var\(--gv-window-radius\)/);
   });
 
@@ -30,28 +29,12 @@ describe("window radius style contract", () => {
     const widget = readStyle("src/styles/widget.css");
 
     expect(widget).toMatch(/\.expanded-widget\s*{[^}]*box-shadow:\s*none;/);
-    expect(widget).toMatch(/\.transition-surface\s*{[^}]*box-shadow:\s*none;/);
   });
 
   it("does not cast clipped shadows around collapsed widget surfaces", () => {
     const widget = readStyle("src/styles/widget.css");
 
     expect(widget).toMatch(/\.collapsed-widget\s*{[^}]*box-shadow:\s*none;/);
-    expect(widget).toMatch(/\.transition-capsule\s*{[^}]*box-shadow:\s*none;/);
-  });
-
-  it("does not render a blank expanded surface during transient widget states", () => {
-    const widget = readStyle("src/styles/widget.css");
-
-    expect(widget).toMatch(/\.transition-surface\s*{[^}]*display:\s*none;/);
-  });
-
-  it("keeps the transient collapsed capsule visible instead of opacity-animating it", () => {
-    const widget = readStyle("src/styles/widget.css");
-
-    expect(widget).not.toMatch(/\.transition-capsule--(?:open|close)\s*{[^}]*animation:/);
-    expect(widget).not.toContain("@keyframes capsule-open");
-    expect(widget).not.toContain("@keyframes capsule-close");
   });
 
   it("keeps expanded content fully painted when switching from collapsed view", () => {

@@ -10,7 +10,18 @@ pub fn is_git_repo(path: &Path) -> bool {
 fn should_skip_dir(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
-        Some("node_modules" | "target" | ".venv" | "dist" | "build" | ".next")
+        Some(
+            "node_modules"
+                | "target"
+                | ".venv"
+                | "dist"
+                | "build"
+                | ".next"
+                | ".cache"
+                | ".turbo"
+                | ".gradle"
+                | "vendor",
+        )
     )
 }
 
@@ -77,8 +88,10 @@ mod tests {
         let _ = fs::remove_dir_all(&temp);
         // Create a real repo
         fs::create_dir_all(temp.join("real-repo/.git")).unwrap();
-        // Create a fake repo inside node_modules
-        fs::create_dir_all(temp.join("project/node_modules/fake-repo/.git")).unwrap();
+        // Create fake repos inside generated/dependency directories.
+        for skipped in ["node_modules", ".cache", ".turbo", ".gradle", "vendor"] {
+            fs::create_dir_all(temp.join(format!("project/{skipped}/fake-repo/.git"))).unwrap();
+        }
         let found = scan_repositories(&temp);
         assert_eq!(found.len(), 1);
         assert!(found[0].ends_with("real-repo"));
