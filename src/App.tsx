@@ -8,7 +8,6 @@ import { shouldShowSettingsView } from "./lib/statusModel";
 import { resolveRefreshCompletion } from "./lib/refreshGeneration";
 import { resolveAnchoredWindowPosition } from "./lib/windowMotion";
 import type { WindowSizeValue } from "./lib/windowMotion";
-import { getTransitionMode, isWidgetTransitionView } from "./lib/widgetTransition";
 import type { WidgetRenderView, WidgetStableView } from "./lib/widgetTransition";
 import type { AppSettings, RepoStatus } from "./types";
 import { WidgetCollapsed } from "./components/WidgetCollapsed";
@@ -39,6 +38,7 @@ export default function App() {
   const hasLoadedOnce = useRef(false);
   const resizeGuardTimer = useRef<number | null>(null);
   const latestRefreshGeneration = useRef(0);
+  const refreshInFlightRef = useRef(false);
 
   function applySettings(settings: AppSettings) {
     setRefreshSettings(settings.refresh);
@@ -156,6 +156,8 @@ export default function App() {
   }
 
   const refreshRepos = useCallback((opts: { initial: boolean }) => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     const requestGeneration = ++latestRefreshGeneration.current;
     if (opts.initial) {
       setInitialLoading(true);
@@ -182,6 +184,7 @@ export default function App() {
         }
       })
       .finally(() => {
+        refreshInFlightRef.current = false;
         if (!resolveRefreshCompletion(requestGeneration, latestRefreshGeneration.current)) return;
         setInitialLoading(false);
         setRefreshing(false);
@@ -214,7 +217,7 @@ export default function App() {
   useEffect(() => subscribeToSettingsUpdates(applySettings), []);
 
   useEffect(() => {
-    const transparent = (view === "collapsed" || isWidgetTransitionView(view))
+    const transparent = view === "collapsed"
       && !shouldShowSettingsView(windowView, repos.length, initialError, emptySettingsDismissed);
     document.body.classList.toggle("gv-collapsed-view", transparent);
     return () => document.body.classList.remove("gv-collapsed-view");
@@ -228,9 +231,7 @@ export default function App() {
   }, [refreshSettings, refreshRepos]);
 
   if (initialLoading) return <main className="app-shell">正在刷新仓库状态...</main>;
-  const transitionMode = getTransitionMode(view);
-  const stableView = isWidgetTransitionView(view) ? windowView : view;
-  const shouldRenderSettings = !transitionMode && shouldShowSettingsView(stableView, repos.length, initialError, emptySettingsDismissed);
+  const shouldRenderSettings = shouldShowSettingsView(view, repos.length, initialError, emptySettingsDismissed);
 
   if (shouldRenderSettings) {
     return (

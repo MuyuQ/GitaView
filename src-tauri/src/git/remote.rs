@@ -3,14 +3,23 @@ pub fn normalize_remote_url(raw: &str) -> Option<String> {
     if value.is_empty() {
         return None;
     }
-    if let Some(rest) = value.strip_prefix("git@github.com:") {
+    let lower_value = value.to_ascii_lowercase();
+    if lower_value.starts_with("git@github.com:") {
+        let rest = &value["git@github.com:".len()..];
         return Some(format!(
             "https://github.com/{}",
             rest.trim_end_matches(".git")
         ));
     }
-    if value.starts_with("https://") || value.starts_with("http://") {
-        return Some(value.trim_end_matches(".git").to_string());
+    if let Some((scheme, rest)) = value.split_once("://") {
+        let normalized_scheme = scheme.to_ascii_lowercase();
+        if normalized_scheme == "https" || normalized_scheme == "http" {
+            return Some(format!(
+                "{}://{}",
+                normalized_scheme,
+                rest.trim_end_matches(".git")
+            ));
+        }
     }
     None
 }
@@ -32,6 +41,18 @@ mod tests {
         assert_eq!(
             normalize_remote_url("https://gitlab.com/owner/repo.git"),
             Some("https://gitlab.com/owner/repo".to_string()),
+        );
+    }
+
+    #[test]
+    fn normalizes_remote_url_scheme_and_github_host_case_insensitively() {
+        assert_eq!(
+            normalize_remote_url("HTTPS://gitlab.com/owner/repo.git"),
+            Some("https://gitlab.com/owner/repo".to_string()),
+        );
+        assert_eq!(
+            normalize_remote_url("git@GitHub.com:owner/repo.git"),
+            Some("https://github.com/owner/repo".to_string()),
         );
     }
 

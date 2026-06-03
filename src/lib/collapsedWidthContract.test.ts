@@ -10,6 +10,6 @@ describe("collapsed width contract", () => {
     expect(tauri.app.windows[0].width).toBe(312);
     expect(app).toContain("collapsed: { width: 312, height: 40 }");
     expect(styles).toMatch(/\.collapsed-widget\s*{[^}]*width:\s*312px;/);
-    expect(styles).toMatch(/\.transition-capsule\s*{[^}]*width:\s*312px;/);
+    expect(styles).not.toContain("transition-capsule");
   });
 });

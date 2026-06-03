@@ -35,10 +35,13 @@ describe("cross-platform desktop hardening contract", () => {
   it("starts Windows host recovery and reapplies the layer when showing the tray window", () => {
     const lib = readProjectFileCompact("src-tauri/src/lib.rs");
     const desktopWidget = readProjectFileCompact("src-tauri/src/desktop_widget/mod.rs");
+    const windowsWidget = readProjectFileCompact("src-tauri/src/desktop_widget/windows.rs");
 
     expect(lib).toContain("desktop_widget::start_desktop_widget_watchdog(app.handle().clone())");
     expect(lib).toMatch(/TRAY_SHOW_ID[\s\S]*desktop_widget::reapply_desktop_widget_layer\(app\)/);
     expect(desktopWidget).toContain("pub fn start_desktop_widget_watchdog(");
+    expect(windowsWidget).toContain("parent_matches_desktop_host(");
+    expect(windowsWidget).toMatch(/ensure_desktop_widget_layer[\s\S]*find_desktop_icon_host\(progman\)\?/);
   });
 
   it("uses macOS accessory activation and a template left-click menu-bar icon", () => {
@@ -58,6 +61,24 @@ describe("cross-platform desktop hardening contract", () => {
     expect(gitCommands).toContain("command.creation_flags(CREATE_NO_WINDOW);");
     expect(gitCommands).toMatch(/configure_git_child_process\(&mut command\);[\s\S]*run_command_with_timeout/);
   });
+
+  it("keeps the Tauri content security policy free of inline style exceptions", () => {
+    const tauriConfig = readProjectFile("src-tauri/tauri.conf.json");
+
+    expect(tauriConfig).toContain("style-src 'self'");
+    expect(tauriConfig).not.toContain("'unsafe-inline'");
+  });
+
+  it("documents manual desktop-widget acceptance for every supported desktop platform", () => {
+    const checklist = readProjectFile("docs/platform-acceptance-checklist.md");
+
+    expect(checklist).toContain("Windows");
+    expect(checklist).toContain("macOS Apple Silicon");
+    expect(checklist).toContain("macOS Intel");
+    expect(checklist).toContain("Explorer restart");
+    expect(checklist).toContain("Mission Control");
+    expect(checklist).toContain("v0.3.1-unsigned");
+  });
 });
 
 describe("cross-platform CI and release trust contract", () => {
@@ -65,6 +86,13 @@ describe("cross-platform CI and release trust contract", () => {
     const ci = readProjectFile(".github/workflows/ci.yml");
 
     expect(ci).toContain("pull_request:");
+    expect(ci).not.toContain("macos-latest");
+    expect(ci).not.toContain("windows-latest");
+    expect(ci).toContain("platform: macos-15");
+    expect(ci).toContain("platform: macos-15-intel");
+    expect(ci).toContain("platform: windows-2025");
+    expect(ci).toContain("cache: npm");
+    expect(ci).toContain("cache-dependency-path: package-lock.json");
     expect(ci).toContain("x86_64-pc-windows-msvc");
     expect(ci).toContain("aarch64-apple-darwin");
     expect(ci).toContain("x86_64-apple-darwin");
@@ -76,6 +104,13 @@ describe("cross-platform CI and release trust contract", () => {
     const signingValidator = readProjectFile("scripts/validate-release-signing.cjs");
     const windowsSigning = readProjectFile("scripts/configure-windows-signing.ps1");
 
+    expect(release).not.toContain("macos-latest");
+    expect(release).not.toContain("windows-latest");
+    expect(release).toContain("platform: 'macos-15'");
+    expect(release).toContain("platform: 'macos-15-intel'");
+    expect(release).toContain("platform: 'windows-2025'");
+    expect(release).toContain("cache: npm");
+    expect(release).toContain("cache-dependency-path: package-lock.json");
     expect(release).toContain("node scripts/validate-release-signing.cjs");
     expect(release).toContain("scripts/configure-windows-signing.ps1");
     expect(release).toContain("APPLE_CERTIFICATE:");

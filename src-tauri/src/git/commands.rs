@@ -212,6 +212,16 @@ pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
         .as_ref()
         .is_some_and(|url| !url.trim().is_empty());
     let remote_url = raw_remote_url.and_then(|url| normalize_remote_url(&url));
+    if branch == "HEAD" {
+        return Ok(GitBranchState {
+            branch,
+            relation: RemoteRelation::NoRemote,
+            ahead: 0,
+            behind: 0,
+            has_remote: has_origin_remote,
+            remote_url,
+        });
+    }
 
     let Some(compare_ref) = comparison_ref(repo_path, &branch, has_origin_remote) else {
         return Ok(GitBranchState {
@@ -371,6 +381,47 @@ mod tests {
         assert_eq!(state.relation, RemoteRelation::NoRemote);
         assert!(!state.has_remote);
         assert_eq!(state.remote_url, None);
+
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn branch_state_treats_detached_head_as_unsupported_for_origin_actions() {
+        let temp = unique_temp_dir("gitaview_detached_head_test");
+        let repo = temp.join("repo");
+        let remote = temp.join("remote.git");
+        fs::create_dir_all(&repo).unwrap();
+        fs::create_dir_all(&remote).unwrap();
+
+        test_git(&remote, &["init", "--bare"]);
+        test_git(&repo, &["init", "-b", "main"]);
+        test_git(&repo, &["config", "user.email", "gitaview@example.test"]);
+        test_git(&repo, &["config", "user.name", "GitaView Test"]);
+        fs::write(repo.join("README.md"), "initial\n").unwrap();
+        test_git(&repo, &["add", "README.md"]);
+        test_git(&repo, &["commit", "-m", "initial"]);
+        test_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        test_git(&repo, &["push", "-u", "origin", "main"]);
+        test_git(
+            &repo,
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/main",
+            ],
+        );
+        test_git(&repo, &["checkout", "--detach", "HEAD"]);
+
+        let state = branch_state(&repo).unwrap();
+
+        assert_eq!(state.branch, "HEAD");
+        assert_eq!(state.relation, RemoteRelation::NoRemote);
+        assert_eq!(state.ahead, 0);
+        assert_eq!(state.behind, 0);
+        assert!(state.has_remote);
 
         let _ = fs::remove_dir_all(&temp);
     }
