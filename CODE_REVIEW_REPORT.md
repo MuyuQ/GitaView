@@ -1,5 +1,136 @@
 # GitaView 代码审查报告
 
+## 2026-06-03 复审追加记录
+
+**复审基线**: `main` / `v0.3.1-unsigned` / commit `1ec752a`
+**验证状态**:
+
+| 命令 / 来源 | 结果 |
+|------|------|
+| `npm test` | 通过，26 个测试文件，110 个测试 |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | 通过，54 个 Rust 测试 |
+| `cargo fmt --manifest-path src-tauri/Cargo.toml -- --check` | 通过 |
+| `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` | 通过 |
+| `npm run build` | 通过 |
+| `npm run tauri -- build --debug --no-bundle` | 通过，生成 Windows debug app |
+| GitHub CI `main` | 通过，Windows、macOS Intel、macOS Apple Silicon |
+| GitHub Release `v0.3.1-unsigned` | 通过，已生成 6 个无签名测试包 |
+
+### 本轮修复进展
+
+| 优先级 | 项目 | 状态 |
+|------|------|------|
+| P1 | Detached HEAD 可能被误判为可 Pull/Push | 已修复。Detached HEAD 现在进入 `no_remote` 只读关系，并有 Rust 回归测试。 |
+| P2 | 自动刷新可能重叠执行 | 已修复。`App` 增加 `refreshInFlightRef` 单飞保护，并有前端契约测试。 |
+| P2 | CI / Release runner 使用浮动标签 | 已修复。三端 runner 固定为 `macos-15`、`macos-15-intel`、`windows-2025`，并启用 npm cache。 |
+| P3 | Tauri CSP 允许 inline style | 已修复。移除 `style-src` 的 `unsafe-inline`，并增加 CSP 契约测试。 |
+| P3 | Windows 桌面层 watchdog 只验证父窗口有效 | 已增强。watchdog 现在会重新解析当前桌面宿主，并校验父窗口等于当前宿主。 |
+| P3 | 远端 URL 规范化大小写较保守 | 已修复。HTTP/HTTPS scheme 和 GitHub SSH host 现在大小写不敏感。 |
+| P3 | 仓库扫描跳过目录列表偏窄 | 已修复。补充跳过 `.cache`、`.turbo`、`.gradle`、`vendor`。 |
+| P3 | 过渡动画路径保留但实际禁用 | 已修复。删除未使用的 `TransitionSurface`、过渡 CSS 和 transient view 类型。 |
+| P2 | UI 组件真实渲染测试不足 | 已部分修复。新增 React 服务端渲染烟测，覆盖折叠态、展开态、RepoActions 和 SettingsShell。 |
+| P1 | Windows/macOS 实机验收记录 | 已补清单。新增 `docs/platform-acceptance-checklist.md`，发布前仍需在目标设备填写 PASS/FAIL 结果。 |
+| P4 | 设置页使用单一 `busy` 状态 | 已修复。拆分为扫描、添加、仓库操作级 busy 状态。 |
+
+### 仍待处理 / 建议保留
+
+| 优先级 | 项目 | 状态 |
+|------|------|------|
+| P1 | Windows/macOS 实机验收结果 | 清单已补，但当前本机不能替代 macOS Apple Silicon、macOS Intel 和完整 Windows 安装行为；发布前需要填写 `docs/platform-acceptance-checklist.md`。 |
+| P2 | 浏览器级交互/E2E | 已有组件渲染烟测和源码契约，但尚未引入 Playwright/Testing Library 来模拟点击 Pull/Push 二次确认、筛选联动和设置页导航。 |
+
+### 新发现项
+
+#### P1. Detached HEAD 可能被误判为可 Pull/Push
+
+**位置**: `src-tauri/src/git/commands.rs:209`、`src-tauri/src/git/commands.rs:194`、`src/components/RepoActions.tsx:73`、`src/components/RepoActions.tsx:83`
+
+`git rev-parse --abbrev-ref HEAD` 在 detached HEAD 下会返回 `HEAD`。当前逻辑随后可能尝试比较 `origin/HEAD`，让 detached 仓库被归类为 `local_ahead`、`remote_ahead` 或 `diverged`。这些状态会让 UI 显示 Pull/Push 操作。
+
+**建议**: 检测 `branch == "HEAD"` 后将仓库标记为读取失败或只读状态，禁用 Pull/Push，并增加 Rust 回归测试覆盖 detached HEAD。
+
+#### P2. 自动刷新可能重叠执行
+
+**位置**: `src/App.tsx:223`
+
+轻量刷新用 `setInterval` 周期触发。当前 generation 机制能丢弃过期前端结果，但后端扫描仍会执行。如果仓库多或 Git 命令超时，下一轮刷新可能与上一轮重叠，造成后台压力和托盘状态抖动。
+
+**建议**: 增加 `refreshInFlightRef` 或等价串行化机制，上一轮刷新未完成时跳过下一轮自动刷新。手动刷新可以继续允许用户显式触发，但需要明确 UI 行为。
+
+#### P2. CI / Release runner 使用浮动标签
+
+**位置**: `.github/workflows/ci.yml:17`、`.github/workflows/ci.yml:21`、`.github/workflows/release.yml:16`、`.github/workflows/release.yml:22`
+
+当前使用 `macos-latest` 和 `windows-latest`。GitHub 最近的 Windows job 已提示 `windows-latest` 将重定向到新镜像。多端桌面项目对原生 API 和打包链更敏感，浮动 runner 会降低复现性。
+
+**建议**: 固定到明确 runner 版本，并在升级 runner 时单独做 PR 验证。
+
+#### P3. Tauri CSP 仍允许 inline style
+
+**位置**: `src-tauri/tauri.conf.json:30`
+
+当前 CSP 包含 `style-src 'self' 'unsafe-inline'`。项目样式主要来自 CSS 文件，理论上可以逐步验证去掉 inline style 例外。
+
+**建议**: 单独测试移除 `unsafe-inline`。如果 Tauri/WebView 运行时确实需要 inline style，再保留并写明原因。
+
+#### P3. 过渡动画路径保留但实际禁用
+
+**位置**: `src/lib/widgetTransition.ts:5`、`src/lib/widgetTransition.ts:10`、`src/components/TransitionSurface.tsx`
+
+过渡时长为 `0`，`isWidgetTransitionView` 永远返回 `false`，但过渡组件仍保留。现在不是用户可见 bug，但维护者需要记住这是一条死路径。
+
+**建议**: 二选一：恢复稳定的折叠/展开过渡；或者删除过渡组件和相关类型，减少未来漂移。
+
+#### P3. CI 可以启用 npm cache
+
+**位置**: `.github/workflows/ci.yml:31`、`.github/workflows/release.yml:33`
+
+`actions/setup-node` 没有启用 `cache: npm`。三端 CI 和 Release 都会 `npm ci`，缓存可以降低等待时间。
+
+**建议**: 在 CI 和 Release 中为 setup-node 添加 npm cache，并保持 `package-lock.json` 作为 cache dependency。
+
+#### P3. Windows 桌面层 watchdog 只验证父窗口有效
+
+**位置**: `src-tauri/src/desktop_widget/windows.rs:198`
+
+watchdog 只检查当前父窗口是否仍是有效窗口。如果 Explorer 重建后父窗口仍有效但不再是桌面图标宿主，可能不会重新附着。
+
+**建议**: 记录当前宿主窗口，或重新验证父级是否包含/关联 `SHELLDLL_DefView`，不满足时重新应用桌面层级。
+
+#### P3. 远端 URL 规范化大小写较保守
+
+**位置**: `src-tauri/src/git/remote.rs`
+
+`normalize_remote_url` 只接受小写 `http://`、`https://` 和 `git@github.com:`。这符合常见 Git remote，但对大小写 scheme 或 GitHub SSH 主机大小写不宽容。
+
+**建议**: 如果希望兼容更多真实仓库配置，按 scheme/host 做大小写不敏感解析，并补测试。安全边界仍保持只开放 HTTP/HTTPS。
+
+#### P3. 仓库扫描跳过目录列表偏窄
+
+**位置**: `src-tauri/src/git/discovery.rs:11`
+
+扫描会跳过 `node_modules`、`target`、`.venv`、`dist`、`build`、`.next`，但没有跳过常见大型目录如 `.git` 子目录外的 `.cache`、`.turbo`、`.gradle`、`vendor` 等。
+
+**建议**: 扩充跳过列表，或改成可配置/可测试的 skip set，避免在大型 monorepo 或多语言工作区扫描过慢。
+
+#### P4. 设置页使用单一 `busy` 状态
+
+**位置**: `src/components/settings/RepositorySettings.tsx`
+
+扫描、添加、移除、打开目录、改分组共用一个 `busy`。这让一个仓库操作会锁住整个仓库管理页。当前功能正确，但体验偏粗。
+
+**建议**: 将 `busy` 拆成 `scanBusy`、`repoActionBusyId` 或动作级状态，避免无关控件被一起禁用。
+
+### 建议优先级
+
+1. **Detached HEAD 防护**：最像真实 bug，且涉及 Pull/Push 安全边界。
+2. **自动刷新串行化**：能提升多仓库场景稳定性。
+3. **固定 runner + npm cache**：低风险提升 CI 可复现性和速度。
+4. **Windows watchdog 宿主验证**：提升 Explorer 重启后的桌面 widget 可靠性。
+5. **CSP 收紧 / URL 规范化 / 扫描 skip set / 设置页 busy 拆分**：可作为小批次体验与安全加固。
+
+---
+
 **审查日期**: 2026-05-15  
 **审查范围**: `E:/Git_Repositories/GitaView`  
 **审查准绳**: `AGENTS.md`、`README.md`、当前代码实现  

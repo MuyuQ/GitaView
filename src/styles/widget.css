@@ -119,49 +119,6 @@
   border: 0;
 }
 
-/* Native-window resize is intentionally instant; this lightweight layer owns the visible morph. */
-.transition-stage {
-  position: relative;
-  width: 680px;
-  height: min(520px, 100vh);
-  pointer-events: none;
-}
-
-.transition-surface {
-  display: none;
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 680px;
-  height: min(520px, 100vh);
-  border: 1px solid var(--gv-line);
-  border-radius: var(--gv-window-radius);
-  background:
-    radial-gradient(circle at 18% 5%, rgba(47, 159, 103, 0.12), transparent 30%),
-    rgba(255, 255, 255, 0.95);
-  box-shadow: none;
-  opacity: 1;
-  transform-origin: 0 0;
-  will-change: transform, opacity, border-radius;
-}
-
-.transition-capsule {
-  position: absolute;
-  inset: 0 auto auto 0;
-  width: 312px;
-  height: 40px;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  color: var(--gv-ink);
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 13px;
-  font-size: 13px;
-  box-shadow: none;
-  overflow: hidden;
-  opacity: 1;
-}
-
 /* Expanded widget */
 .expanded-widget {
   width: 100vw;
@@ -567,8 +524,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .expanded-widget,
-  .transition-surface,
-  .transition-capsule,
   .repo-actions {
     animation: none;
   }

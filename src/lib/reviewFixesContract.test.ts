@@ -29,6 +29,28 @@ describe("review follow-up contracts", () => {
     expect(repoActions).not.toContain("getSettings");
   });
 
+  it("guards lightweight refreshes from overlapping repository scans", () => {
+    const app = readFileSync(resolve(projectRoot, "src/App.tsx"), "utf8");
+
+    expect(app).toContain("refreshInFlightRef");
+    expect(app).toContain("if (refreshInFlightRef.current) return;");
+    expect(app).toContain("refreshInFlightRef.current = true;");
+    expect(app).toContain("refreshInFlightRef.current = false;");
+  });
+
+  it("splits repository settings busy state by operation area", () => {
+    const repositorySettings = readFileSync(
+      resolve(projectRoot, "src/components/settings/RepositorySettings.tsx"),
+      "utf8",
+    );
+
+    expect(repositorySettings).not.toContain("const [busy, setBusy]");
+    expect(repositorySettings).not.toContain("disabled={busy}");
+    expect(repositorySettings).toContain("scanBusy");
+    expect(repositorySettings).toContain("addBusy");
+    expect(repositorySettings).toContain("repoActionBusyId");
+  });
+
   it("documents error as an app read-failure state rather than a sixth Git relation", () => {
     const readme = readFileSync(resolve(projectRoot, "README.md"), "utf8");
 

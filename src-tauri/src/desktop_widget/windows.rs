@@ -196,14 +196,21 @@ fn ensure_desktop_widget_layer(app: &tauri::AppHandle) -> Result<(), String> {
         .hwnd()
         .map_err(|err| format!("获取窗口句柄失败: {err}"))?;
     let parent = unsafe { GetParent(hwnd) }.ok();
-    if parent
-        .filter(|parent| !parent.is_invalid())
-        .is_some_and(|parent| unsafe { IsWindow(Some(parent)) }.as_bool())
-    {
+    let progman = unsafe { FindWindowW(w!("Progman"), PCWSTR::null()) }
+        .map_err(|err| format!("无法找到 Progman 窗口: {err}"))?;
+    let desktop_host = find_desktop_icon_host(progman)?;
+    if parent_matches_desktop_host(parent, desktop_host) {
         return Ok(());
     }
     crate::diagnostics::log("desktop_widget.watchdog.reapply", "");
     apply_desktop_widget_layer(&window)
+}
+
+fn parent_matches_desktop_host(parent: Option<HWND>, desktop_host: HWND) -> bool {
+    let Some(parent) = parent.filter(|parent| !parent.is_invalid()) else {
+        return false;
+    };
+    parent == desktop_host && unsafe { IsWindow(Some(parent)) }.as_bool()
 }
 
 /// 查找桌面图标宿主窗口
@@ -431,5 +438,15 @@ mod tests {
         let host = resolve_enum_windows_host(fallback, found, true, 123).unwrap();
 
         assert_eq!(host, found);
+    }
+
+    #[test]
+    fn parent_match_rejects_invalid_or_stale_desktop_hosts() {
+        let host = HWND(std::ptr::dangling_mut::<u16>().cast());
+        let stale = HWND(std::ptr::dangling_mut::<u32>().cast());
+
+        assert!(!parent_matches_desktop_host(None, host));
+        assert!(!parent_matches_desktop_host(Some(HWND::default()), host));
+        assert!(!parent_matches_desktop_host(Some(stale), host));
     }
 }

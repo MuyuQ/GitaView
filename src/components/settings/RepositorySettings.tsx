@@ -13,7 +13,9 @@ export function RepositorySettings() {
   const [path, setPath] = useState("");
   const [scanResults, setScanResults] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [repoActionBusyId, setRepoActionBusyId] = useState<string | null>(null);
   const [revealedRepoId, setRevealedRepoId] = useState<string | null>(null);
 
   function applySettings(nextSettings: AppSettings) {
@@ -49,7 +51,7 @@ export function RepositorySettings() {
       setMessage("请输入要扫描的目录路径");
       return;
     }
-    setBusy(true);
+    setScanBusy(true);
     setMessage(null);
     try {
       const results = await scanDirectory(path.trim());
@@ -58,7 +60,7 @@ export function RepositorySettings() {
     } catch (err) {
       setMessage(`扫描失败：${err}`);
     } finally {
-      setBusy(false);
+      setScanBusy(false);
     }
   }
 
@@ -67,7 +69,7 @@ export function RepositorySettings() {
       setMessage("请输入仓库路径");
       return;
     }
-    setBusy(true);
+    setAddBusy(true);
     setMessage(null);
     try {
       await addRepository(targetPath);
@@ -79,12 +81,13 @@ export function RepositorySettings() {
     } catch (err) {
       setMessage(`添加失败：${err}`);
     } finally {
-      setBusy(false);
+      setAddBusy(false);
     }
   }
 
   async function handleRemove(repoId: string) {
-    setBusy(true);
+    if (repoActionBusyId) return;
+    setRepoActionBusyId(repoId);
     setMessage(null);
     try {
       await removeRepository(repoId);
@@ -95,12 +98,13 @@ export function RepositorySettings() {
     } catch (err) {
       setMessage(`移除失败：${err}`);
     } finally {
-      setBusy(false);
+      setRepoActionBusyId(null);
     }
   }
 
   async function handleOpenDirectory(repoId: string) {
-    setBusy(true);
+    if (repoActionBusyId) return;
+    setRepoActionBusyId(repoId);
     setMessage(null);
     try {
       await openRepoDirectory(repoId);
@@ -108,13 +112,14 @@ export function RepositorySettings() {
     } catch (err) {
       setMessage(`打开失败：${err}`);
     } finally {
-      setBusy(false);
+      setRepoActionBusyId(null);
     }
   }
 
   async function handleGroupChange(repoId: string, groupName: string) {
     if (!settings) return;
-    setBusy(true);
+    if (repoActionBusyId) return;
+    setRepoActionBusyId(repoId);
     setMessage(null);
     try {
       const savedSettings = await queueSettingsUpdate((currentSettings) => {
@@ -136,7 +141,7 @@ export function RepositorySettings() {
     } catch (err) {
       setMessage(`更新分组失败：${err}`);
     } finally {
-      setBusy(false);
+      setRepoActionBusyId(null);
     }
   }
 
@@ -159,6 +164,7 @@ export function RepositorySettings() {
         {repos.map((repo) => {
           const displayText = getRepositoryDisplayText(repo, revealedRepoId);
           const isPathRevealed = revealedRepoId === repo.id;
+          const repoActionsBusy = repoActionBusyId !== null;
           return (
             <article className="settings-repo" key={repo.id}>
               <button
@@ -173,7 +179,7 @@ export function RepositorySettings() {
               <select
                 value={repo.group}
                 onChange={(event) => handleGroupChange(repo.id, event.target.value)}
-                disabled={busy}
+                disabled={repoActionsBusy}
                 aria-label={`${repo.name} 的仓库分组`}
               >
                 {groups.map((group) => (
@@ -186,13 +192,13 @@ export function RepositorySettings() {
                 <button
                   type="button"
                   onClick={() => handleOpenDirectory(repo.id)}
-                  disabled={busy}
+                  disabled={repoActionsBusy}
                   title="用资源管理器或访达打开仓库目录"
                   aria-label={`用资源管理器或访达打开 ${repo.name} 的仓库目录`}
                 >
                   打开
                 </button>
-                <button type="button" onClick={() => handleRemove(repo.id)} disabled={busy}>移除</button>
+                <button type="button" onClick={() => handleRemove(repo.id)} disabled={repoActionsBusy}>移除</button>
               </div>
             </article>
           );
@@ -208,16 +214,16 @@ export function RepositorySettings() {
             aria-label="仓库目录"
           />
           <div className="settings-add-actions">
-            <button className="pick-dir-btn" onClick={handlePickDirectory} disabled={busy}>选择目录</button>
-            <button onClick={handleScan} disabled={busy}>扫描目录</button>
-            <button className="primary" onClick={() => handleAdd()} disabled={busy}>添加仓库</button>
+            <button className="pick-dir-btn" onClick={handlePickDirectory} disabled={scanBusy}>选择目录</button>
+            <button onClick={handleScan} disabled={scanBusy}>扫描目录</button>
+            <button className="primary" onClick={() => handleAdd()} disabled={addBusy}>添加仓库</button>
           </div>
         </div>
         {message && <p className="settings-message" role="status">{message}</p>}
         {scanResults.length > 0 && (
           <div className="settings-scan-results">
             {scanResults.map((result) => (
-              <button key={result} onClick={() => handleAdd(result)} disabled={busy}>
+              <button key={result} onClick={() => handleAdd(result)} disabled={addBusy}>
                 添加 {result}
               </button>
             ))}
