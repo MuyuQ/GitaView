@@ -12,5 +12,6 @@ Thumbs.db
 .superpowers/
 .playwright-cli/
 .sisyphus/
+.impeccable/
 __pycache__/
 *.pyc
