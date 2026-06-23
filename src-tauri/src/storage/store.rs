@@ -68,6 +68,7 @@ mod tests {
         let _ = fs::remove_file(&path);
         let settings = load_settings(&path).unwrap();
         assert_eq!(settings.default_group, "全部分组");
+        assert_eq!(settings.version, 1);
         assert!(settings.safety.confirm_pull);
     }
 

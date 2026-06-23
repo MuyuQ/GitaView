@@ -3,6 +3,7 @@ import { notifySettingsUpdated, subscribeToSettingsUpdates } from "./settingsEve
 import type { AppSettings } from "../types";
 
 const settings: AppSettings = {
+  version: 1,
   repos: [],
   groups: [{ name: "全部分组", repoIds: [] }],
   defaultGroup: "全部分组",

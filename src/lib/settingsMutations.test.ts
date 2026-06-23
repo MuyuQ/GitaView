@@ -3,6 +3,7 @@ import { createSettingsUpdateQueue } from "./settingsMutations";
 import type { AppSettings } from "../types";
 
 const initialSettings: AppSettings = {
+  version: 1,
   repos: [],
   groups: [{ name: "全部分组", repoIds: [] }],
   defaultGroup: "全部分组",

@@ -52,9 +52,15 @@ impl Default for AppearanceSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+fn default_version() -> u32 {
+    1
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
+    #[serde(default = "default_version")]
+    pub version: u32,
     pub repos: Vec<RepoRecord>,
     pub groups: Vec<GroupRecord>,
     pub default_group: String,
@@ -67,6 +73,7 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            version: default_version(),
             repos: Vec::new(),
             groups: vec![GroupRecord {
                 name: "全部分组".to_string(),
@@ -87,6 +94,8 @@ impl Default for AppSettings {
 }
 
 impl AppSettings {
+    /// version 字段由 serde 反序列化时的 default_version() 降级到 1；
+    /// 未来 schema 迁移（如 version 1 → 2）的逻辑应在此方法中实现。
     pub fn normalized(mut self) -> Self {
         if self.default_group.trim().is_empty() {
             self.default_group = "全部分组".to_string();
@@ -140,5 +149,37 @@ mod tests {
 
         assert!(normalized.safety.confirm_pull);
         assert!(normalized.safety.confirm_push);
+    }
+
+    #[test]
+    fn default_settings_has_version_1() {
+        let settings = AppSettings::default();
+        assert_eq!(settings.version, 1);
+    }
+
+    #[test]
+    fn deserialize_missing_version_defaults_to_1() {
+        let json = r#"{
+            "repos": [],
+            "groups": [{ "name": "全部分组", "repoIds": [] }],
+            "defaultGroup": "全部分组",
+            "refresh": { "lightweightRefreshEnabled": true, "intervalMinutes": 5 },
+            "safety": { "confirmPull": true, "confirmPush": true },
+            "appearance": { "allowWidgetDrag": true }
+        }"#;
+        let settings: AppSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.version, 1);
+    }
+
+    #[test]
+    fn version_field_survives_round_trip() {
+        let settings = AppSettings {
+            version: 2,
+            ..AppSettings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let restored: AppSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.version, 2);
+        assert_eq!(restored, settings);
     }
 }

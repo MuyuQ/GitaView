@@ -36,10 +36,10 @@ describe("review remediation contracts", () => {
   });
 
   it("waits for initial loading before applying empty-state window sizing", () => {
-    const app = readProjectFile("src/App.tsx");
+    const hook = readProjectFile("src/lib/useWidgetView.ts");
 
-    expect(app).toContain("if (initialLoading) return;");
-    expect(app).toContain("resolveRefreshCompletion");
+    expect(hook).toContain("if (initialLoading) return;");
+    expect(hook).toContain("resolveRefreshCompletion");
   });
 
   it("aligns release versions and executes quality gates before packaging", () => {
