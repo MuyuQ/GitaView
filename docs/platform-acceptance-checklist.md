@@ -4,7 +4,7 @@ Use this checklist before publishing or promoting a release. Automated CI proves
 build and contract coverage, but desktop-widget behavior depends on native window
 managers and must be verified on real target platforms.
 
-Current unsigned baseline: `v0.3.1-unsigned`.
+Current unsigned baseline: `v0.3.2-unsigned`.
 
 ## Required Platforms
 
@@ -16,7 +16,7 @@ Current unsigned baseline: `v0.3.1-unsigned`.
 
 ## Windows
 
-- Install the `v0.3.1-unsigned` Windows artifact and confirm any SmartScreen
+- Install the `v0.3.2-unsigned` Windows artifact and confirm any SmartScreen
   warning is expected for unsigned test builds.
 - Launch GitaView and confirm it starts as a compact desktop widget, not a
   taskbar window.
@@ -34,7 +34,7 @@ Current unsigned baseline: `v0.3.1-unsigned`.
 
 ## macOS Apple Silicon
 
-- Install the Apple Silicon `v0.3.1-unsigned` DMG and confirm any Gatekeeper
+- Install the Apple Silicon `v0.3.2-unsigned` DMG and confirm any Gatekeeper
   warning is expected for unsigned test builds.
 - Launch GitaView and confirm it runs as an accessory-style app: menu-bar icon
   present, Dock entry absent, Cmd+Tab entry absent.
