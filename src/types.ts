@@ -38,6 +38,7 @@ export interface GroupRecord {
 }
 
 export interface AppSettings {
+  version: number;
   repos: RepoRecord[];
   groups: GroupRecord[];
   defaultGroup: string;

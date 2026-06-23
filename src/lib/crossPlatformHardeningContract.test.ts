@@ -3,12 +3,12 @@ import { readProjectFile, readProjectFileCompact } from "./sourceContract";
 
 describe("cross-platform desktop hardening contract", () => {
   it("routes frame updates through the native desktop widget boundary", () => {
-    const app = readProjectFileCompact("src/App.tsx");
+    const hook = readProjectFileCompact("src/lib/useWidgetView.ts");
     const commands = readProjectFileCompact("src/lib/commands.ts");
     const rustCommands = readProjectFileCompact("src-tauri/src/app_commands.rs");
     const desktopWidget = readProjectFileCompact("src-tauri/src/desktop_widget/mod.rs");
 
-    expect(app).toContain("syncDesktopWidgetFrame");
+    expect(hook).toContain("syncDesktopWidgetFrame");
     expect(commands).toContain('invoke<void>("sync_desktop_widget_frame"');
     expect(rustCommands).toContain("pub async fn sync_desktop_widget_frame(");
     expect(rustCommands).toContain("crate::desktop_widget::sync_desktop_widget_frame(");

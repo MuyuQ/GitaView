@@ -6,6 +6,7 @@ const previewRepoRoot = "~/projects";
 
 // Browser-only fixture data used when the Tauri runtime is unavailable.
 const previewSettings: AppSettings = {
+  version: 1,
   repos: [
     {
       id: "gitaview",

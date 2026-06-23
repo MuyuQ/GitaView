@@ -21,21 +21,23 @@ describe("review follow-up contracts", () => {
 
   it("logs app settings and exit failures instead of swallowing them silently", () => {
     const app = readFileSync(resolve(projectRoot, "src/App.tsx"), "utf8");
+    const hook = readFileSync(resolve(projectRoot, "src/lib/useWidgetView.ts"), "utf8");
     const repoActions = readFileSync(resolve(projectRoot, "src/components/RepoActions.tsx"), "utf8");
 
+    expect(hook).not.toContain(".catch(() => {})");
+    expect(hook).toContain("console.error(\"加载设置失败\"");
+    expect(hook).toContain("console.error(\"退出应用失败\"");
     expect(app).not.toContain(".catch(() => {})");
-    expect(app).toContain("console.error(\"加载设置失败\"");
-    expect(app).toContain("console.error(\"退出应用失败\"");
     expect(repoActions).not.toContain("getSettings");
   });
 
   it("guards lightweight refreshes from overlapping repository scans", () => {
-    const app = readFileSync(resolve(projectRoot, "src/App.tsx"), "utf8");
+    const hook = readFileSync(resolve(projectRoot, "src/lib/useWidgetView.ts"), "utf8");
 
-    expect(app).toContain("refreshInFlightRef");
-    expect(app).toContain("if (refreshInFlightRef.current) return;");
-    expect(app).toContain("refreshInFlightRef.current = true;");
-    expect(app).toContain("refreshInFlightRef.current = false;");
+    expect(hook).toContain("refreshInFlightRef");
+    expect(hook).toContain("if (refreshInFlightRef.current) return;");
+    expect(hook).toContain("refreshInFlightRef.current = true;");
+    expect(hook).toContain("refreshInFlightRef.current = false;");
   });
 
   it("splits repository settings busy state by operation area", () => {
