@@ -77,7 +77,7 @@ describe("cross-platform desktop hardening contract", () => {
     expect(checklist).toContain("macOS Intel");
     expect(checklist).toContain("Explorer restart");
     expect(checklist).toContain("Mission Control");
-    expect(checklist).toContain("v0.3.1-unsigned");
+    expect(checklist).toContain("v0.3.2-unsigned");
   });
 });
 
