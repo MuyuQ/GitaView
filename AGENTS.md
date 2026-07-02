@@ -1,6 +1,6 @@
 # GitaView PROJECT KNOWLEDGE BASE
 
-**Updated:** 2026-06-01
+**Updated:** 2026-06-23
 **Branch:** main
 
 ## OVERVIEW
@@ -15,13 +15,20 @@ widget window. It does not depend on `gita` CLI configuration.
 
 ```text
 GitaView/
+├── AGENTS.md
+├── CODE_REVIEW_REPORT.md
 ├── DESIGN_AND_BUILD_SPEC.md
+├── PRODUCT.md
+├── README.md
 ├── docs/
 │   ├── native-desktop-widget-layer-plan.md
+│   ├── platform-acceptance-checklist.md
+│   ├── RELEASE_SIGNING.md
 │   └── superpowers/
 ├── src/
 │   ├── components/
 │   ├── lib/
+│   │   └── useWidgetView.ts
 │   ├── styles/
 │   ├── App.tsx
 │   ├── main.tsx
@@ -30,10 +37,21 @@ GitaView/
 │   ├── capabilities/
 │   ├── icons/
 │   ├── src/
+│   │   ├── app_commands.rs
+│   │   ├── app_settings.rs
 │   │   ├── desktop_widget/
+│   │   ├── diagnostics.rs
 │   │   ├── domain/
 │   │   ├── git/
-│   │   └── storage/
+│   │   ├── lib.rs
+│   │   ├── main.rs
+│   │   ├── repo_operation.rs
+│   │   ├── repo_registry.rs
+│   │   ├── repo_status.rs
+│   │   ├── storage/
+│   │   ├── system_open.rs
+│   │   ├── tray_menu_rows.rs
+│   │   └── tray_status.rs
 │   ├── Cargo.toml
 │   └── tauri.conf.json
 └── AGENTS.md
@@ -44,7 +62,8 @@ GitaView/
 | Task | Location | Notes |
 |------|----------|-------|
 | Product requirements | `DESIGN_AND_BUILD_SPEC.md` | v1 product and technical contract |
-| Root React flow | `src/App.tsx` | Widget modes, refresh lifecycle, native sizing |
+| Widget view hook | `src/lib/useWidgetView.ts` | Widget modes, refresh lifecycle, native sizing, settings routing |
+| Root React flow | `src/App.tsx` | View switching between collapsed, expanded, and settings |
 | Status model | `src/lib/statusModel.ts` | Summary, sorting, filters, action availability |
 | Settings UI | `src/components/settings/` | Repository, group, refresh, safety, appearance |
 | Tauri command boundary | `src-tauri/src/app_commands.rs` | Fixed app commands exposed to React |
