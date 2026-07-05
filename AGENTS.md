@@ -1,6 +1,6 @@
 # GitaView PROJECT KNOWLEDGE BASE
 
-**Updated:** 2026-06-23
+**Updated:** 2026-07-05
 **Branch:** main
 
 ## OVERVIEW
@@ -28,7 +28,10 @@ GitaView/
 ├── src/
 │   ├── components/
 │   ├── lib/
-│   │   └── useWidgetView.ts
+│   │   ├── commands.ts
+│   │   ├── statusModel.ts
+│   │   ├── useWidgetView.ts
+│   │   └── ...
 │   ├── styles/
 │   ├── App.tsx
 │   ├── main.tsx
@@ -61,8 +64,12 @@ GitaView/
 
 | Task | Location | Notes |
 |------|----------|-------|
+| Product overview | `PRODUCT.md` | Users, brand personality, design principles |
 | Product requirements | `DESIGN_AND_BUILD_SPEC.md` | v1 product and technical contract |
 | Widget view hook | `src/lib/useWidgetView.ts` | Widget modes, refresh lifecycle, native sizing, settings routing |
+| Tauri IPC wrappers | `src/lib/commands.ts` | Typed Tauri invoke wrappers for all backend commands |
+| Settings events | `src/lib/settingsEvents.ts` | Settings change event listeners and dispatchers |
+| Settings mutations | `src/lib/settingsMutations.ts` | Settings mutation helpers |
 | Root React flow | `src/App.tsx` | View switching between collapsed, expanded, and settings |
 | Status model | `src/lib/statusModel.ts` | Summary, sorting, filters, action availability |
 | Settings UI | `src/components/settings/` | Repository, group, refresh, safety, appearance |
