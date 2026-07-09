@@ -527,12 +527,12 @@ The implementation is acceptable when:
 - No emoji icons are used.
 - Frontend build, frontend tests, Rust tests, and Tauri compile pass.
 
-## 15. Reference Implementation Plan
+## 15. Reference Implementation Plans
 
-There is also a task-by-task implementation plan at:
+Detailed implementation plans are available at:
 
 ```text
-docs/superpowers/plans/2026-05-10-gitaview-desktop-widget.md
+docs/superpowers/plans/
 ```
 
-Use that file as the execution checklist. Use this document as the product and architecture source of truth.
+Use the plan files there as execution checklists. Use this document as the product and architecture source of truth.

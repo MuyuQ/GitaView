@@ -1,6 +1,6 @@
 # GitaView PROJECT KNOWLEDGE BASE
 
-**Updated:** 2026-07-05
+**Updated:** 2026-07-09
 **Branch:** main
 
 ## OVERVIEW
@@ -27,11 +27,30 @@ GitaView/
 │   └── superpowers/
 ├── src/
 │   ├── components/
+│   │   ├── GroupFilters.tsx
+│   │   ├── RepoActions.tsx
+│   │   ├── RepoTable.tsx
+│   │   ├── StatusFilters.tsx
+│   │   ├── WidgetCollapsed.tsx
+│   │   ├── WidgetExpanded.tsx
+│   │   └── settings/
 │   ├── lib/
+│   │   ├── collapsedContextMenu.ts
+│   │   ├── collapsedSummary.ts
 │   │   ├── commands.ts
+│   │   ├── refreshGeneration.ts
+│   │   ├── repoSelection.ts
+│   │   ├── repositorySettingsView.ts
+│   │   ├── runtime.ts
+│   │   ├── settingsEvents.ts
+│   │   ├── settingsMutations.ts
+│   │   ├── sourceContract.ts
 │   │   ├── statusModel.ts
 │   │   ├── useWidgetView.ts
-│   │   └── ...
+│   │   ├── widgetTransition.ts
+│   │   ├── windowDrag.ts
+│   │   ├── windowMotion.ts
+│   │   └── ... (test & contract files)
 │   ├── styles/
 │   ├── App.tsx
 │   ├── main.tsx
@@ -46,6 +65,10 @@ GitaView/
 │   │   ├── diagnostics.rs
 │   │   ├── domain/
 │   │   ├── git/
+│   │   │   ├── commands.rs
+│   │   │   ├── discovery.rs
+│   │   │   ├── remote.rs
+│   │   │   └── status_text.rs
 │   │   ├── lib.rs
 │   │   ├── main.rs
 │   │   ├── repo_operation.rs
@@ -78,6 +101,18 @@ GitaView/
 | Native desktop layer | `src-tauri/src/desktop_widget/` | Windows and macOS widget attachment |
 | Persistence | `src-tauri/src/storage/store.rs` | Normalized atomic settings writes |
 | Tray menu | `src-tauri/src/tray_status.rs` | Async tray refresh and generation guard |
+| Collapsed summary | `src/lib/collapsedSummary.ts` | Collapsed widget summary computation and display |
+| Collapsed context menu | `src/lib/collapsedContextMenu.ts` | Collapsed widget right-click menu |
+| Refresh generation | `src/lib/refreshGeneration.ts` | Refresh token generation for deduplication |
+| Repository selection | `src/lib/repoSelection.ts` | Repository row selection state management |
+| Repository settings view | `src/lib/repositorySettingsView.ts` | Repository settings view routing |
+| Window drag | `src/lib/windowDrag.ts` | Custom window drag handling |
+| Window motion | `src/lib/windowMotion.ts` | Window resize and positioning logic |
+| Widget transition | `src/lib/widgetTransition.ts` | Collapsed/expanded widget transition state |
+| Source contract | `src/lib/sourceContract.ts` | Source code contract definitions |
+| Git discovery | `src-tauri/src/git/discovery.rs` | Recursive Git repository discovery |
+| Git remote | `src-tauri/src/git/remote.rs` | Remote URL normalization and parsing |
+| Git status text | `src-tauri/src/git/status_text.rs` | Git status text parsing |
 
 ## CONVENTIONS
 
