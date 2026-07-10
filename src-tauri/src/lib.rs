@@ -8,6 +8,7 @@ pub mod repo_status;
 pub mod system_open;
 pub mod tray_menu_rows;
 pub mod tray_status;
+pub mod widget_data;
 
 pub mod domain {
     pub mod repo;
@@ -27,10 +28,12 @@ pub mod storage {
 }
 
 use tauri::{include_image, Manager};
+use tauri_plugin_deep_link::DeepLinkExt;
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
             #[cfg(target_os = "macos")]
@@ -67,6 +70,26 @@ pub fn run() {
                 eprintln!("应用桌面 widget 层失败，将作为普通窗口运行: {err}");
             }
             desktop_widget::start_desktop_widget_watchdog(app.handle().clone());
+
+            // Deep Link 处理
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                for url in event.urls() {
+                    diagnostics::log("deep_link.received", url.as_str());
+                    if url.scheme() == "gitaview" {
+                        if let Some(window) = handle.get_webview_window("main") {
+                            if let Err(err) = window.show() {
+                                diagnostics::log("deep_link.show_error", &err.to_string());
+                            }
+                            if let Err(err) = window.set_focus() {
+                                diagnostics::log("deep_link.focus_error", &err.to_string());
+                            }
+                        } else {
+                            diagnostics::log("deep_link.window_not_found", "");
+                        }
+                    }
+                }
+            });
 
             #[cfg(target_os = "macos")]
             let tray_icon = include_image!("./icons/tray-template.png");

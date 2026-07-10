@@ -62,3 +62,11 @@ jobs:
 
       - name: Run target Clippy
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --all-targets -- -D warnings
+
+      - name: Install xcodegen (macOS only)
+        if: startsWith(matrix.platform, 'macos')
+        run: brew install xcodegen
+
+      - name: Build Widget Extension (macOS only)
+        if: startsWith(matrix.platform, 'macos')
+        run: node scripts/build-widget-extension.cjs

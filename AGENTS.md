@@ -1,156 +1,73 @@
-# GitaView PROJECT KNOWLEDGE BASE
+# GitaView
 
-**Updated:** 2026-07-09
-**Branch:** main
+Tauri 2 + Rust + React + TypeScript desktop Git status widget. Manages its own
+repo list; no dependency on `gita` CLI.
 
-## OVERVIEW
+## Commands
 
-GitaView is a cross-platform desktop Git repository status widget built with
-Tauri 2, Rust, React, TypeScript, and Vite.
-
-The app manages its own repository list, groups, settings, tray menu, and desktop
-widget window. It does not depend on `gita` CLI configuration.
-
-## STRUCTURE
-
-```text
-GitaView/
-├── AGENTS.md
-├── CODE_REVIEW_REPORT.md
-├── DESIGN_AND_BUILD_SPEC.md
-├── PRODUCT.md
-├── README.md
-├── docs/
-│   ├── native-desktop-widget-layer-plan.md
-│   ├── platform-acceptance-checklist.md
-│   ├── RELEASE_SIGNING.md
-│   └── superpowers/
-├── src/
-│   ├── components/
-│   │   ├── GroupFilters.tsx
-│   │   ├── RepoActions.tsx
-│   │   ├── RepoTable.tsx
-│   │   ├── StatusFilters.tsx
-│   │   ├── WidgetCollapsed.tsx
-│   │   ├── WidgetExpanded.tsx
-│   │   └── settings/
-│   ├── lib/
-│   │   ├── collapsedContextMenu.ts
-│   │   ├── collapsedSummary.ts
-│   │   ├── commands.ts
-│   │   ├── refreshGeneration.ts
-│   │   ├── repoSelection.ts
-│   │   ├── repositorySettingsView.ts
-│   │   ├── runtime.ts
-│   │   ├── settingsEvents.ts
-│   │   ├── settingsMutations.ts
-│   │   ├── sourceContract.ts
-│   │   ├── statusModel.ts
-│   │   ├── useWidgetView.ts
-│   │   ├── widgetTransition.ts
-│   │   ├── windowDrag.ts
-│   │   ├── windowMotion.ts
-│   │   └── ... (test & contract files)
-│   ├── styles/
-│   ├── App.tsx
-│   ├── main.tsx
-│   └── types.ts
-├── src-tauri/
-│   ├── capabilities/
-│   ├── icons/
-│   ├── src/
-│   │   ├── app_commands.rs
-│   │   ├── app_settings.rs
-│   │   ├── desktop_widget/
-│   │   ├── diagnostics.rs
-│   │   ├── domain/
-│   │   ├── git/
-│   │   │   ├── commands.rs
-│   │   │   ├── discovery.rs
-│   │   │   ├── remote.rs
-│   │   │   └── status_text.rs
-│   │   ├── lib.rs
-│   │   ├── main.rs
-│   │   ├── repo_operation.rs
-│   │   ├── repo_registry.rs
-│   │   ├── repo_status.rs
-│   │   ├── storage/
-│   │   ├── system_open.rs
-│   │   ├── tray_menu_rows.rs
-│   │   └── tray_status.rs
-│   ├── Cargo.toml
-│   └── tauri.conf.json
-└── AGENTS.md
+```bash
+npm ci                                  # install deps
+npm run tauri dev                       # dev mode (Vite + Tauri window)
+npm test                                # Vitest (frontend)
+npm run build                           # tsc --noEmit + vite build (this IS the typecheck)
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
 
-## WHERE TO LOOK
+CI validation order (ci.yml): `npm test` → `cargo test` → `cargo fmt --check`
+→ `cargo check --target <triple>` → `cargo clippy`. No Linux targets—macOS
+(aarch64 + x86_64) and Windows only.
 
-| Task | Location | Notes |
-|------|----------|-------|
-| Product overview | `PRODUCT.md` | Users, brand personality, design principles |
-| Product requirements | `DESIGN_AND_BUILD_SPEC.md` | v1 product and technical contract |
-| Widget view hook | `src/lib/useWidgetView.ts` | Widget modes, refresh lifecycle, native sizing, settings routing |
-| Tauri IPC wrappers | `src/lib/commands.ts` | Typed Tauri invoke wrappers for all backend commands |
-| Settings events | `src/lib/settingsEvents.ts` | Settings change event listeners and dispatchers |
-| Settings mutations | `src/lib/settingsMutations.ts` | Settings mutation helpers |
-| Root React flow | `src/App.tsx` | View switching between collapsed, expanded, and settings |
-| Status model | `src/lib/statusModel.ts` | Summary, sorting, filters, action availability |
-| Settings UI | `src/components/settings/` | Repository, group, refresh, safety, appearance |
-| Tauri command boundary | `src-tauri/src/app_commands.rs` | Fixed app commands exposed to React |
-| Git execution | `src-tauri/src/git/commands.rs` | Fixed-argument Git subprocess execution |
-| Native desktop layer | `src-tauri/src/desktop_widget/` | Windows and macOS widget attachment |
-| Persistence | `src-tauri/src/storage/store.rs` | Normalized atomic settings writes |
-| Tray menu | `src-tauri/src/tray_status.rs` | Async tray refresh and generation guard |
-| Collapsed summary | `src/lib/collapsedSummary.ts` | Collapsed widget summary computation and display |
-| Collapsed context menu | `src/lib/collapsedContextMenu.ts` | Collapsed widget right-click menu |
-| Refresh generation | `src/lib/refreshGeneration.ts` | Refresh token generation for deduplication |
-| Repository selection | `src/lib/repoSelection.ts` | Repository row selection state management |
-| Repository settings view | `src/lib/repositorySettingsView.ts` | Repository settings view routing |
-| Window drag | `src/lib/windowDrag.ts` | Custom window drag handling |
-| Window motion | `src/lib/windowMotion.ts` | Window resize and positioning logic |
-| Widget transition | `src/lib/widgetTransition.ts` | Collapsed/expanded widget transition state |
-| Source contract | `src/lib/sourceContract.ts` | Source code contract definitions |
-| Git discovery | `src-tauri/src/git/discovery.rs` | Recursive Git repository discovery |
-| Git remote | `src-tauri/src/git/remote.rs` | Remote URL normalization and parsing |
-| Git status text | `src-tauri/src/git/status_text.rs` | Git status text parsing |
+Release: push a `v*` tag. `release.yml` validates version + signing secrets,
+runs the same test suite, then builds signed installers via `tauri-apps/tauri-action`.
 
-## CONVENTIONS
+## Architecture
 
-### Tests
+| Layer | Key files | Notes |
+|-------|-----------|-------|
+| Tauri commands | `src-tauri/src/app_commands.rs` | All IPC commands exposed to React; fixed arg arrays only |
+| Git execution | `src-tauri/src/git/commands.rs` | Subprocess with fixed args; `run_git`, `run_git_args` |
+| Git worktree | `src-tauri/src/git/worktree.rs` | Preflight: Clean/Dirty/Conflicted/Detached |
+| Desktop widget | `src-tauri/src/desktop_widget/{macos,windows,unsupported}.rs` | Platform-conditional via `cfg(target_os)` |
+| Persistence | `src-tauri/src/storage/store.rs` | Atomic JSON writes (temp file + rename) |
+| Tray | `src-tauri/src/tray_status.rs` | Async refresh with generation guard |
+| Status model | `src/lib/statusModel.ts` | Sorting, filtering, bucketing, action availability |
+| React entry | `src/App.tsx` | Widget modes, refresh lifecycle |
+| Settings UI | `src/components/settings/` | Repo, group, refresh, safety, appearance |
+| Product spec | `DESIGN_AND_BUILD_SPEC.md` | v1 contract |
 
-- Frontend: Vitest, colocated as `src/**/*.test.{ts,tsx}`.
-- Backend: Rust inline `#[cfg(test)]` modules.
+Rust crate name is `gitaview_lib` (see `src-tauri/Cargo.toml` `[lib]`).
+Frontend package name in package.json is `gitaview`.
+
+## Tests
+
+- Frontend: Vitest, colocated `src/**/*.test.{ts,tsx}`. Many are boundary
+  contract tests verifying Tauri command shapes stay stable.
+- Backend: Rust `#[cfg(test)]` modules in most source files. Tests that touch
+  the filesystem use `unique_temp_dir()` for isolation—clean up after yourself.
 - Add regression tests before behavior fixes.
 
-### Styles
+## Styles
 
-- Use plain CSS or CSS Modules.
-- Do not use emoji as icons. Use consistent SVG icons.
-- Status must not be communicated by color alone. Include text labels and counts,
-  including screen-reader labels in compact views.
-- Hover and focus states must not move layout or content.
+- Plain CSS or CSS Modules only. No emoji icons—use SVG.
+- Status must not rely on color alone: include text labels and counts.
+- Hover/focus must not move layout or content.
 
-## V1 BOUNDARIES
+## v1 Boundaries
 
 ### Forbidden
 
-- Electron.
-- Embedded Python runtime.
-- Arbitrary shell command execution.
-- Dependency on `gita` CLI configuration.
-- Arbitrary command panels.
+Electron, embedded Python, arbitrary shell execution, `gita` CLI dependency,
+arbitrary command panels.
 
 ### Git Operations
 
-- Git subprocesses use fixed argument arrays only.
-- v1 manages the `origin` remote URL only. Other remote topologies are out of
-  scope.
-- Fetch is allowed when `origin` exists.
-- Pull always requires explicit confirmation because it can modify the working
-  tree.
-- Push always requires explicit confirmation and is available only for
-  `local_ahead` or `diverged` repositories.
-- The remote URL button is disabled when no browser-safe origin URL exists.
+- Fixed argument arrays only. v1 manages `origin` remote URL only.
+- Fetch: allowed when `origin` exists.
+- Pull: always requires explicit confirmation (modifies working tree).
+- Push: requires confirmation; available only for `local_ahead` or `diverged`.
+- Remote URL button disabled when no browser-safe origin URL exists.
 
 ### Status Model
 
@@ -160,36 +77,33 @@ GitaView/
 | `local_ahead` | yellow | Local has commits to push |
 | `remote_ahead` | yellow | Upstream has commits to pull |
 | `diverged` | red | Both sides have unique commits |
-| `no_remote` | gray | No supported origin comparison exists |
+| `no_remote` | gray | No supported origin comparison |
 
-`error` is an application read-failure state, not a sixth Git relation.
-
+`error` is an app read-failure state, not a sixth relation.
 `no_remote` must remain last in compact summaries, filters, and expanded lists.
 
-## COMMANDS
+## Native Desktop Widgets
 
-```bash
-# Install dependencies
-npm ci
+**Status:** Planning complete, implementation pending
 
-# Development mode
-npm run tauri dev
+**Detailed plan:** See `NATIVE_WIDGET_IMPLEMENTATION_PLAN.md`
 
-# Frontend
-npm test
-npm run build
+### macOS WidgetKit Widget
 
-# Rust
-cargo test --manifest-path src-tauri/Cargo.toml
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+- **Feasibility:** ✅ Feasible with Tauri + Xcode hybrid build
+- **Approach:** Swift/SwiftUI Widget Extension embedded in Tauri app bundle
+- **Data sharing:** Shared JSON file at `~/Library/Application Support/GitaView/widget-data.json`
+- **Deep linking:** `gitaview://` URL scheme to open app from widget
+- **Minimum system:** macOS 11.0 (Big Sur)
+- **Build:** `xcodebuild` via `beforeBundleCommand` in `tauri.conf.json`
+- **Key files:**
+  - `src-tauri/widget-extension/` - Widget Extension project (new)
+  - `src-tauri/src/widget_data.rs` - Data writer module (new)
+  - `src-tauri/tauri.conf.json` - Bundle config and deep link setup
 
-# Windows debug Tauri build
-npm run tauri -- build --debug --no-bundle
-```
+### Windows Widget
 
-## FINAL ACCEPTANCE
-
-Run frontend tests, Rust tests, Rust formatting, Clippy, frontend build, and a
-Tauri build before release. macOS native-layer compilation must also pass in the
-macOS release matrix.
+- **Status:** Keep current implementation (Progman/WorkerW reparenting)
+- **Reason:** Windows 11 Widgets Board has no public third-party extension API
+- **Current implementation:** `src-tauri/src/desktop_widget/windows.rs`
+- **Note:** This is already the best approach for third-party desktop widgets on Windows

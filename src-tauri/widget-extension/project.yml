@@ -1,0 +1,29 @@
+name: GitaViewWidget
+options:
+  bundleIdPrefix: com.gitaview.desktop
+  deploymentTarget:
+    macOS: "11.0"
+  xcodeVersion: "15.0"
+
+targets:
+  GitaViewWidgetExtension:
+    type: app-extension
+    platform: macOS
+    sources:
+      - GitaViewWidget
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gitaview.desktop.widget
+        INFOPLIST_FILE: GitaViewWidget/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        CURRENT_PROJECT_VERSION: 1
+        MARKETING_VERSION: 1.0
+        SWIFT_VERSION: "5.9"
+        ENABLE_HARDENED_RUNTIME: NO
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+        Release:
+          CODE_SIGN_IDENTITY: "-"
+    entitlements:
+      path: GitaViewWidget/GitaViewWidget.entitlements

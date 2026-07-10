@@ -159,6 +159,15 @@ pub fn refresh_tray_menu_async(app: AppHandle) {
                         format!("error_len={}", err.len()),
                     );
                 }
+
+                // 异步写入 widget 数据，不阻塞 tray 刷新
+                let statuses_clone = statuses.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    if let Err(err) = crate::widget_data::write_widget_data(&statuses_clone) {
+                        crate::diagnostics::log("widget_data.write_error", &err);
+                    }
+                });
+
                 crate::diagnostics::log_duration(
                     "tray.refresh.ok",
                     started.elapsed(),

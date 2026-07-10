@@ -7,6 +7,7 @@
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
+    "beforeBundleCommand": "node scripts/build-widget-extension.cjs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -43,7 +44,18 @@
       "timestampUrl": ""
     },
     "macOS": {
-      "minimumSystemVersion": "10.13"
+      "minimumSystemVersion": "11.0",
+      "files": {
+        "PlugIns/GitaViewWidgetExtension.appex": "widget-extension/build/Build/Products/Release/GitaViewWidgetExtension.appex"
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "mobile": [],
+      "desktop": {
+        "schemes": ["gitaview"]
+      }
     }
   }
 }
