@@ -21,3 +21,6 @@ src-tauri/widget-extension/build/
 src-tauri/widget-extension/GitaViewWidget.xcodeproj/
 src-tauri/widget-bridge/WidgetReloader.o
 src-tauri/widget-bridge/libWidgetReloader.a
+
+*.sync-conflict-*
+.venv/
