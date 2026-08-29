@@ -2,8 +2,10 @@ use crate::app_settings::{load_app_settings, save_app_settings};
 use crate::domain::repo::RepoStatusDto;
 use crate::domain::settings::AppSettings;
 use crate::git::commands::{
-    branch_state, origin_fetch_args, origin_pull_args, origin_push_args, run_git, run_git_args,
+    branch_state, origin_fetch_args, origin_pull_args, origin_push_args, run_git,
+    run_git_args_with_timeout, GIT_NETWORK_TIMEOUT,
 };
+use crate::git::operation_lock::try_acquire_repo_operation;
 use crate::git::remote::normalize_remote_url;
 use crate::repo_operation::{validate_repo_git_operation, RepoGitOperation};
 use crate::repo_registry::{find_repo, repo_id_from_path};
@@ -205,9 +207,10 @@ pub async fn fetch_repo(app: tauri::AppHandle, repo_id: String) -> Result<String
     let repo = find_repo(&settings, &repo_id)?;
     let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _operation = try_acquire_repo_operation(&repo_path)?;
         let state = branch_state(&repo_path)?;
         validate_repo_git_operation(RepoGitOperation::Fetch, state.relation, state.has_remote)?;
-        run_git_args(&repo_path, origin_fetch_args())
+        run_git_args_with_timeout(&repo_path, origin_fetch_args(), GIT_NETWORK_TIMEOUT)
     })
     .await
     .map_err(|err| err.to_string())??;
@@ -225,9 +228,14 @@ pub async fn pull_repo(
     let repo = find_repo(&settings, &repo_id)?;
     let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _operation = try_acquire_repo_operation(&repo_path)?;
         let state = branch_state(&repo_path)?;
         validate_repo_git_operation(RepoGitOperation::Pull, state.relation, state.has_remote)?;
-        run_git_args(&repo_path, origin_pull_args(&state.branch))
+        run_git_args_with_timeout(
+            &repo_path,
+            origin_pull_args(&state.branch),
+            GIT_NETWORK_TIMEOUT,
+        )
     })
     .await
     .map_err(|err| err.to_string())??;
@@ -245,9 +253,14 @@ pub async fn push_repo(
     let repo = find_repo(&settings, &repo_id)?;
     let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _operation = try_acquire_repo_operation(&repo_path)?;
         let state = branch_state(&repo_path)?;
         validate_repo_git_operation(RepoGitOperation::Push, state.relation, state.has_remote)?;
-        run_git_args(&repo_path, origin_push_args(&state.branch))
+        run_git_args_with_timeout(
+            &repo_path,
+            origin_push_args(&state.branch),
+            GIT_NETWORK_TIMEOUT,
+        )
     })
     .await
     .map_err(|err| err.to_string())??;

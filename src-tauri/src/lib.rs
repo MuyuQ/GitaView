@@ -19,6 +19,7 @@ pub mod domain {
 pub mod git {
     pub mod commands;
     pub mod discovery;
+    pub mod operation_lock;
     pub mod remote;
     pub mod status_text;
 }
