@@ -2,13 +2,15 @@ import { useEffect, useState } from "react";
 import { getSettings } from "../../lib/commands";
 import { notifySettingsUpdated, subscribeToSettingsUpdates } from "../../lib/settingsEvents";
 import { queueSettingsUpdate } from "../../lib/settingsMutations";
+import { errorMessage, okMessage, type SettingsMessage as SettingsMessageState } from "../../lib/settingsMessage";
 import type { AppSettings } from "../../types";
+import { SettingsMessage } from "./SettingsMessage";
 
 export function RefreshSettings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [enabled, setEnabled] = useState(true);
   const [intervalMinutes, setIntervalMinutes] = useState(5);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<SettingsMessageState>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -18,7 +20,7 @@ export function RefreshSettings() {
         setEnabled(nextSettings.refresh.lightweightRefreshEnabled);
         setIntervalMinutes(nextSettings.refresh.intervalMinutes);
       })
-      .catch((err) => setMessage(`加载刷新设置失败：${err}`));
+      .catch((err) => setMessage(errorMessage("加载刷新设置失败", err)));
     return subscribeToSettingsUpdates(setSettings);
   }, []);
 
@@ -38,9 +40,9 @@ export function RefreshSettings() {
       setSettings(savedSettings);
       notifySettingsUpdated(savedSettings);
       setIntervalMinutes(safeInterval);
-      setMessage("刷新设置已保存");
+      setMessage(okMessage("刷新设置已保存"));
     } catch (err) {
-      setMessage(`保存失败：${err}`);
+      setMessage(errorMessage("保存失败", err));
     } finally {
       setBusy(false);
     }
@@ -66,7 +68,7 @@ export function RefreshSettings() {
         />
       </div>
       <button className="settings-save" onClick={handleSave} disabled={busy || !settings}>保存刷新设置</button>
-      {message && <p className="settings-message" role="status">{message}</p>}
+      <SettingsMessage message={message} />
     </section>
   );
 }

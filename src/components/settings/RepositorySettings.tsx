@@ -4,7 +4,14 @@ import { addRepository, getSettings, openRepoDirectory, removeRepository, scanDi
 import { getRepositoryDisplayText, nextRevealedRepoId } from "../../lib/repositorySettingsView";
 import { notifySettingsUpdated, subscribeToSettingsUpdates } from "../../lib/settingsEvents";
 import { queueSettingsUpdate } from "../../lib/settingsMutations";
+import {
+  errorMessage,
+  errorMessageText,
+  okMessage,
+  type SettingsMessage as SettingsMessageState,
+} from "../../lib/settingsMessage";
 import type { AppSettings, GroupRecord, RepoRecord } from "../../types";
+import { SettingsMessage } from "./SettingsMessage";
 
 export function RepositorySettings() {
   const [repos, setRepos] = useState<RepoRecord[]>([]);
@@ -12,7 +19,7 @@ export function RepositorySettings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [path, setPath] = useState("");
   const [scanResults, setScanResults] = useState<string[]>([]);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<SettingsMessageState>(null);
   const [scanBusy, setScanBusy] = useState(false);
   const [addBusy, setAddBusy] = useState(false);
   const [repoActionBusyId, setRepoActionBusyId] = useState<string | null>(null);
@@ -42,13 +49,13 @@ export function RepositorySettings() {
   }
 
   useEffect(() => {
-    reload().catch((err) => setMessage(`加载设置失败：${err}`));
+    reload().catch((err) => setMessage(errorMessage("加载设置失败", err)));
     return subscribeToSettingsUpdates(applySettings);
   }, []);
 
   async function handleScan() {
     if (!path.trim()) {
-      setMessage("请输入要扫描的目录路径");
+      setMessage(errorMessageText("请输入要扫描的目录路径"));
       return;
     }
     setScanBusy(true);
@@ -56,9 +63,9 @@ export function RepositorySettings() {
     try {
       const results = await scanDirectory(path.trim());
       setScanResults(results);
-      setMessage(`发现 ${results.length} 个仓库`);
+      setMessage(okMessage(`发现 ${results.length} 个仓库`));
     } catch (err) {
-      setMessage(`扫描失败：${err}`);
+      setMessage(errorMessage("扫描失败", err));
     } finally {
       setScanBusy(false);
     }
@@ -66,7 +73,7 @@ export function RepositorySettings() {
 
   async function handleAdd(targetPath = path.trim()) {
     if (!targetPath) {
-      setMessage("请输入仓库路径");
+      setMessage(errorMessageText("请输入仓库路径"));
       return;
     }
     setAddBusy(true);
@@ -77,9 +84,9 @@ export function RepositorySettings() {
       setScanResults((prev) => prev.filter((p) => p !== targetPath));
       const nextSettings = await reload();
       notifySettingsUpdated(nextSettings);
-      setMessage("仓库已添加");
+      setMessage(okMessage("仓库已添加"));
     } catch (err) {
-      setMessage(`添加失败：${err}`);
+      setMessage(errorMessage("添加失败", err));
     } finally {
       setAddBusy(false);
     }
@@ -94,9 +101,9 @@ export function RepositorySettings() {
       setRevealedRepoId((current) => (current === repoId ? null : current));
       const nextSettings = await reload();
       notifySettingsUpdated(nextSettings);
-      setMessage("仓库已移除");
+      setMessage(okMessage("仓库已移除"));
     } catch (err) {
-      setMessage(`移除失败：${err}`);
+      setMessage(errorMessage("移除失败", err));
     } finally {
       setRepoActionBusyId(null);
     }
@@ -108,9 +115,9 @@ export function RepositorySettings() {
     setMessage(null);
     try {
       await openRepoDirectory(repoId);
-      setMessage("已打开目录");
+      setMessage(okMessage("已打开目录"));
     } catch (err) {
-      setMessage(`打开失败：${err}`);
+      setMessage(errorMessage("打开失败", err));
     } finally {
       setRepoActionBusyId(null);
     }
@@ -137,9 +144,9 @@ export function RepositorySettings() {
       });
       applySettings(savedSettings);
       notifySettingsUpdated(savedSettings);
-      setMessage("分组已更新");
+      setMessage(okMessage("分组已更新"));
     } catch (err) {
-      setMessage(`更新分组失败：${err}`);
+      setMessage(errorMessage("更新分组失败", err));
     } finally {
       setRepoActionBusyId(null);
     }
@@ -219,7 +226,7 @@ export function RepositorySettings() {
             <button className="primary" onClick={() => handleAdd()} disabled={addBusy}>添加仓库</button>
           </div>
         </div>
-        {message && <p className="settings-message" role="status">{message}</p>}
+        <SettingsMessage message={message} />
         {scanResults.length > 0 && (
           <div className="settings-scan-results">
             {scanResults.map((result) => (
