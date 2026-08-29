@@ -184,6 +184,13 @@ pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusD
         }
         Ok(true) => {}
     }
+    // 前端刷新路径同样更新 widget 数据，保证桌面 widget 不落后于窗口/托盘
+    let widget_statuses = statuses.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(err) = crate::widget_data::write_widget_data(&widget_statuses) {
+            crate::diagnostics::log("widget_data.write_error", &err);
+        }
+    });
     crate::diagnostics::log_duration(
         "command.list_repo_statuses.ok",
         started.elapsed(),

@@ -79,10 +79,10 @@ pub fn run() {
                     if url.scheme() == "gitaview" {
                         if let Some(window) = handle.get_webview_window("main") {
                             if let Err(err) = window.show() {
-                                diagnostics::log("deep_link.show_error", &err.to_string());
+                                diagnostics::log("deep_link.show_error", err.to_string());
                             }
                             if let Err(err) = window.set_focus() {
-                                diagnostics::log("deep_link.focus_error", &err.to_string());
+                                diagnostics::log("deep_link.focus_error", err.to_string());
                             }
                         } else {
                             diagnostics::log("deep_link.window_not_found", "");
