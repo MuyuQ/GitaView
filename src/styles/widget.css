@@ -95,6 +95,13 @@
   font-family: "JetBrains Mono", "SF Mono", "Cascadia Mono", monospace;
 }
 
+/* 折叠态刷新失败提示：文字 + 琥珀点，避免过期数据毫无征兆 */
+.summary-item.stale-item {
+  color: var(--gv-amber);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .status-dot {
   width: 4px;
   height: 4px;
@@ -504,6 +511,12 @@
   font-size: 11px;
   color: var(--gv-green);
   margin-left: 4px;
+}
+
+/* 操作失败必须与成功在颜色和语义上均可区分 */
+.action-result.action-result-error {
+  color: var(--gv-red);
+  font-weight: 600;
 }
 
 .action-warning {
