@@ -2,27 +2,30 @@ import { describe, expect, it } from "vitest";
 import { readProjectFile } from "./sourceContract";
 
 describe("settings save freshness contract", () => {
-  const cases = [
-    {
-      path: "src/components/settings/RefreshSettings.tsx",
-      field: "refresh:",
-    },
-    {
-      path: "src/components/settings/SafetySettings.tsx",
-      field: "safety:",
-    },
-    {
-      path: "src/components/settings/AppearanceSettings.tsx",
-      field: "appearance:",
-    },
+  const savingComponents = [
+    "src/components/settings/RepositorySettings.tsx",
+    "src/components/settings/GroupSettings.tsx",
+    "src/components/settings/RefreshSettings.tsx",
+    "src/components/settings/AppearanceSettings.tsx",
   ];
 
-  it.each(cases)("reloads latest settings before saving $path", ({ path, field }) => {
-    const source = readProjectFile(path);
-    const saveBody = source.match(/async function handleSave\(\) \{[\s\S]*?\n  \}/)?.[0] ?? "";
+  it("serializes persistence against freshly loaded settings in the shared queue", () => {
+    const queue = readProjectFile("src/lib/settingsMutations.ts");
 
-    expect(saveBody).toContain("const latestSettings = await getSettings();");
-    expect(saveBody).toContain("...latestSettings,");
-    expect(saveBody).toContain(field);
+    expect(queue).toContain("persistSettings(patch(await loadSettings()))");
+    expect(queue).toMatch(/pending\.then/);
+  });
+
+  it.each(savingComponents)("routes $path through the serialized update queue", (path) => {
+    const source = readProjectFile(path);
+
+    expect(source).toContain("queueSettingsUpdate(");
+    expect(source).not.toMatch(/[^.]saveSettings\(/);
+  });
+
+  it.each(savingComponents)("builds the patch from the latest-settings argument in $path", (path) => {
+    const source = readProjectFile(path);
+
+    expect(source).toContain("(currentSettings)");
   });
 });
