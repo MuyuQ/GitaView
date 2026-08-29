@@ -380,6 +380,12 @@
   font-size: 12px;
 }
 
+/* 设置操作失败必须与成功提示可区分 */
+.settings-message.settings-message-error {
+  color: var(--gv-red);
+  font-weight: 600;
+}
+
 .settings-scan-results {
   display: grid;
   gap: 6px;

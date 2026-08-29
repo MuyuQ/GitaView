@@ -2,18 +2,25 @@ import { useEffect, useState } from "react";
 import { getSettings } from "../../lib/commands";
 import { notifySettingsUpdated, subscribeToSettingsUpdates } from "../../lib/settingsEvents";
 import { queueSettingsUpdate } from "../../lib/settingsMutations";
+import {
+  errorMessage,
+  errorMessageText,
+  okMessage,
+  type SettingsMessage as SettingsMessageState,
+} from "../../lib/settingsMessage";
 import type { AppSettings } from "../../types";
+import { SettingsMessage } from "./SettingsMessage";
 
 export function GroupSettings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [name, setName] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<SettingsMessageState>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     getSettings()
       .then(setSettings)
-      .catch((err) => setMessage(`加载分组失败：${err}`));
+      .catch((err) => setMessage(errorMessage("加载分组失败", err)));
     return subscribeToSettingsUpdates(setSettings);
   }, []);
 
@@ -24,9 +31,9 @@ export function GroupSettings() {
       const savedSettings = await queueSettingsUpdate(patch);
       setSettings(savedSettings);
       notifySettingsUpdated(savedSettings);
-      setMessage(successMessage);
+      setMessage(okMessage(successMessage));
     } catch (err) {
-      setMessage(`保存失败：${err}`);
+      setMessage(errorMessage("保存失败", err));
     } finally {
       setBusy(false);
     }
@@ -36,11 +43,11 @@ export function GroupSettings() {
     if (!settings) return;
     const groupName = name.trim();
     if (!groupName) {
-      setMessage("请输入分组名称");
+      setMessage(errorMessageText("请输入分组名称"));
       return;
     }
     if (settings.groups.some((group) => group.name === groupName)) {
-      setMessage("这个分组已经存在");
+      setMessage(errorMessageText("这个分组已经存在"));
       return;
     }
     await persist(
@@ -80,7 +87,7 @@ export function GroupSettings() {
         />
         <button className="primary" onClick={handleCreate} disabled={busy || !settings}>新增分组</button>
       </div>
-      {message && <p className="settings-message" role="status">{message}</p>}
+      <SettingsMessage message={message} />
       <div className="settings-list">
         {settings?.groups.map((group) => (
           <article className="settings-group" key={group.name}>

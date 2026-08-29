@@ -7,6 +7,8 @@ import type { RepoStatus } from "../types";
 export function WidgetCollapsed({
   repos,
   allowDrag,
+  refreshError = null,
+  lastRefreshAt = null,
   onExpand,
   onStartDrag,
   onRefresh,
@@ -14,6 +16,8 @@ export function WidgetCollapsed({
 }: {
   repos: RepoStatus[];
   allowDrag: boolean;
+  refreshError?: string | null;
+  lastRefreshAt?: Date | null;
   onExpand: () => void;
   onStartDrag: () => void;
   onRefresh: () => void;
@@ -27,6 +31,11 @@ export function WidgetCollapsed({
     needs_attention: "status-dot red",
     no_remote: "status-dot slate",
   } as const;
+
+  // 折叠态下后台刷新失败时，明确提示数据已停更，避免展示过期数据却毫无征兆
+  const staleTitle = refreshError
+    ? `数据未更新${lastRefreshAt ? `（上次刷新 ${lastRefreshAt.toLocaleTimeString("zh-CN", { hour12: false })}）` : ""}：${refreshError}`
+    : null;
 
   function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
     if (!shouldStartCollapsedDrag(allowDrag, event.button)) return;
@@ -83,6 +92,12 @@ export function WidgetCollapsed({
         <span className="repo-word">仓库</span>
         <span className="total">{repos.length}</span>
         <span className="summary">
+          {staleTitle && (
+            <span className="summary-item stale-item" role="status" title={staleTitle}>
+              <span className="status-dot amber" aria-hidden="true" />
+              <span>数据未更新</span>
+            </span>
+          )}
           {summary.map((item) => (
             <span className="summary-item" key={item.bucket}>
               <span className={colorClass[item.bucket]} aria-hidden="true" />

@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { getSettings } from "../../lib/commands";
 import { notifySettingsUpdated, subscribeToSettingsUpdates } from "../../lib/settingsEvents";
 import { queueSettingsUpdate } from "../../lib/settingsMutations";
+import { errorMessage, okMessage, type SettingsMessage as SettingsMessageState } from "../../lib/settingsMessage";
 import type { AppSettings } from "../../types";
+import { SettingsMessage } from "./SettingsMessage";
 
 export function AppearanceSettings() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [allowWidgetDrag, setAllowWidgetDrag] = useState(true);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<SettingsMessageState>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -16,7 +18,7 @@ export function AppearanceSettings() {
         setSettings(nextSettings);
         setAllowWidgetDrag(nextSettings.appearance.allowWidgetDrag);
       })
-      .catch((err) => setMessage(`加载外观设置失败：${err}`));
+      .catch((err) => setMessage(errorMessage("加载外观设置失败", err)));
     return subscribeToSettingsUpdates(setSettings);
   }, []);
 
@@ -31,9 +33,9 @@ export function AppearanceSettings() {
       }));
       setSettings(savedSettings);
       notifySettingsUpdated(savedSettings);
-      setMessage("外观设置已保存");
+      setMessage(okMessage("外观设置已保存"));
     } catch (err) {
-      setMessage(`保存失败：${err}`);
+      setMessage(errorMessage("保存失败", err));
     } finally {
       setBusy(false);
     }
@@ -53,7 +55,7 @@ export function AppearanceSettings() {
         </label>
       </div>
       <button className="settings-save" onClick={handleSave} disabled={busy || !settings}>保存外观设置</button>
-      {message && <p className="settings-message" role="status">{message}</p>}
+      <SettingsMessage message={message} />
     </section>
   );
 }
