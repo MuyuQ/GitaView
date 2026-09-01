@@ -2,14 +2,22 @@ use crate::domain::repo::RepoStatusDto;
 use crate::tray_menu_rows::{
     error_tray_rows, loading_tray_rows, tray_status_rows, TrayMenuRow, TrayMenuRowKind,
 };
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use tauri::menu::{Menu, MenuBuilder, MenuItem};
 use tauri::{AppHandle, Manager, Runtime};
 
 pub const MAIN_TRAY_ID: &str = "main-tray";
 pub use crate::tray_menu_rows::{TRAY_QUIT_ID, TRAY_REFRESH_ID, TRAY_SHOW_ID};
 
-static TRAY_MENU_GENERATION: AtomicU64 = AtomicU64::new(0);
+/// 托盘菜单代数：用 Mutex 而非原子量，让"检查代数 + 应用菜单"成为原子序列，
+/// 消除检查与应用之间被并发更新插入的竞态窗口。
+static TRAY_MENU_GENERATION: Mutex<u64> = Mutex::new(0);
+
+fn lock_tray_generation() -> std::sync::MutexGuard<'static, u64> {
+    TRAY_MENU_GENERATION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 fn build_menu_from_rows<R: Runtime, M: Manager<R>>(
     manager: &M,
@@ -77,7 +85,9 @@ pub fn set_status_menu_if_current(
     generation: u64,
     statuses: &[RepoStatusDto],
 ) -> Result<bool, String> {
-    if !is_current_tray_menu_generation(generation) {
+    // 在同一把锁内完成"检查代数 + 应用菜单"，保证不会用过期状态覆盖新菜单
+    let current = lock_tray_generation();
+    if *current != generation {
         return Ok(false);
     }
     set_status_menu_inner(app, statuses)?;
@@ -133,15 +143,15 @@ pub fn refresh_tray_menu_async(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let started = std::time::Instant::now();
         crate::diagnostics::log("tray.refresh.start", format!("generation={generation}"));
-        let result = match crate::app_settings::load_app_settings(&app) {
-            Ok(settings) => tauri::async_runtime::spawn_blocking(move || {
-                crate::repo_status::collect_repo_statuses(settings.repos)
-            })
-            .await
-            .map_err(|err| err.to_string())
-            .and_then(|inner| inner),
-            Err(err) => Err(err),
-        };
+        // 设置加载与状态收集同在阻塞线程池执行
+        let app_for_task = app.clone();
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            crate::app_settings::load_app_settings(&app_for_task)
+                .and_then(|settings| crate::repo_status::collect_repo_statuses(settings.repos))
+        })
+        .await
+        .map_err(|err| err.to_string())
+        .and_then(|inner| inner);
 
         match result {
             Ok(statuses) => {
@@ -201,11 +211,13 @@ pub fn refresh_tray_menu_async(app: AppHandle) {
 }
 
 fn next_tray_menu_generation() -> u64 {
-    TRAY_MENU_GENERATION.fetch_add(1, Ordering::AcqRel) + 1
+    let mut current = lock_tray_generation();
+    *current += 1;
+    *current
 }
 
 fn is_current_tray_menu_generation(generation: u64) -> bool {
-    TRAY_MENU_GENERATION.load(Ordering::Acquire) == generation
+    *lock_tray_generation() == generation
 }
 
 #[cfg(test)]
