@@ -1,5 +1,11 @@
 use crate::domain::settings::AppSettings;
+use std::sync::Mutex;
 use tauri::Manager;
+
+/// 串行化所有设置读-改-写序列：
+/// 两个并发变更命令（如设置保存与添加仓库）交错 load/save 时会互相覆盖，
+/// 该锁保证整个"读取 → 修改 → 保存"序列的原子性。
+static SETTINGS_MUTATION_LOCK: Mutex<()> = Mutex::new(());
 
 pub fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(app
@@ -7,6 +13,20 @@ pub fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, Strin
         .app_data_dir()
         .map_err(|err| err.to_string())?
         .join("settings.json"))
+}
+
+/// 在锁保护下完成一次设置的读-改-写，返回保存后的（normalized）设置。
+/// mutate 闭包内不得再次调用 load/save。
+pub fn mutate_app_settings(
+    app: &tauri::AppHandle,
+    mutate: impl FnOnce(&mut AppSettings) -> Result<(), String>,
+) -> Result<AppSettings, String> {
+    let _guard = SETTINGS_MUTATION_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut settings = load_app_settings(app)?;
+    mutate(&mut settings)?;
+    save_app_settings(app, &settings)
 }
 
 pub fn load_app_settings(app: &tauri::AppHandle) -> Result<AppSettings, String> {

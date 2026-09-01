@@ -13,8 +13,6 @@
     "core:window:allow-set-position",
     "core:window:allow-set-size",
     "core:window:allow-start-dragging",
-    "dialog:allow-open",
-    "deep-link:allow-get-current",
-    "deep-link:allow-register"
+    "dialog:allow-open"
   ]
 }

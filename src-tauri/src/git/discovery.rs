@@ -1,7 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 const MAX_SCAN_DEPTH: usize = 8;
+/// 扫描条目预算：指向磁盘根目录等超大树时避免无界遍历
+const MAX_SCAN_ENTRIES: usize = 200_000;
+/// 扫描时间预算
+const SCAN_DEADLINE: Duration = Duration::from_secs(15);
 
 pub fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
@@ -14,26 +19,70 @@ fn should_skip_dir(path: &Path) -> bool {
             "node_modules"
                 | "target"
                 | ".venv"
+                | "venv"
                 | "dist"
                 | "build"
                 | ".next"
                 | ".cache"
                 | ".turbo"
                 | ".gradle"
-                | "vendor",
+                | "vendor"
+                | ".git"
+                | ".svn"
+                | ".hg"
+                | "Library"
+                | "AppData"
+                | ".Trash"
+                | ".cargo"
+                | ".rustup"
+                | ".npm"
+                | ".pnpm-store"
+                | ".yarn"
+                | "$RECYCLE.BIN"
+                | "System Volume Information",
         )
     )
 }
 
+/// 扫描预算：条目计数 + 死线，二者任一耗尽即停止深入
+struct ScanBudget {
+    deadline: Instant,
+    visited: usize,
+}
+
+impl ScanBudget {
+    fn new() -> Self {
+        Self {
+            deadline: Instant::now() + SCAN_DEADLINE,
+            visited: 0,
+        }
+    }
+
+    fn exhausted(&mut self) -> bool {
+        self.visited += 1;
+        self.visited > MAX_SCAN_ENTRIES || Instant::now() >= self.deadline
+    }
+}
+
+/// 检查路径是否在转换字符串时发生了有损替换（U+FFFD）。
+/// 含未配对代理字符的 Windows 路径若不拦截，入库后将成为无法使用的坏路径。
+pub fn contains_lossy_replacement(path: &Path) -> bool {
+    path.to_string_lossy().contains('\u{FFFD}')
+}
+
 pub fn scan_repositories(root: &Path) -> Vec<PathBuf> {
+    scan_with_budget(root, ScanBudget::new())
+}
+
+fn scan_with_budget(root: &Path, mut budget: ScanBudget) -> Vec<PathBuf> {
     let mut found = Vec::new();
-    scan_inner(root, &mut found, 0);
+    scan_inner(root, &mut found, 0, &mut budget);
     found.sort();
     found
 }
 
-fn scan_inner(path: &Path, found: &mut Vec<PathBuf>, depth: usize) {
-    if depth > MAX_SCAN_DEPTH {
+fn scan_inner(path: &Path, found: &mut Vec<PathBuf>, depth: usize, budget: &mut ScanBudget) {
+    if depth > MAX_SCAN_DEPTH || budget.exhausted() {
         return;
     }
     if is_git_repo(path) {
@@ -54,7 +103,10 @@ fn scan_inner(path: &Path, found: &mut Vec<PathBuf>, depth: usize) {
             continue;
         }
         if metadata.is_dir() && !should_skip_dir(&child) {
-            scan_inner(&child, found, depth + 1);
+            scan_inner(&child, found, depth + 1, budget);
+            if Instant::now() >= budget.deadline {
+                return;
+            }
         }
     }
 }
@@ -110,5 +162,51 @@ mod tests {
         let found = scan_repositories(&temp);
         assert!(found.is_empty());
         let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn scan_stops_when_entry_budget_is_exhausted() {
+        let temp = std::env::temp_dir().join("gitaview_scan_budget_test");
+        let _ = fs::remove_dir_all(&temp);
+        for index in 0..20 {
+            fs::create_dir_all(temp.join(format!("repo-{index}/.git"))).unwrap();
+        }
+        // 预算几乎耗尽：只能再访问极少数目录
+        let budget = ScanBudget {
+            deadline: Instant::now() + SCAN_DEADLINE,
+            visited: MAX_SCAN_ENTRIES.saturating_sub(4),
+        };
+        let found = scan_with_budget(&temp, budget);
+        assert!(
+            found.len() < 20,
+            "budget exhaustion must stop the scan early (found {})",
+            found.len()
+        );
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn scan_stops_when_deadline_has_passed() {
+        let temp = std::env::temp_dir().join("gitaview_scan_deadline_test");
+        let _ = fs::remove_dir_all(&temp);
+        for index in 0..5 {
+            fs::create_dir_all(temp.join(format!("repo-{index}/.git"))).unwrap();
+        }
+        let budget = ScanBudget {
+            deadline: Instant::now() - Duration::from_secs(1),
+            visited: 0,
+        };
+        let found = scan_with_budget(&temp, budget);
+        assert!(found.is_empty(), "expired deadline must stop the scan");
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn lossy_path_detection_flags_unpaired_bytes() {
+        use std::os::unix::ffi::OsStrExt;
+        let lossy = PathBuf::from(std::ffi::OsStr::from_bytes(b"bad-\xff-path"));
+        assert!(contains_lossy_replacement(&lossy));
+        assert!(!contains_lossy_replacement(Path::new("good-path")));
     }
 }
