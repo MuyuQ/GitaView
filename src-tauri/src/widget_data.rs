@@ -96,6 +96,17 @@ static WRITE_STATE: Mutex<WidgetWriteState> = Mutex::new(WidgetWriteState {
     flush_scheduled: false,
 });
 
+/// 落盘互斥：同一时刻只允许一个写入者，且写入者在自己回合开始时
+/// 取走当前最新的 pending —— 结构上保证文件永远不会被更旧的数据回写。
+/// WRITE_STATE 锁只保护元数据读写，绝不跨文件 I/O。
+static WRITE_IO_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock_write_io() -> std::sync::MutexGuard<'static, ()> {
+    WRITE_IO_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 enum FlushDecision {
     Now,
     Defer(Duration),
@@ -119,67 +130,62 @@ fn flush_decision(last_write: Option<Instant>, now: Instant) -> FlushDecision {
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 fn enqueue_widget_write(path: PathBuf, statuses: Vec<RepoStatusDto>) -> Result<(), String> {
     let now = Instant::now();
-    let mut state = WRITE_STATE.lock().map_err(|e| e.to_string())?;
-    state.pending = Some(statuses);
-
-    match flush_decision(state.last_write, now) {
-        FlushDecision::Defer(remaining) => {
-            // trailing-edge：窗口结束后补写最新数据
-            if !state.flush_scheduled {
-                state.flush_scheduled = true;
-                std::thread::spawn(move || {
-                    std::thread::sleep(remaining);
-                    if let Err(err) = flush_pending_widget_write(path) {
-                        crate::diagnostics::log("widget_data.deferred_write_error", &err);
-                    }
-                });
+    {
+        let mut state = WRITE_STATE.lock().map_err(|e| e.to_string())?;
+        state.pending = Some(statuses);
+        match flush_decision(state.last_write, now) {
+            FlushDecision::Defer(remaining) => {
+                // trailing-edge：窗口结束后由延迟写入者补写最新数据
+                if !state.flush_scheduled {
+                    state.flush_scheduled = true;
+                    std::thread::spawn(move || {
+                        std::thread::sleep(remaining);
+                        if let Ok(mut state) = WRITE_STATE.lock() {
+                            state.flush_scheduled = false;
+                        }
+                        if let Err(err) = perform_widget_write(path) {
+                            crate::diagnostics::log("widget_data.deferred_write_error", &err);
+                        }
+                    });
+                }
+                return Ok(());
             }
-            Ok(())
-        }
-        FlushDecision::Now => {
-            let pending = state.pending.take();
-            let write_result = match &pending {
-                Some(statuses) => write_widget_data_to(&path, statuses),
-                None => Ok(()),
-            };
-            match &write_result {
-                Ok(()) => state.last_write = Some(now),
-                Err(_) => state.pending = pending,
-            }
-            drop(state);
-            write_result?;
-            notify_widget_refresh();
-            Ok(())
+            FlushDecision::Now => {}
         }
     }
+    // WRITE_STATE 已释放；实际落盘在 I/O 锁内取走最新 pending
+    perform_widget_write(path)
 }
 
+/// 串行化落盘：取走最新 pending 写入；失败时若期间没有更新的数据入队，
+/// 则保留待写数据等待下次重试。
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-fn flush_pending_widget_write(path: PathBuf) -> Result<(), String> {
+fn perform_widget_write(path: PathBuf) -> Result<(), String> {
+    let _io = lock_write_io();
     let pending = {
         let mut state = WRITE_STATE.lock().map_err(|e| e.to_string())?;
-        state.flush_scheduled = false;
         state.pending.take()
     };
     let Some(statuses) = pending else {
         return Ok(());
     };
-    match write_widget_data_to(&path, &statuses) {
+    let result = write_widget_data_to(&path, &statuses);
+    match &result {
         Ok(()) => {
             if let Ok(mut state) = WRITE_STATE.lock() {
                 state.last_write = Some(Instant::now());
             }
             notify_widget_refresh();
-            Ok(())
         }
-        Err(err) => {
-            // 保留待写数据，等待下一次刷新重试
+        Err(_) => {
             if let Ok(mut state) = WRITE_STATE.lock() {
-                state.pending = Some(statuses);
+                if state.pending.is_none() {
+                    state.pending = Some(statuses);
+                }
             }
-            Err(err)
         }
     }
+    result
 }
 
 /// 原子写入：临时文件 + fsync + rename，失败时清理临时文件
@@ -266,7 +272,11 @@ mod tests {
     use super::*;
     use crate::domain::repo::RepoStatusDto;
     use crate::domain::status::RemoteRelation;
+    use std::sync::Mutex;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// 涉及全局 WRITE_STATE 的测试用它串行执行
+    static WIDGET_TEST_SERIAL: Mutex<()> = Mutex::new(());
 
     fn unique_temp_dir(name: &str) -> std::path::PathBuf {
         let suffix = SystemTime::now()
@@ -411,34 +421,73 @@ mod tests {
 
     #[test]
     fn enqueue_widget_write_defers_within_window_then_trailing_flush_writes_latest() {
+        let _serial = WIDGET_TEST_SERIAL.lock().unwrap();
         let temp = unique_temp_dir("gitaview_widget_defer_test");
         let path = temp.join("nested").join("widget-data.json");
 
         // 模拟刚写过：进入防抖窗口，数据只入队，不落盘
-        {
-            let mut state = WRITE_STATE.lock().unwrap();
-            state.last_write = Some(Instant::now());
-            state.pending = None;
-            state.flush_scheduled = false;
-        }
+        reset_widget_write_state_for_tests(Some(Instant::now()));
         enqueue_widget_write(path.clone(), vec![make_status("a", RemoteRelation::Synced)])
             .expect("enqueue should succeed");
         assert!(!path.exists(), "deferred write must not land immediately");
 
         // 手动触发 trailing flush：写入的是入队的最新数据
-        flush_pending_widget_write(path.clone()).expect("trailing flush should succeed");
+        perform_widget_write(path.clone()).expect("trailing flush should succeed");
         let text = fs::read_to_string(&path).expect("widget data file should exist");
         let value: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(value["summary"]["total"], 1);
 
         // 恢复全局状态，避免影响其他测试
-        {
-            let mut state = WRITE_STATE.lock().unwrap();
-            state.last_write = None;
-            state.pending = None;
-            state.flush_scheduled = false;
-        }
+        reset_widget_write_state_for_tests(None);
         let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn enqueue_widget_write_flushes_immediately_without_history() {
+        let _serial = WIDGET_TEST_SERIAL.lock().unwrap();
+        let temp = unique_temp_dir("gitaview_widget_immediate_test");
+        let path = temp.join("widget-data.json");
+
+        reset_widget_write_state_for_tests(None);
+        enqueue_widget_write(path.clone(), vec![make_status("a", RemoteRelation::Synced)])
+            .expect("enqueue should succeed");
+
+        assert!(path.exists(), "immediate write must land right away");
+        let text = fs::read_to_string(&path).expect("widget data file should exist");
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["summary"]["total"], 1);
+
+        {
+            let state = WRITE_STATE.lock().unwrap();
+            assert!(state.pending.is_none(), "pending must be consumed");
+            assert!(state.last_write.is_some(), "last_write must be recorded");
+        }
+
+        reset_widget_write_state_for_tests(None);
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn perform_widget_write_without_pending_is_a_noop() {
+        let _serial = WIDGET_TEST_SERIAL.lock().unwrap();
+        let temp = unique_temp_dir("gitaview_widget_noop_flush_test");
+        let path = temp.join("widget-data.json");
+
+        reset_widget_write_state_for_tests(None);
+        perform_widget_write(path.clone()).expect("no pending should be a no-op");
+
+        assert!(!path.exists());
+        reset_widget_write_state_for_tests(None);
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    /// 测试间隔离全局状态：记录 last_write 供防抖判定，其余清零。
+    /// WRITE_STATE 是进程级全局状态，涉及它的测试必须先取 WIDGET_TEST_SERIAL。
+    fn reset_widget_write_state_for_tests(last_write: Option<Instant>) {
+        let mut state = WRITE_STATE.lock().unwrap();
+        state.last_write = last_write;
+        state.pending = None;
+        state.flush_scheduled = false;
     }
 
     #[test]
