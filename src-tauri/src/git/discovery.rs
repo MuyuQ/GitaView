@@ -95,6 +95,10 @@ fn scan_inner(path: &Path, found: &mut Vec<PathBuf>, depth: usize, budget: &mut 
     };
 
     for entry in entries.flatten() {
+        // 平铺的大目录（海量文件）同样受预算约束，避免无界元数据调用
+        if budget.exhausted() {
+            return;
+        }
         let child = entry.path();
         let Ok(metadata) = fs::symlink_metadata(&child) else {
             continue;
