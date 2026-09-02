@@ -27,6 +27,7 @@ export function StatusFilters({ repos, selected, onSelect }: { repos: RepoStatus
       <button
         className={`filter-btn ${selected === "all" ? "active" : ""}`}
         onClick={() => onSelect("all")}
+        aria-pressed={selected === "all"}
       >
         全部 {repos.length}
       </button>
@@ -39,6 +40,7 @@ export function StatusFilters({ repos, selected, onSelect }: { repos: RepoStatus
             key={s}
             className={`filter-btn ${s === selected ? "active" : ""}`}
             onClick={() => onSelect(s)}
+            aria-pressed={s === selected}
           >
             {statusLabels[s]} {count}
           </button>

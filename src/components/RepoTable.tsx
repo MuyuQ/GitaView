@@ -56,6 +56,14 @@ export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repo
     setDraggingColumn(null);
   }, []);
 
+  // 键盘调宽：左右方向键步进 16px，与鼠标拖拽等效
+  const handleKeyDown = useCallback((columnKey: string, event: React.KeyboardEvent) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const step = event.key === "ArrowLeft" ? -16 : 16;
+    setColumnWidths((prev) => ({ ...prev, [columnKey]: Math.max(24, prev[columnKey] + step) }));
+  }, []);
+
   useEffect(() => {
     if (!draggingColumn) return;
 
@@ -73,46 +81,58 @@ export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repo
     minWidth: key === "name" ? 60 : 24,
   });
 
+  const renderResizeHandle = (columnKey: string, label: string) => (
+    <div
+      className="col-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`调整${label}列宽，左右方向键步进`}
+      tabIndex={0}
+      onMouseDown={(event) => handleMouseDown(columnKey, event)}
+      onKeyDown={(event) => handleKeyDown(columnKey, event)}
+    />
+  );
+
   return (
     <div className="repo-table">
       <table>
         <thead>
           <tr>
-            <th className="col-status" style={getColumnStyle("status")}>状态</th>
-            <th className="col-name" style={getColumnStyle("name")}>
+            <th scope="col" className="col-status" style={getColumnStyle("status")}>状态</th>
+            <th scope="col" className="col-name" style={getColumnStyle("name")}>
               <div className="col-header">
                 <span>仓库</span>
-                <div className="col-resize-handle" onMouseDown={(e) => handleMouseDown("name", e)} />
+                {renderResizeHandle("name", "仓库")}
               </div>
             </th>
-            <th className="col-group" style={getColumnStyle("group")}>
+            <th scope="col" className="col-group" style={getColumnStyle("group")}>
               <div className="col-header">
                 <span>分类</span>
-                <div className="col-resize-handle" onMouseDown={(e) => handleMouseDown("group", e)} />
+                {renderResizeHandle("group", "分类")}
               </div>
             </th>
-            <th className="col-branch" style={getColumnStyle("branch")}>
+            <th scope="col" className="col-branch" style={getColumnStyle("branch")}>
               <div className="col-header">
                 <span>分支</span>
-                <div className="col-resize-handle" onMouseDown={(e) => handleMouseDown("branch", e)} />
+                {renderResizeHandle("branch", "分支")}
               </div>
             </th>
-            <th className="col-relation" style={getColumnStyle("relation")}>
+            <th scope="col" className="col-relation" style={getColumnStyle("relation")}>
               <div className="col-header">
                 <span>关系</span>
-                <div className="col-resize-handle" onMouseDown={(e) => handleMouseDown("relation", e)} />
+                {renderResizeHandle("relation", "关系")}
               </div>
             </th>
-            <th className="col-changes" style={getColumnStyle("changes")}>
+            <th scope="col" className="col-changes" style={getColumnStyle("changes")}>
               <div className="col-header">
                 <span>变更</span>
-                <div className="col-resize-handle" onMouseDown={(e) => handleMouseDown("changes", e)} />
+                {renderResizeHandle("changes", "变更")}
               </div>
             </th>
-            <th className="col-hint" style={getColumnStyle("hint")}>
+            <th scope="col" className="col-hint" style={getColumnStyle("hint")}>
               <div className="col-header">
                 <span>提示</span>
-                <div className="col-resize-handle" onMouseDown={(e) => handleMouseDown("hint", e)} />
+                {renderResizeHandle("hint", "提示")}
               </div>
             </th>
           </tr>
@@ -140,7 +160,10 @@ export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repo
                   aria-expanded={isExpanded}
                   aria-controls={actionsPanelId}
                 >
-                  <td className="col-status"><span className={`status-dot ${statusDotClass[repo.relation]}`} /></td>
+                  <td className="col-status">
+                    <span className={`status-dot ${statusDotClass[repo.relation]}`} aria-hidden="true" />
+                    <span className="sr-only">{relationLabels[repo.relation]}</span>
+                  </td>
                   <td className="col-name">
                     <span className="repo-name-trigger">
                       <span className="repo-expand-indicator" aria-hidden="true">›</span>
@@ -154,7 +177,7 @@ export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repo
                   <td className="col-hint">{repo.hint}</td>
                 </tr>
                 {isExpanded && (
-                  <tr className="repo-actions-row" key={`${repo.id}-actions`}>
+                  <tr className="repo-actions-row">
                     <td colSpan={7}>
                       <div id={actionsPanelId} className="repo-actions-panel" onClick={(event) => event.stopPropagation()}>
                         <RepoActions repo={repo} onRefresh={onRefresh} />
