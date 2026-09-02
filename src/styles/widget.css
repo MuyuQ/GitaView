@@ -1,9 +1,12 @@
 :root {
   --gv-ink: #172033;
-  --gv-muted: #667488;
+  /* muted 加深一档：10-12px 小字需 4.5:1（WCAG AA） */
+  --gv-muted: #5a6a80;
   --gv-line: #dce3ec;
   --gv-green: #2f9f67;
   --gv-amber: #b57412;
+  /* 文字用琥珀：亮琥珀在浅背景上不满足 AA，小字统一用深琥珀 */
+  --gv-amber-text: #8a5a0a;
   --gv-red: #b94736;
   --gv-slate: #64748b;
   --gv-bg: #f7f9fc;
@@ -93,6 +96,13 @@
   gap: 2px;
   font-size: 11px;
   font-family: "JetBrains Mono", "SF Mono", "Cascadia Mono", monospace;
+}
+
+/* 折叠态刷新失败提示：文字 + 琥珀点，避免过期数据毫无征兆 */
+.summary-item.stale-item {
+  color: var(--gv-amber-text);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .status-dot {
@@ -347,6 +357,33 @@
   border-right: none;
 }
 
+/* 列头：文字 + 固定占位的调宽把手（不随 hover/focus 移动布局） */
+.col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.col-resize-handle {
+  flex: none;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--gv-line);
+  cursor: col-resize;
+}
+
+.col-resize-handle:hover,
+.col-resize-handle:focus-visible {
+  background: rgba(34, 100, 242, 0.55);
+}
+
+.col-resize-handle:focus-visible {
+  outline: 2px solid rgba(34, 100, 242, 0.45);
+  outline-offset: 1px;
+}
+
 .repo-row {
   cursor: pointer;
   transition: background 140ms ease;
@@ -492,7 +529,7 @@
 
 .action-btn.pull-btn {
   border-color: var(--gv-amber);
-  color: var(--gv-amber);
+  color: var(--gv-amber-text);
 }
 
 .action-btn.pull-btn.confirm {
@@ -504,6 +541,12 @@
   font-size: 11px;
   color: var(--gv-green);
   margin-left: 4px;
+}
+
+/* 操作失败必须与成功在颜色和语义上均可区分 */
+.action-result.action-result-error {
+  color: var(--gv-red);
+  font-weight: 600;
 }
 
 .action-warning {

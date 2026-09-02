@@ -52,6 +52,35 @@ describe("component render smoke tests", () => {
     expect(html).toContain("待同步");
   });
 
+  it("surfaces stale refresh data with a text label when background refresh fails while collapsed", () => {
+    const stale = renderToStaticMarkup(
+      <WidgetCollapsed
+        repos={sampleRepos}
+        allowDrag={false}
+        refreshError="git 命令超时"
+        lastRefreshAt={new Date("2026-08-30T04:00:00Z")}
+        onExpand={() => undefined}
+        onStartDrag={() => undefined}
+        onRefresh={() => undefined}
+        onExit={() => undefined}
+      />,
+    );
+    const fresh = renderToStaticMarkup(
+      <WidgetCollapsed
+        repos={sampleRepos}
+        allowDrag={false}
+        onExpand={() => undefined}
+        onStartDrag={() => undefined}
+        onRefresh={() => undefined}
+        onExit={() => undefined}
+      />,
+    );
+
+    expect(stale).toContain("数据未更新");
+    expect(stale).toContain("git 命令超时");
+    expect(fresh).not.toContain("数据未更新");
+  });
+
   it("renders expanded refresh state, search, filters, and repository rows", () => {
     const html = renderToStaticMarkup(
       <WidgetExpanded

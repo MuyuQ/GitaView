@@ -53,6 +53,8 @@ export default function App() {
       <WidgetCollapsed
         repos={widget.repos}
         allowDrag={widget.allowWidgetDrag}
+        refreshError={widget.refreshError}
+        lastRefreshAt={widget.lastRefreshAt}
         onExpand={widget.expandCollapsedView}
         onStartDrag={widget.startDrag}
         onRefresh={() => widget.refreshRepos({ initial: false })}

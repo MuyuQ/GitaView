@@ -8,6 +8,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     strategy:
@@ -43,6 +47,7 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
+          workspaces: src-tauri
           cache-targets: ${{ matrix.target }}
 
       - name: Install frontend dependencies
@@ -50,6 +55,9 @@ jobs:
 
       - name: Run frontend tests
         run: npm test
+
+      - name: Build frontend (tsc typecheck + vite build)
+        run: npm run build
 
       - name: Run native Rust tests
         run: cargo test --manifest-path src-tauri/Cargo.toml

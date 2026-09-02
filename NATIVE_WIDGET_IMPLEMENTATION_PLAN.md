@@ -1,7 +1,7 @@
 # GitaView 原生桌面小组件实现计划
 
 **创建日期:** 2026-07-10
-**状态:** 规划完成，待实现
+**状态:** macOS WidgetKit 已实现（扩展工程、widget_data.rs、beforeBundleCommand 均已就位）；实机加载需 Apple Developer 签名
 
 ---
 

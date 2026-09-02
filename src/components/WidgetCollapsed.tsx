@@ -7,6 +7,8 @@ import type { RepoStatus } from "../types";
 export function WidgetCollapsed({
   repos,
   allowDrag,
+  refreshError = null,
+  lastRefreshAt = null,
   onExpand,
   onStartDrag,
   onRefresh,
@@ -14,6 +16,8 @@ export function WidgetCollapsed({
 }: {
   repos: RepoStatus[];
   allowDrag: boolean;
+  refreshError?: string | null;
+  lastRefreshAt?: Date | null;
   onExpand: () => void;
   onStartDrag: () => void;
   onRefresh: () => void;
@@ -27,6 +31,11 @@ export function WidgetCollapsed({
     needs_attention: "status-dot red",
     no_remote: "status-dot slate",
   } as const;
+
+  // 折叠态下后台刷新失败时，明确提示数据已停更，避免展示过期数据却毫无征兆
+  const staleTitle = refreshError
+    ? `数据未更新${lastRefreshAt ? `（上次刷新 ${lastRefreshAt.toLocaleTimeString("zh-CN", { hour12: false })}）` : ""}：${refreshError}`
+    : null;
 
   function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
     if (!shouldStartCollapsedDrag(allowDrag, event.button)) return;
@@ -66,6 +75,19 @@ export function WidgetCollapsed({
     });
   }
 
+  // 键盘用户同样需要折叠态的刷新/退出入口（ContextMenu 键 / Shift+F10）
+  function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    void showCollapsedNativeContextMenu(
+      { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.bottom) },
+      { onRefresh, onExit },
+    ).catch((err) => {
+      console.error("打开收缩态右键菜单失败", err);
+    });
+  }
+
   return (
     <div className="collapsed-widget-wrap">
       <button
@@ -76,6 +98,7 @@ export function WidgetCollapsed({
         onPointerUp={clearDragStart}
         onPointerCancel={clearDragStart}
         onContextMenu={handleContextMenu}
+        onKeyDown={handleKeyDown}
         aria-label="展开仓库状态"
         title={allowDrag ? "点击展开，拖动移动，右键菜单" : "点击展开，右键菜单"}
       >
@@ -83,6 +106,12 @@ export function WidgetCollapsed({
         <span className="repo-word">仓库</span>
         <span className="total">{repos.length}</span>
         <span className="summary">
+          {staleTitle && (
+            <span className="summary-item stale-item" role="status" title={staleTitle}>
+              <span className="status-dot amber" aria-hidden="true" />
+              <span>数据未更新</span>
+            </span>
+          )}
           {summary.map((item) => (
             <span className="summary-item" key={item.bucket}>
               <span className={colorClass[item.bucket]} aria-hidden="true" />

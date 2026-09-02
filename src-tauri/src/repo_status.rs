@@ -2,9 +2,13 @@ use crate::domain::repo::{RepoRecord, RepoStatusDto};
 use crate::domain::status::RemoteRelation;
 use crate::git::commands::{branch_state, GitBranchState};
 use crate::git::status_text::{change_label, state_hint};
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-const STATUS_REFRESH_BATCH_SIZE: usize = 4;
+/// 动态工作池大小：单个慢仓库（如挂死的网络驱动器）只占用一个 worker，
+/// 不再像旧的批处理 + join 模式那样拖慢整批仓库。
+const STATUS_REFRESH_WORKERS: usize = 8;
 
 pub fn repo_status_from_branch_result(
     repo: RepoRecord,
@@ -48,44 +52,43 @@ pub fn collect_repo_statuses(repos: Vec<RepoRecord>) -> Result<Vec<RepoStatusDto
         "repo_status.collect.start",
         format!("repos={}", repos.len()),
     );
-    let mut statuses = Vec::with_capacity(repos.len());
-    for batch in repos.chunks(STATUS_REFRESH_BATCH_SIZE) {
-        crate::diagnostics::log(
-            "repo_status.collect.batch",
-            format!("batch_size={}", batch.len()),
-        );
-        let handles = batch
-            .iter()
-            .cloned()
-            .map(|repo| {
-                std::thread::spawn(move || {
-                    let repo_started = Instant::now();
-                    let repo_id = repo.id.clone();
-                    let repo_path = crate::diagnostics::redact_path(&repo.path);
-                    crate::diagnostics::log(
-                        "repo_status.repo.start",
-                        format!("repo_id={repo_id} path={repo_path}"),
-                    );
-                    let state = branch_state(&repo.path);
-                    let status = repo_status_from_branch_result(repo, state);
-                    crate::diagnostics::log_duration(
-                        "repo_status.repo.end",
-                        repo_started.elapsed(),
-                        format!("repo_id={} relation={:?}", status.id, status.relation),
-                    );
-                    status
-                })
-            })
-            .collect::<Vec<_>>();
+    let repo_count = repos.len();
+    let worker_count = repo_count.clamp(1, STATUS_REFRESH_WORKERS);
+    let queue = Arc::new(Mutex::new(VecDeque::from(repos)));
+    let results = Arc::new(Mutex::new(Vec::with_capacity(repo_count)));
 
-        for handle in handles {
-            statuses.push(
-                handle
-                    .join()
-                    .map_err(|_| "刷新仓库状态线程异常退出".to_string())?,
-            );
-        }
+    let mut handles = Vec::with_capacity(worker_count);
+    for _ in 0..worker_count {
+        let queue = Arc::clone(&queue);
+        let results = Arc::clone(&results);
+        handles.push(std::thread::spawn(move || {
+            while let Some(repo) = pop_repo(&queue) {
+                let repo_started = Instant::now();
+                let repo_id = repo.id.clone();
+                let repo_path = crate::diagnostics::redact_path(&repo.path);
+                crate::diagnostics::log(
+                    "repo_status.repo.start",
+                    format!("repo_id={repo_id} path={repo_path}"),
+                );
+                let state = branch_state(&repo.path);
+                let status = repo_status_from_branch_result(repo, state);
+                crate::diagnostics::log_duration(
+                    "repo_status.repo.end",
+                    repo_started.elapsed(),
+                    format!("repo_id={} relation={:?}", status.id, status.relation),
+                );
+                push_result(&results, status);
+            }
+        }));
     }
+
+    for handle in handles {
+        handle
+            .join()
+            .map_err(|_| "刷新仓库状态线程异常退出".to_string())?;
+    }
+
+    let mut statuses = take_results(results);
     sort_repo_statuses(&mut statuses);
     crate::diagnostics::log_duration(
         "repo_status.collect.ok",
@@ -93,6 +96,35 @@ pub fn collect_repo_statuses(repos: Vec<RepoRecord>) -> Result<Vec<RepoStatusDto
         format!("statuses={}", statuses.len()),
     );
     Ok(statuses)
+}
+
+fn pop_repo(queue: &Mutex<VecDeque<RepoRecord>>) -> Option<RepoRecord> {
+    let mut guard = match queue.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    guard.pop_front()
+}
+
+fn push_result(results: &Mutex<Vec<RepoStatusDto>>, status: RepoStatusDto) {
+    let mut guard = match results.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    guard.push(status);
+}
+
+fn take_results(results: Arc<Mutex<Vec<RepoStatusDto>>>) -> Vec<RepoStatusDto> {
+    match Arc::try_unwrap(results) {
+        Ok(mutex) => match mutex.into_inner() {
+            Ok(statuses) => statuses,
+            Err(poisoned) => poisoned.into_inner(),
+        },
+        Err(arc) => match arc.lock() {
+            Ok(guard) => guard.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        },
+    }
 }
 
 #[cfg(test)]
@@ -182,5 +214,49 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["broken", "synced", "no-remote"],
         );
+    }
+
+    #[test]
+    fn collect_handles_more_repos_than_workers_without_failing() {
+        let repos: Vec<RepoRecord> = (0..12)
+            .map(|index| {
+                let mut repo = sample_repo(&format!("missing-{index}"));
+                repo.path = std::path::PathBuf::from(format!("Z:/definitely-missing-{index}"));
+                repo
+            })
+            .collect();
+
+        let statuses =
+            collect_repo_statuses(repos).expect("worker pool should always produce statuses");
+
+        assert_eq!(statuses.len(), 12);
+        assert!(statuses
+            .iter()
+            .all(|status| status.relation == RemoteRelation::Error));
+        // no_remote 永远排最后：这里全是 error，排序后 error 在最前
+        assert_eq!(statuses[0].relation, RemoteRelation::Error);
+    }
+
+    #[test]
+    fn collect_returns_sorted_statuses() {
+        let repos = vec![
+            {
+                let mut repo = sample_repo("missing-a");
+                repo.path = std::path::PathBuf::from("Z:/collect-missing-a");
+                repo
+            },
+            {
+                let mut repo = sample_repo("missing-b");
+                repo.path = std::path::PathBuf::from("Z:/collect-missing-b");
+                repo
+            },
+        ];
+
+        let statuses = collect_repo_statuses(repos).expect("collect should succeed");
+
+        assert_eq!(statuses.len(), 2);
+        assert!(statuses
+            .iter()
+            .all(|status| status.relation == RemoteRelation::Error));
     }
 }
