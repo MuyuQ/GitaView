@@ -13,8 +13,20 @@ pub use crate::tray_menu_rows::{TRAY_QUIT_ID, TRAY_REFRESH_ID, TRAY_SHOW_ID};
 /// 消除检查与应用之间被并发更新插入的竞态窗口。
 static TRAY_MENU_GENERATION: Mutex<u64> = Mutex::new(0);
 
+/// 菜单应用互斥：所有 `tray.set_menu` 调用在此串行化。
+/// 该锁会跨 set_menu 持有（set_menu 可能向主线程派发并阻塞），
+/// 因此菜单事件路径绝不能等待它——事件处理器只短暂取 generation 锁。
+/// 锁序固定为 apply → generation，与事件路径之间不存在倒置。
+static TRAY_MENU_APPLY_LOCK: Mutex<()> = Mutex::new(());
+
 fn lock_tray_generation() -> std::sync::MutexGuard<'static, u64> {
     TRAY_MENU_GENERATION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn lock_menu_apply() -> std::sync::MutexGuard<'static, ()> {
+    TRAY_MENU_APPLY_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
@@ -68,11 +80,13 @@ fn error_tray_menu<R: Runtime, M: Manager<R>>(
 
 pub fn set_loading_menu(app: &AppHandle) -> Result<(), String> {
     crate::diagnostics::log("tray.set_loading.start", "");
+    let _apply = lock_menu_apply();
     replace_tray_menu(app, loading_tray_menu)
 }
 
 pub fn set_status_menu(app: &AppHandle, statuses: &[RepoStatusDto]) -> Result<(), String> {
     begin_tray_menu_update();
+    let _apply = lock_menu_apply();
     set_status_menu_inner(app, statuses)
 }
 
@@ -85,12 +99,26 @@ pub fn set_status_menu_if_current(
     generation: u64,
     statuses: &[RepoStatusDto],
 ) -> Result<bool, String> {
-    // 在同一把锁内完成"检查代数 + 应用菜单"，保证不会用过期状态覆盖新菜单
-    let current = lock_tray_generation();
-    if *current != generation {
+    // 应用锁内完成"检查代数 + 应用菜单"：过期的应用会被拒绝，
+    // 且锁不跨 generation 更新路径，主线程菜单事件不会被长时间阻塞
+    let _apply = lock_menu_apply();
+    if !is_current_tray_menu_generation(generation) {
         return Ok(false);
     }
     set_status_menu_inner(app, statuses)?;
+    Ok(true)
+}
+
+fn set_error_menu_if_current(
+    app: &AppHandle,
+    generation: u64,
+    message: &str,
+) -> Result<bool, String> {
+    let _apply = lock_menu_apply();
+    if !is_current_tray_menu_generation(generation) {
+        return Ok(false);
+    }
+    set_error_menu_inner(app, message)?;
     Ok(true)
 }
 
@@ -155,19 +183,22 @@ pub fn refresh_tray_menu_async(app: AppHandle) {
 
         match result {
             Ok(statuses) => {
-                if !is_current_tray_menu_generation(generation) {
-                    crate::diagnostics::log(
-                        "tray.refresh.stale",
-                        format!("generation={generation} statuses={}", statuses.len()),
-                    );
-                    return;
-                }
-                if let Err(err) = set_status_menu_inner(&app, &statuses) {
-                    eprintln!("更新托盘状态菜单失败: {err}");
-                    crate::diagnostics::log(
-                        "tray.refresh.status_error",
-                        format!("error_len={}", err.len()),
-                    );
+                match set_status_menu_if_current(&app, generation, &statuses) {
+                    Ok(false) => {
+                        crate::diagnostics::log(
+                            "tray.refresh.stale",
+                            format!("generation={generation} statuses={}", statuses.len()),
+                        );
+                        return;
+                    }
+                    Err(err) => {
+                        eprintln!("更新托盘状态菜单失败: {err}");
+                        crate::diagnostics::log(
+                            "tray.refresh.status_error",
+                            format!("error_len={}", err.len()),
+                        );
+                    }
+                    Ok(true) => {}
                 }
 
                 // 异步写入 widget 数据，不阻塞 tray 刷新
@@ -186,19 +217,22 @@ pub fn refresh_tray_menu_async(app: AppHandle) {
             }
             Err(err) => {
                 eprintln!("读取托盘仓库状态失败: {err}");
-                if !is_current_tray_menu_generation(generation) {
-                    crate::diagnostics::log(
-                        "tray.refresh.error_stale",
-                        format!("generation={generation} error_len={}", err.len()),
-                    );
-                    return;
-                }
-                if let Err(menu_err) = set_error_menu_inner(&app, &err) {
-                    eprintln!("更新托盘错误菜单失败: {menu_err}");
-                    crate::diagnostics::log(
-                        "tray.refresh.error_menu_error",
-                        format!("error_len={}", menu_err.len()),
-                    );
+                match set_error_menu_if_current(&app, generation, &err) {
+                    Ok(false) => {
+                        crate::diagnostics::log(
+                            "tray.refresh.error_stale",
+                            format!("generation={generation} error_len={}", err.len()),
+                        );
+                        return;
+                    }
+                    Err(menu_err) => {
+                        eprintln!("更新托盘错误菜单失败: {menu_err}");
+                        crate::diagnostics::log(
+                            "tray.refresh.error_menu_error",
+                            format!("error_len={}", menu_err.len()),
+                        );
+                    }
+                    Ok(true) => {}
                 }
                 crate::diagnostics::log_duration(
                     "tray.refresh.error",
