@@ -53,6 +53,7 @@ export function SettingsShell({ onClose }: { onClose?: () => void }) {
               key={section}
               className={section === active ? "settings-nav active" : "settings-nav"}
               onClick={() => setActive(section)}
+              aria-current={section === active ? "page" : undefined}
             >
               <span>{section}</span>
             </button>

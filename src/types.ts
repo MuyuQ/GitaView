@@ -46,10 +46,8 @@ export interface AppSettings {
     lightweightRefreshEnabled: boolean;
     intervalMinutes: number;
   };
-  safety: {
-    confirmPull: boolean;
-    confirmPush: boolean;
-  };
+  // safety.confirmPull / confirmPush 不在前端契约中：
+  // 后端 normalized() 始终强制二者为 true，UI 不可编辑
   appearance: {
     allowWidgetDrag: boolean;
   };

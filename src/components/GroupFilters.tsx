@@ -10,6 +10,7 @@ export function GroupFilters({ repos, selected, onSelect }: { repos: RepoStatus[
           key={group.name}
           className={`filter-btn ${group.name === selected ? "active" : ""}`}
           onClick={() => onSelect(group.name)}
+          aria-pressed={group.name === selected}
         >
           {group.name} {group.count}
         </button>
