@@ -1,6 +1,7 @@
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -15,6 +16,89 @@ pub struct GitBranchState {
     pub behind: u32,
     pub has_remote: bool,
     pub remote_url: Option<String>,
+}
+
+/// 本地状态读取超时：仓库在本地磁盘上，30 秒已经非常宽裕
+pub const GIT_STATUS_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// 网络操作超时（fetch/pull/push）：慢网络上的大仓库合法耗时远超 30 秒，
+/// 强杀 pull 可能留下 MERGE_HEAD / 锁文件，因此使用独立的长超时。
+pub const GIT_NETWORK_TIMEOUT: Duration = Duration::from_secs(600);
+
+const GIT_TIMEOUT_SENTINEL: &str = "git command timed out";
+
+static RESOLVED_GIT: OnceLock<&'static str> = OnceLock::new();
+
+/// 解析 git 可执行文件并缓存。
+///
+/// macOS 图形界面启动（Finder/Dock）只继承最小 PATH，仅装 Homebrew git 的
+/// 用户会全部仓库读取失败。解析顺序：PATH → 常见安装位置 → 登录 shell。
+pub fn git_program() -> &'static str {
+    RESOLVED_GIT.get_or_init(|| match resolve_git_program() {
+        Some(path) => {
+            crate::diagnostics::log("git.resolved", format!("program={path}"));
+            Box::leak(path.into_boxed_str())
+        }
+        None => {
+            crate::diagnostics::log("git.resolved", "program=<PATH>");
+            "git"
+        }
+    })
+}
+
+fn resolve_git_program() -> Option<String> {
+    if probe_git_program("git").is_ok() {
+        return None;
+    }
+    for candidate in [
+        "/opt/homebrew/bin/git",
+        "/usr/local/bin/git",
+        "/usr/bin/git",
+    ] {
+        if probe_git_program(candidate).is_ok() {
+            return Some(candidate.to_string());
+        }
+    }
+    probe_login_shell_git()
+}
+
+fn probe_git_program(program: &str) -> Result<(), ()> {
+    let mut command = Command::new(program);
+    command.args(["--version"]);
+    command.env("GIT_TERMINAL_PROMPT", "0");
+    configure_git_child_process(&mut command);
+    match command.stdout(Stdio::null()).stderr(Stdio::null()).status() {
+        Ok(status) if status.success() => Ok(()),
+        _ => Err(()),
+    }
+}
+
+fn probe_login_shell_git() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        // Windows GUI 启动继承用户 PATH，Git for Windows 安装器会写入，
+        // 登录 shell 探测无意义
+        None
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        let output = Command::new(&shell)
+            .args(["-lc", "command -v git"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if path.is_empty() || !Path::new(&path).exists() {
+            return None;
+        }
+        Some(path)
+    }
 }
 
 fn run_command_with_timeout(mut command: Command, timeout: Duration) -> Result<Output, String> {
@@ -67,7 +151,7 @@ fn run_command_with_timeout(mut command: Command, timeout: Duration) -> Result<O
         }
         if start.elapsed() >= timeout {
             terminate_child_tree(&mut child);
-            return Err("git command timed out".to_string());
+            return Err(GIT_TIMEOUT_SENTINEL.to_string());
         }
         thread::sleep(Duration::from_millis(50));
     }
@@ -110,16 +194,39 @@ fn terminate_child_tree(child: &mut std::process::Child) {
 }
 
 pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
+    run_git_with_timeout(repo_path, args, GIT_STATUS_TIMEOUT)
+}
+
+pub(crate) fn run_git_args_with_timeout(
+    repo_path: &Path,
+    args: Vec<String>,
+    timeout: Duration,
+) -> Result<String, String> {
+    let borrowed_args = args.iter().map(String::as_str).collect::<Vec<_>>();
+    run_git_with_timeout(repo_path, &borrowed_args, timeout)
+}
+
+fn run_git_with_timeout(
+    repo_path: &Path,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<String, String> {
     let started = Instant::now();
     let command_label = args.join(" ");
-    let mut command = Command::new("git");
+    let mut command = Command::new(git_program());
     command.args(args);
     command.current_dir(repo_path);
     command.env("GIT_TERMINAL_PROMPT", "0");
     command.env("GCM_INTERACTIVE", "Never");
     configure_git_child_process(&mut command);
 
-    let output = run_command_with_timeout(command, GIT_OPERATION_TIMEOUT)?;
+    let output = run_command_with_timeout(command, timeout).map_err(|err| {
+        if err == GIT_TIMEOUT_SENTINEL {
+            timeout_error_message(repo_path, args.first().copied().unwrap_or("git"), timeout)
+        } else {
+            format!("启动 git 失败（program={}）: {err}", git_program())
+        }
+    })?;
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
         crate::diagnostics::log_duration(
@@ -149,6 +256,21 @@ pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// 超时错误信息附带恢复指引：被强杀的 pull 可能留下未完成的合并状态
+fn timeout_error_message(repo_path: &Path, op: &str, timeout: Duration) -> String {
+    let mut message = format!("git {op} 超时（{} 秒），已中止", timeout.as_secs());
+    if matches!(op, "fetch" | "pull" | "push") {
+        if repo_path.join(".git").join("MERGE_HEAD").exists() {
+            message.push_str(
+                "；检测到未完成的合并状态（MERGE_HEAD），可运行 git merge --abort 恢复后重试",
+            );
+        } else {
+            message.push_str("；若重试时报 lock 文件冲突，请稍候再试");
+        }
+    }
+    message
+}
+
 pub(crate) fn origin_fetch_args() -> Vec<String> {
     vec!["fetch".to_string(), "origin".to_string()]
 }
@@ -163,11 +285,6 @@ pub(crate) fn origin_push_args(branch: &str) -> Vec<String> {
         "origin".to_string(),
         format!("HEAD:refs/heads/{branch}"),
     ]
-}
-
-pub(crate) fn run_git_args(repo_path: &Path, args: Vec<String>) -> Result<String, String> {
-    let borrowed_args = args.iter().map(String::as_str).collect::<Vec<_>>();
-    run_git(repo_path, &borrowed_args)
 }
 
 pub fn format_git_failure(args: &[&str], stderr: &[u8]) -> String {

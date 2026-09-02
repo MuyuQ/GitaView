@@ -84,7 +84,7 @@ arbitrary command panels.
 
 ## Native Desktop Widgets
 
-**Status:** Planning complete, implementation pending
+**Status:** macOS WidgetKit widget implemented (v0.3.2); Windows keeps the desktop-layer implementation. Loading the widget extension on a real device requires Apple Developer signing.
 
 **Detailed plan:** See `NATIVE_WIDGET_IMPLEMENTATION_PLAN.md`
 
@@ -97,8 +97,8 @@ arbitrary command panels.
 - **Minimum system:** macOS 11.0 (Big Sur)
 - **Build:** `xcodebuild` via `beforeBundleCommand` in `tauri.conf.json`
 - **Key files:**
-  - `src-tauri/widget-extension/` - Widget Extension project (new)
-  - `src-tauri/src/widget_data.rs` - Data writer module (new)
+  - `src-tauri/widget-extension/` - Widget Extension project
+  - `src-tauri/src/widget_data.rs` - Data writer module (macOS only; writes trailing-edge debounced atomic JSON)
   - `src-tauri/tauri.conf.json` - Bundle config and deep link setup
 
 ### Windows Widget

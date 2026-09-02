@@ -42,7 +42,10 @@ fn main() {
         assert!(status.success(), "Static library creation failed.");
 
         // 告诉 Cargo 链接静态库
-        println!("cargo:rustc-link-search=native={}", widget_bridge_dir.display());
+        println!(
+            "cargo:rustc-link-search=native={}",
+            widget_bridge_dir.display()
+        );
         println!("cargo:rustc-link-lib=static=WidgetReloader");
     }
 

@@ -1,9 +1,12 @@
 :root {
   --gv-ink: #172033;
-  --gv-muted: #667488;
+  /* muted 加深一档：10-12px 小字需 4.5:1（WCAG AA） */
+  --gv-muted: #5a6a80;
   --gv-line: #dce3ec;
   --gv-green: #2f9f67;
   --gv-amber: #b57412;
+  /* 文字用琥珀：亮琥珀在浅背景上不满足 AA，小字统一用深琥珀 */
+  --gv-amber-text: #8a5a0a;
   --gv-red: #b94736;
   --gv-slate: #64748b;
   --gv-bg: #f7f9fc;

@@ -2,10 +2,16 @@ import { useState } from "react";
 import type { RepoStatus } from "../types";
 import { fetchRepo, pullRepo, pushRepo, openRepoDirectory, openRepoRemote } from "../lib/commands";
 import { getRepoActionAvailability } from "../lib/statusModel";
+import {
+  actionResultClassName,
+  actionResultRole,
+  formatActionResult,
+  type ActionResult,
+} from "../lib/actionResults";
 
 export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: () => void }) {
   const [loading, setLoading] = useState<string | null>(null);
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<ActionResult | null>(null);
   const [confirmPull, setConfirmPull] = useState(false);
   const [confirmPush, setConfirmPush] = useState(false);
 
@@ -14,11 +20,11 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
     setResult(null);
     try {
       const res = await fn();
-      setResult(typeof res === "string" ? res : `${action} 已完成`);
+      setResult(formatActionResult(action, { ok: true, message: typeof res === "string" ? res : undefined }));
       const shouldRefresh = action === "Fetch" || action === "Pull" || action === "Push";
       if (shouldRefresh) onRefresh();
     } catch (err) {
-      setResult(`${action} 失败：${err}`);
+      setResult(formatActionResult(action, { ok: false, error: err }));
     } finally {
       setLoading(null);
     }
@@ -96,7 +102,11 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
       {confirmPush && (
         <span className="action-warning">Push 会更新远端分支，是否继续？</span>
       )}
-      {result && <span className="action-result">{result}</span>}
+      {result && (
+        <span className={actionResultClassName(result.kind)} role={actionResultRole(result.kind)}>
+          {result.text}
+        </span>
+      )}
     </div>
   );
 }

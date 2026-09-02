@@ -1,9 +1,11 @@
-use crate::app_settings::{load_app_settings, save_app_settings};
+use crate::app_settings::load_app_settings;
 use crate::domain::repo::RepoStatusDto;
 use crate::domain::settings::AppSettings;
 use crate::git::commands::{
-    branch_state, origin_fetch_args, origin_pull_args, origin_push_args, run_git, run_git_args,
+    branch_state, origin_fetch_args, origin_pull_args, origin_push_args, run_git,
+    run_git_args_with_timeout, GIT_NETWORK_TIMEOUT,
 };
+use crate::git::operation_lock::try_acquire_repo_operation;
 use crate::git::remote::normalize_remote_url;
 use crate::repo_operation::{validate_repo_git_operation, RepoGitOperation};
 use crate::repo_registry::{find_repo, repo_id_from_path};
@@ -24,7 +26,10 @@ fn require_confirmation(action: &str, confirmed: bool) -> Result<(), String> {
 pub async fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> {
     let started = Instant::now();
     crate::diagnostics::log("command.get_settings.start", "");
-    let result = load_app_settings(&app);
+    // 文件 I/O 移到阻塞线程池，避免占用 async 运行时
+    let result = tauri::async_runtime::spawn_blocking(move || load_app_settings(&app))
+        .await
+        .map_err(|err| err.to_string())?;
     match &result {
         Ok(settings) => crate::diagnostics::log_duration(
             "command.get_settings.ok",
@@ -50,7 +55,15 @@ pub async fn save_settings(
         "command.save_settings.start",
         format!("repos={}", settings.repos.len()),
     );
-    let saved = save_app_settings(&app, &settings)?;
+    // 与 add/remove 共用互斥，避免并发读改写互相覆盖
+    let saved = tauri::async_runtime::spawn_blocking(move || {
+        crate::app_settings::mutate_app_settings(&app, |current| {
+            *current = settings;
+            Ok(())
+        })
+    })
+    .await
+    .map_err(|err| err.to_string())??;
     crate::diagnostics::log_duration(
         "command.save_settings.ok",
         started.elapsed(),
@@ -107,35 +120,55 @@ pub async fn add_repository(
         return Err("请选择有效的 Git 仓库目录".to_string());
     }
     let repo_path = dunce::canonicalize(&repo_path).map_err(|err| err.to_string())?;
-    let mut settings = load_app_settings(&app)?;
-    if let Some(existing) = settings
-        .repos
-        .iter()
-        .find(|repo| repo.path.as_path() == repo_path.as_path())
-    {
-        return Ok(existing.clone());
+    if crate::git::discovery::contains_lossy_replacement(&repo_path) {
+        crate::diagnostics::log("command.add_repository.error", "lossy path characters");
+        return Err("仓库路径包含无法正确表示的字符，请检查路径名称".to_string());
     }
-    let name = repo_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("unknown")
-        .to_string();
-    let record = RepoRecord {
-        id: repo_id_from_path(&repo_path, &settings),
-        name,
-        path: repo_path,
-        group: "全部分组".to_string(),
-    };
-    settings.repos.push(record.clone());
-    save_app_settings(&app, &settings)?;
-    crate::diagnostics::log(
-        "command.add_repository.ok",
-        format!(
-            "id={} path={}",
-            record.id,
-            crate::diagnostics::redact_path(&record.path)
-        ),
-    );
+    let record = tauri::async_runtime::spawn_blocking(move || -> Result<RepoRecord, String> {
+        let mut existing: Option<RepoRecord> = None;
+        let saved = crate::app_settings::mutate_app_settings(&app, |settings| {
+            if let Some(found) = settings
+                .repos
+                .iter()
+                .find(|repo| repo.path.as_path() == repo_path.as_path())
+            {
+                existing = Some(found.clone());
+                return Ok(());
+            }
+            let name = repo_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+            let record = RepoRecord {
+                id: repo_id_from_path(&repo_path, settings),
+                name,
+                path: repo_path.clone(),
+                group: "全部分组".to_string(),
+            };
+            settings.repos.push(record.clone());
+            Ok(())
+        })?;
+        let record = existing.unwrap_or_else(|| {
+            saved
+                .repos
+                .iter()
+                .find(|repo| repo.path.as_path() == repo_path.as_path())
+                .cloned()
+                .expect("added repository must be present in saved settings")
+        });
+        crate::diagnostics::log(
+            "command.add_repository.ok",
+            format!(
+                "id={} path={}",
+                record.id,
+                crate::diagnostics::redact_path(&record.path)
+            ),
+        );
+        Ok(record)
+    })
+    .await
+    .map_err(|err| err.to_string())??;
     Ok(record)
 }
 
@@ -145,12 +178,17 @@ pub async fn remove_repository(app: tauri::AppHandle, repo_id: String) -> Result
         "command.remove_repository.start",
         format!("repo_id={repo_id}"),
     );
-    let mut settings = load_app_settings(&app)?;
-    settings.repos.retain(|repo| repo.id != repo_id);
-    for group in &mut settings.groups {
-        group.repo_ids.retain(|id| id != &repo_id);
-    }
-    save_app_settings(&app, &settings)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::app_settings::mutate_app_settings(&app, |settings| {
+            settings.repos.retain(|repo| repo.id != repo_id);
+            for group in &mut settings.groups {
+                group.repo_ids.retain(|id| id != &repo_id);
+            }
+            Ok(())
+        })
+    })
+    .await
+    .map_err(|err| err.to_string())??;
     crate::diagnostics::log("command.remove_repository.ok", "");
     Ok(())
 }
@@ -160,12 +198,14 @@ pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusD
     let started = Instant::now();
     let tray_generation = crate::tray_status::begin_tray_menu_update();
     crate::diagnostics::log("command.list_repo_statuses.start", "");
-    let settings = load_app_settings(&app)?;
-    crate::diagnostics::log(
-        "command.list_repo_statuses.settings",
-        format!("repos={}", settings.repos.len()),
-    );
+    // 设置加载与状态收集同在阻塞线程池执行
+    let app_for_task = app.clone();
     let statuses = tauri::async_runtime::spawn_blocking(move || {
+        let settings = load_app_settings(&app_for_task)?;
+        crate::diagnostics::log(
+            "command.list_repo_statuses.settings",
+            format!("repos={}", settings.repos.len()),
+        );
         crate::repo_status::collect_repo_statuses(settings.repos)
     })
     .await
@@ -184,6 +224,13 @@ pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusD
         }
         Ok(true) => {}
     }
+    // 前端刷新路径同样更新 widget 数据，保证桌面 widget 不落后于窗口/托盘
+    let widget_statuses = statuses.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(err) = crate::widget_data::write_widget_data(&widget_statuses) {
+            crate::diagnostics::log("widget_data.write_error", &err);
+        }
+    });
     crate::diagnostics::log_duration(
         "command.list_repo_statuses.ok",
         started.elapsed(),
@@ -194,13 +241,14 @@ pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusD
 
 #[tauri::command]
 pub async fn fetch_repo(app: tauri::AppHandle, repo_id: String) -> Result<String, String> {
-    let settings = load_app_settings(&app)?;
-    let repo = find_repo(&settings, &repo_id)?;
-    let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let settings = load_app_settings(&app)?;
+        let repo = find_repo(&settings, &repo_id)?;
+        let repo_path = repo.path.clone();
+        let _operation = try_acquire_repo_operation(&repo_path)?;
         let state = branch_state(&repo_path)?;
         validate_repo_git_operation(RepoGitOperation::Fetch, state.relation, state.has_remote)?;
-        run_git_args(&repo_path, origin_fetch_args())
+        run_git_args_with_timeout(&repo_path, origin_fetch_args(), GIT_NETWORK_TIMEOUT)
     })
     .await
     .map_err(|err| err.to_string())??;
@@ -214,13 +262,18 @@ pub async fn pull_repo(
     confirmed: bool,
 ) -> Result<String, String> {
     require_confirmation("Pull", confirmed)?;
-    let settings = load_app_settings(&app)?;
-    let repo = find_repo(&settings, &repo_id)?;
-    let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let settings = load_app_settings(&app)?;
+        let repo = find_repo(&settings, &repo_id)?;
+        let repo_path = repo.path.clone();
+        let _operation = try_acquire_repo_operation(&repo_path)?;
         let state = branch_state(&repo_path)?;
         validate_repo_git_operation(RepoGitOperation::Pull, state.relation, state.has_remote)?;
-        run_git_args(&repo_path, origin_pull_args(&state.branch))
+        run_git_args_with_timeout(
+            &repo_path,
+            origin_pull_args(&state.branch),
+            GIT_NETWORK_TIMEOUT,
+        )
     })
     .await
     .map_err(|err| err.to_string())??;
@@ -234,13 +287,18 @@ pub async fn push_repo(
     confirmed: bool,
 ) -> Result<String, String> {
     require_confirmation("Push", confirmed)?;
-    let settings = load_app_settings(&app)?;
-    let repo = find_repo(&settings, &repo_id)?;
-    let repo_path = repo.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let settings = load_app_settings(&app)?;
+        let repo = find_repo(&settings, &repo_id)?;
+        let repo_path = repo.path.clone();
+        let _operation = try_acquire_repo_operation(&repo_path)?;
         let state = branch_state(&repo_path)?;
         validate_repo_git_operation(RepoGitOperation::Push, state.relation, state.has_remote)?;
-        run_git_args(&repo_path, origin_push_args(&state.branch))
+        run_git_args_with_timeout(
+            &repo_path,
+            origin_push_args(&state.branch),
+            GIT_NETWORK_TIMEOUT,
+        )
     })
     .await
     .map_err(|err| err.to_string())??;
@@ -249,23 +307,26 @@ pub async fn push_repo(
 
 #[tauri::command]
 pub async fn open_repo_directory(app: tauri::AppHandle, repo_id: String) -> Result<(), String> {
-    let settings = load_app_settings(&app)?;
-    let repo = find_repo(&settings, &repo_id)?;
-    // 校验路径存在
-    if !repo.path.exists() {
-        return Err("仓库目录不存在".to_string());
-    }
-    open_directory(&repo.path)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let settings = load_app_settings(&app)?;
+        let repo = find_repo(&settings, &repo_id)?;
+        // 校验路径存在
+        if !repo.path.exists() {
+            return Err("仓库目录不存在".to_string());
+        }
+        open_directory(&repo.path)
+    })
+    .await
+    .map_err(|err| err.to_string())??;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn open_repo_remote(app: tauri::AppHandle, repo_id: String) -> Result<(), String> {
-    let settings = load_app_settings(&app)?;
-    let repo = find_repo(&settings, &repo_id)?;
-    let repo_path = repo.path.clone();
     let remote = tauri::async_runtime::spawn_blocking(move || {
-        run_git(&repo_path, &["config", "--get", "remote.origin.url"])
+        let settings = load_app_settings(&app)?;
+        let repo = find_repo(&settings, &repo_id)?;
+        run_git(&repo.path, &["config", "--get", "remote.origin.url"])
     })
     .await
     .map_err(|err| err.to_string())??;

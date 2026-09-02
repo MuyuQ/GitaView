@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::domain::settings::AppSettings;
 
@@ -7,10 +8,42 @@ pub fn load_settings(path: &Path) -> Result<AppSettings, String> {
     if !path.exists() {
         return Ok(AppSettings::default());
     }
-    let text = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    serde_json::from_str::<AppSettings>(&text)
-        .map(|settings| settings.normalized())
-        .map_err(|err| err.to_string())
+    let bytes = fs::read(path).map_err(|err| format!("读取设置文件失败: {err}"))?;
+    match serde_json::from_slice::<AppSettings>(&bytes) {
+        Ok(settings) => Ok(settings.normalized()),
+        Err(err) => {
+            // 损坏的设置文件（坏 JSON / 非 UTF-8）：隔离留档后返回默认值，
+            // 让应用自愈，而不是让所有功能永久不可用。
+            match quarantine_corrupt_settings(path) {
+                Ok(backup) => {
+                    crate::diagnostics::log(
+                        "settings.corrupt_quarantined",
+                        format!(
+                            "backup={} reason_len={}",
+                            crate::diagnostics::redact_path(&backup),
+                            err.to_string().len()
+                        ),
+                    );
+                    Ok(AppSettings::default())
+                }
+                Err(quarantine_err) => Err(format!(
+                    "设置文件损坏且无法隔离（{quarantine_err}），解析错误: {err}"
+                )),
+            }
+        }
+    }
+}
+
+fn quarantine_corrupt_settings(path: &Path) -> Result<PathBuf, String> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let backup = path.with_extension(format!("json.corrupt-{timestamp}"));
+    // rename 失败通常意味着文件被占用或权限不足，此时保留现场并报错，
+    // 不能静默丢弃用户数据
+    fs::rename(path, &backup).map_err(|err| err.to_string())?;
+    Ok(backup)
 }
 
 pub fn save_settings(path: &Path, settings: &AppSettings) -> Result<AppSettings, String> {
@@ -229,5 +262,72 @@ mod tests {
         assert!(path.exists());
         assert!(!temp_path.exists());
         let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn load_settings_quarantines_corrupt_file_and_returns_defaults() {
+        let temp = unique_temp_dir("gitaview_store_corrupt");
+        let path = temp.join("settings.json");
+        fs::create_dir_all(&temp).unwrap();
+        fs::write(&path, "{ this is not json ").unwrap();
+
+        let settings = load_settings(&path).expect("corrupt file should self-heal to defaults");
+
+        assert!(settings.repos.is_empty());
+        assert_eq!(settings.default_group, "全部分组");
+        assert!(!path.exists(), "corrupt file should be moved away");
+        assert_eq!(
+            count_quarantine_files(&temp),
+            1,
+            "corrupt file must be preserved for manual recovery"
+        );
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn load_settings_quarantines_non_utf8_file_and_returns_defaults() {
+        let temp = unique_temp_dir("gitaview_store_nonutf8");
+        let path = temp.join("settings.json");
+        fs::create_dir_all(&temp).unwrap();
+        fs::write(&path, [0xff, 0xfe, 0x00, 0x01]).unwrap();
+
+        let settings = load_settings(&path).expect("non-UTF-8 file should self-heal to defaults");
+
+        assert!(settings.repos.is_empty());
+        assert!(!path.exists());
+        assert_eq!(count_quarantine_files(&temp), 1);
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn settings_keep_working_after_corruption_and_resave() {
+        let temp = unique_temp_dir("gitaview_store_resave");
+        let path = temp.join("settings.json");
+        fs::create_dir_all(&temp).unwrap();
+        fs::write(&path, "corrupted!!!").unwrap();
+
+        let healed = load_settings(&path).expect("corruption should self-heal");
+        save_settings(&path, &healed).unwrap();
+
+        let reloaded = load_settings(&path).unwrap();
+        assert_eq!(reloaded.version, 1);
+        assert!(path.exists(), "fresh save should recreate settings.json");
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{name}_{suffix}"))
+    }
+
+    fn count_quarantine_files(dir: &Path) -> usize {
+        fs::read_dir(dir)
+            .expect("temp dir should exist")
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_name().to_string_lossy().contains("corrupt"))
+            .count()
     }
 }
