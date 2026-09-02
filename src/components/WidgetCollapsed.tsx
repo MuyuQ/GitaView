@@ -75,6 +75,19 @@ export function WidgetCollapsed({
     });
   }
 
+  // 键盘用户同样需要折叠态的刷新/退出入口（ContextMenu 键 / Shift+F10）
+  function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    void showCollapsedNativeContextMenu(
+      { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.bottom) },
+      { onRefresh, onExit },
+    ).catch((err) => {
+      console.error("打开收缩态右键菜单失败", err);
+    });
+  }
+
   return (
     <div className="collapsed-widget-wrap">
       <button
@@ -85,6 +98,7 @@ export function WidgetCollapsed({
         onPointerUp={clearDragStart}
         onPointerCancel={clearDragStart}
         onContextMenu={handleContextMenu}
+        onKeyDown={handleKeyDown}
         aria-label="展开仓库状态"
         title={allowDrag ? "点击展开，拖动移动，右键菜单" : "点击展开，右键菜单"}
       >

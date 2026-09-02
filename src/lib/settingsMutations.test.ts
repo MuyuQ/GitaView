@@ -8,7 +8,6 @@ const initialSettings: AppSettings = {
   groups: [{ name: "全部分组", repoIds: [] }],
   defaultGroup: "全部分组",
   refresh: { lightweightRefreshEnabled: true, intervalMinutes: 5 },
-  safety: { confirmPull: true, confirmPush: true },
   appearance: { allowWidgetDrag: true },
 };
 

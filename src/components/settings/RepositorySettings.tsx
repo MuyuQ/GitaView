@@ -229,8 +229,9 @@ export function RepositorySettings() {
         <SettingsMessage message={message} />
         {scanResults.length > 0 && (
           <div className="settings-scan-results">
-            {scanResults.map((result) => (
-              <button key={result} onClick={() => handleAdd(result)} disabled={addBusy}>
+            {scanResults.map((result, index) => (
+              // 路径可能重复出现，用 路径+序号 保证 key 唯一
+              <button key={`${result}#${index}`} onClick={() => handleAdd(result)} disabled={addBusy}>
                 添加 {result}
               </button>
             ))}

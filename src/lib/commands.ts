@@ -45,10 +45,6 @@ const previewSettings: AppSettings = {
     lightweightRefreshEnabled: true,
     intervalMinutes: 5,
   },
-  safety: {
-    confirmPull: true,
-    confirmPush: true,
-  },
   appearance: {
     allowWidgetDrag: true,
   },
