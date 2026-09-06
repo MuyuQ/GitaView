@@ -9,6 +9,7 @@ pub mod system_open;
 pub mod tray_menu_rows;
 pub mod tray_status;
 pub mod widget_data;
+pub mod window_state;
 
 pub mod domain {
     pub mod repo;
@@ -33,6 +34,15 @@ use tauri_plugin_deep_link::DeepLinkExt;
 
 pub fn run() {
     tauri::Builder::default()
+        // 必须最先注册：二次启动（含 gitaview:// 链接触发）立即转发到这里，
+        // 避免两个实例竞争 settings.json 的读-改-写与桌面 widget 的窗口层级
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            diagnostics::log("single_instance.activate", "");
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
@@ -71,6 +81,38 @@ pub fn run() {
                 eprintln!("应用桌面 widget 层失败，将作为普通窗口运行: {err}");
             }
             desktop_widget::start_desktop_widget_watchdog(app.handle().clone());
+
+            // 恢复上次的窗口位置（规格 §8 Window persistence）。
+            // 必须在 setup 内完成：前端首次帧同步以当前窗口位置为锚点，
+            // 这里先恢复，锚定逻辑就会保留它；越界位置由钳制拉回可见区域。
+            if let Some(window) = app.get_webview_window("main") {
+                if let Ok(state_path) = window_state::window_state_path(app.handle()) {
+                    if let Some(position) = window_state::load_window_position(&state_path) {
+                        let monitors = window
+                            .available_monitors()
+                            .unwrap_or_default()
+                            .iter()
+                            .map(|monitor| {
+                                let origin = monitor.position();
+                                let size = monitor.size();
+                                (origin.x, origin.y, size.width, size.height)
+                            })
+                            .collect::<Vec<_>>();
+                        let restored = window_state::clamp_position(position, &monitors);
+                        match window
+                            .set_position(tauri::PhysicalPosition::new(restored.x, restored.y))
+                        {
+                            Ok(()) => diagnostics::log(
+                                "app.setup.window_state_restored",
+                                format!("x={} y={}", restored.x, restored.y),
+                            ),
+                            Err(err) => {
+                                diagnostics::log("app.setup.window_state_error", err.to_string())
+                            }
+                        }
+                    }
+                }
+            }
 
             // Deep Link 处理
             let handle = app.handle().clone();
@@ -151,6 +193,7 @@ pub fn run() {
             app_commands::open_repo_directory,
             app_commands::open_repo_remote,
             app_commands::sync_desktop_widget_frame,
+            app_commands::save_window_state,
             app_commands::exit_app,
         ])
         .run(tauri::generate_context!())
