@@ -1,231 +1,199 @@
 # GitaView 改进计划书
 
-**基线**: `main` @ `fd06861` / v0.3.2
-**日期**: 2026-08-30
-**执行状态**: P0 全部、P1 全部（P1-1 ~ P1-7）、P2-1、P2-2、P2-3（核心）、P2-4、P2-5、P2-6、P2-8、P2-9、P2-12、P3-1 ~ P3-5、P3-9、P3-10 已在 `fix/improvement-plan` 分支完成并验证。未做：P2-7（需实机验证窗口行为）、P2-10（更新器需签名密钥决策）、P2-11（契约测试迁移，持续项）、P3-6 ~ P3-8（低价值/需单独决策）。凭据文件已从工作区移除，历史清除需单独决策。
-
-**方法**: 基于当前代码的全量分析（后端 Rust / 前端 React / CI 与发布流程），所有问题均在本次分析中实际复现或逐行核对过源码。本文不重复 `CODE_REVIEW_REPORT.md`（2026-05、2026-06 两轮）中已修复并验证的项目，仅收录仍然成立的新问题与历史遗留。
+**基线**: `main` @ `5ef22f7` / v0.3.2
+**日期**: 2026-09-06（第二轮）
+**方法**: 在第一轮全部执行完毕、复审修复合入之后，对项目做的新一轮全量分析。重点覆盖此前未深挖的区域（Windows/macOS 桌面层实现、Swift widget 扩展、system_open、diagnostics、发布脚本），并对照 `DESIGN_AND_BUILD_SPEC.md` / `PRODUCT.md` 逐条核对。关键结论均经人工复核源码证实。
 
 ---
 
-## 0. 执行摘要
+## 0. 第一轮执行情况（2026-08-30 计划，已全部落地）
 
-当前代码分层清晰、安全边界（固定参数 git、二次确认、URL 白名单）执行到位，但**质量门禁已经失守**：CI 自 2026-07-28 起连续失败，本地前端测试也有 4 个用例红着，一个月内合入的 3 次 "更新 readme" PR 全部带着失败 CI 进入 main。同时发现一个疑似泄漏凭据的文件已被提交进 git 历史。
+- **P0 全部**：CI 门禁恢复（lockfile、rust-cache workspaces、CI 补类型检查、concurrency）、失效契约测试修正、疑似凭据文件出库。
+- **P1 全部 7 项**：操作失败红色告警、折叠态停更提示、widget 数据全路径更新、macOS 门控、网络超时 + per-repo 操作锁、settings 损坏自愈、macOS git 路径解析。
+- **P2 六项**：设置读写串行化、状态收集工作池、托盘菜单锁（复审后重构为 apply 锁 + generation 锁双锁模型）、扫描预算、无障碍补齐、dependabot。
+- **P3 七项**：死代码清理、依赖卫生、`[profile.release]`、capabilities 最小化、timestampUrl、类型契约清理、渲染打磨。
+- **复审修复**（PR #22）：托盘锁序倒置、widget 写入乱序、扫描文件级预算。
+- 当前验证基线：Rust 77 测试 / 前端 129 测试 / fmt / clippy(-D warnings) / build 全绿；CI 三平台稳定通过。
 
-最高优先级不是新功能，而是：**恢复门禁（P0）→ 修复用户可见的错误路径与 macOS widget 数据链路（P1）→ 健壮性与无障碍（P2）→ 卫生项（P3）**。
+---
+
+## 1. 第二轮执行摘要
+
+第一轮的快赢完成后，剩余问题不再分散在各模块，而是集中在三个**边界**上：
+
+1. **语言边界（Rust ↔ Swift）**：macOS widget 的 JSON 契约从未被两端同时执行过，旗舰功能**从未真正渲染过一条真实数据**。
+2. **进程边界（单实例）**：应用可以双开，设置读写锁是进程内的，跨进程丢更新无防护。
+3. **发布边界（签名/公证/验收）**：widget 扩展 Release 仍是 ad-hoc 签名，公证分发必然失败；发布脚本校验了前置条件却不真正使用。
 
 | 级别 | 数量 | 主题 |
 |------|------|------|
-| P0 紧急 | 3 | CI 全红、前端测试红、疑似凭据文件入库 |
-| P1 高 | 7 | 错误显示为成功、折叠态静默失败、widget 数据不更新、Windows 垃圾目录、网络操作超时、settings 损坏变砖、macOS git 解析失败 |
-| P2 中 | 12 | 持久化竞态、刷新性能、无障碍、文档漂移、流程自动化 |
-| P3 低 | 10 | 死代码、依赖卫生、i18n、发布收尾 |
+| P0 紧急 | 1 | macOS widget 数据契约断裂 |
+| P1 高 | 3 | 单实例守卫、扩展签名、窗口位置持久化 |
+| P2 中 | 7 | 兜底刷新、构建脚本断链、watchdog 线程纪律、日志脱敏、git 探测性能、刷新排队、deep link |
+| P3 低 | 9 | 校验/卫生/脚本/文档漂移 |
+| 体系 | 5 | 跨语言契约测试、文本契约迁移、交互测试、依赖消化、lint 工具链 |
+| 演进 | 2 | 单一状态所有者、类型化错误模型 |
 
 ---
 
-## 1. 现状快照
+## 2. P0 紧急项
 
-- 版本 0.3.2，`package.json` / `Cargo.toml` / `tauri.conf.json` 三处版本一致，tag 校验脚本齐备。
-- 前端测试 118 例（**4 失败**），Rust 测试 54 个通过。
-- CI（三平台矩阵）**自 2026-07-28 全红**；Release 流程上次成功为 v0.3.1-unsigned。
-- macOS WidgetKit 原生 widget 已实现（`widget-extension/`、`widget_data.rs`、`beforeBundleCommand`），但 `AGENTS.md` 仍标注"implementation pending"。
+### P0-1 macOS widget 数据契约断裂——旗舰功能端到端失效
 
----
+**位置**: `src-tauri/src/widget_data.rs:22-49`（Rust 序列化）、`src-tauri/widget-extension/GitaViewWidget/Models/WidgetData.swift`、`GitaViewWidget/Provider.swift:32`
 
-## 2. P0 紧急项（本周内，恢复质量门禁）
+**问题**（已逐行核实，双重必败）：
+1. **键名不匹配**：Rust `WidgetPayload`/`WidgetRepo`/`WidgetSummary` 无 `#[serde(rename_all = "camelCase")]`，序列化为 `last_updated`、`change_label`、`local_ahead`、`remote_ahead`、`no_remote`；Swift `WidgetData` 声明的是 `lastUpdated`、`changeLabel`、`localAhead`……且无 `CodingKeys`，`JSONDecoder()` 使用默认 `.useDefaultKeys` 策略——**每个 payload 的解码都以 `keyNotFound` 抛错**。
+2. **Date 解码不匹配**：Swift `lastUpdated: Date` 默认策略期望 Double（2001-01-01 起的秒数），Rust 写入的是 ISO-8601 字符串（`widget_data.rs` 的 `format_description!("[year]-[month]-[day]T…")`）——即使修好键名，第二次解码仍会失败。
 
-### P0-1 CI 全红已持续一个月，两个独立根因
+**后果**: `Provider.loadEntry()` 永远返回 nil → widget 永久显示空态（"打开 GitaView"），且空态兜底把这个失败**静默掩盖**了。PR #12 修好的数据写入链路（写入时机、防抖、原子性）写出的数据，Swift 端一个字节都没读到过。
 
-**位置**: `.github/workflows/ci.yml:44-49`、`release.yml:46`、`package.json` / `package-lock.json`
-
-**现象与根因**（已从 2026-08-19 失败日志确认）:
-1. `npm ci` 失败：`package.json` 与 `package-lock.json` 不同步（如 `vitest ^4.1.8` 未反映到 lock），EUSAGE 直接退出。
-2. `swatinem/rust-cache@v2` 失败：action 在仓库根目录执行 `cargo metadata`，而 `Cargo.toml` 在 `src-tauri/` 下，报 `could not find Cargo.toml`（exit 101）。
+**根因**: 两端各自独立定义数据模型，没有任何跨语言契约测试。这正是本轮四个最高优先级发现的共同根因（见 §7-1）。
 
 **建议**:
-- 本地 `npm install` 更新 lockfile 并提交。
-- 为 `rust-cache` 增加 `workspaces: src-tauri`（ci.yml 与 release.yml 两处）。
-- 增加 workflow `concurrency` 组（ci: `cancel-in-progress: true`；release: `false`），避免连续 push 堆叠三平台矩阵。
+1. Swift 侧 `Provider.swift`：`decoder.keyDecodingStrategy = .convertFromSnakeCase`、`decoder.dateDecodingStrategy = .iso8601`（或 Rust 侧统一 `rename_all = "camelCase"`——二选一，**以共享 fixture 为准**）。
+2. 建立跨语言契约测试：CI 中用 Rust `build_payload` 生成 fixture JSON 提交为测试资产，Swift 测试 target 解码断言（project.yml 目前没有 test target，需补）；同时在 Rust 侧锁定 fixture 的序列化形状（键名 + Date 格式），任何一端漂移即红。
+3. 顺带统一数据文件路径常量（Swift `Provider.swift:23` 与 Rust `widget_data_path()` 各自硬编码，见 P3-9）。
 
-**工作量**: ~0.5 天（含验证三平台绿）。
-
-### P0-2 前端测试 4 个用例失败（文本契约测试随源码重构失效）
-
-**位置**: `src/lib/settingsSaveFreshnessContract.test.ts`（3 例）、`src/lib/desktopWidgetContract.test.ts`（1 例）
-
-**现象**: 已本地复现。`settingsSaveFreshnessContract` 用正则匹配各设置组件 `handleSave` 函数体中的 `const latestSettings = await getSettings();`，但 `RefreshSettings`/`AppearanceSettings` 已重写为 `queueSettingsUpdate` 模式，`SafetySettings` 甚至没有 `handleSave`，正则匹配到空串。`desktopWidgetContract` 断言 README 措辞，同样过期。
-
-**建议**: 短期按当前实现修正断言；中期按 §P2-11 将这类"源码文本断言"迁移为行为测试（`renderSmoke.test.tsx` 已有可复用的模式）。文本契约目前占全部用例的约 47%（14/29 个文件、~55 例），已有一例实证失效，是本仓库测试体系最大的结构性风险。
-
-**工作量**: 短期 ~0.5 天。
-
-### P0-3 疑似泄漏凭据的文件已被提交进 git
-
-**位置**: `docs/reviews/wahsingtonawad685@gmail.com----hkvpwnwkd`（138 字节，内容为邮箱 + 口令样式字符串 + 地区/年份）
-
-**影响**: 无论凭据是否真实有效，这类文件会被 secret 扫描器标记，若仓库公开即视为泄漏。它显然是误粘贴的产物（旁边只有一份正经的评审文档）。
-
-**建议**:
-1. `git rm` 该文件并提交；
-2. 因已进入历史，若仓库公开或将公开，用 `git filter-repo` / BFG 清除历史；
-3. 在 `.gitignore` 中无需特殊处理，但建议给 `docs/reviews/` 定一个命名规范避免再犯。
-
-**工作量**: ~0.5 小时（不含历史清除沟通成本）。
+**工作量**: 代码 ~0.5 天，契约测试基建 ~1 天。
 
 ---
 
-## 3. P1 高优先级（用户可见正确性与数据安全，1–2 周）
+## 3. P1 高优先级
 
-### P1-1 Fetch/Pull/Push 失败被渲染成绿色成功样式
+### P1-1 无单实例守卫，双实例丢更新
 
-**位置**: `src/components/RepoActions.tsx:20-22`（catch 写入与成功共用的 `result` state）、`RepoActions.tsx:99`、`src/styles/widget.css:503-507`（`.action-result` 固定 `--gv-green`）
+**位置**: `src-tauri/Cargo.toml`（无 `tauri-plugin-single-instance`）、`src-tauri/src/app_settings.rs:8`
 
-**问题**: Pull/Push 是应用内唯一修改工作树/远端的破坏性操作，其失败提示与成功提示同色（绿）、无 `role="alert"`、行折叠即消失。快速扫一眼时**一次失败的 push 和一次成功的 push 无法区分**——这与产品"可信状态一目了然"的核心承诺直接冲突。
+**问题**: 应用可以同时运行两个实例（双击双开；或应用运行中点击 `gitaview://` 链接再启一个——deep-link 插件官方就要求与 single-instance 插件配对）。`SETTINGS_MUTATION_LOCK` 是进程内的：实例 A 的 `add_repository` 会被实例 B 随后的 `save_settings` 静默覆盖（文件原子性防撕裂，不防读-改-写交错）。两个实例还会竞争写 `widget-data.json`、日志文件、托盘菜单，Windows 上更会争抢桌面层级的窗口 reparent。
 
-**建议**: 将 `result` 拆为 success/error 两态；错误用红色类 + `role="alert"`，成功用 `role="status"`；错误信息保留至该行下一次操作前不消失。后端已返回 `Result<String, String>`，消息文本是现成的，只差呈现层。
+**建议**: 引入 `tauri-plugin-single-instance`，二次启动时转发 argv/deep-link 到主实例并聚焦主窗口。~0.5 天。
 
-### P1-2 折叠态下后台刷新失败完全不可见
+### P1-2 widget 扩展 Release 是 ad-hoc 签名，公证分发必败
 
-**位置**: `src/lib/useWidgetView.ts:199-207`（设置 `refreshError`）、`src/components/WidgetExpanded.tsx:109`（唯一渲染点）、`src/components/WidgetCollapsed.tsx:7-21`（未接收任何错误 prop）
+**位置**: `src-tauri/widget-extension/project.yml:22-27`（Release `CODE_SIGN_IDENTITY: "-"`、`ENABLE_HARDENED_RUNTIME: NO`）、`scripts/build-widget-extension.cjs:29-32`（xcodebuild 不传任何签名参数）
 
-**问题**: 折叠态下定时刷新照常运行；一旦仓库扫描开始失败（磁盘移动、git 缺失、权限变化），widget 会**持续展示停更的旧数据且没有任何提示**。初始加载的错误路径处理良好（`App.tsx:27-37`，有重试 + `role="alert"`），但周期性/后台路径是死胡同。
+**问题**: CI 已校验 `APPLE_SIGNING_IDENTITY`（`validate-release-signing.cjs`）但从不使用——`.appex` 以 ad-hoc 签名嵌入 Developer-ID 签名的应用，公证失败或 Gatekeeper/`pluginkit` 在运行时拒绝加载扩展。即便 P0-1 修好数据链路，正式发布的 widget 依然装不上。
 
-**建议**: 向 `WidgetCollapsed` 传递 `refreshError` 与 `lastRefreshAt`，在折叠面显示一行"数据停更于 HH:MM"或总数旁的小警示标记（文字而非仅颜色，符合 AGENTS.md 约束）。
+**建议**: `build-widget-extension.cjs` 把 `APPLE_SIGNING_IDENTITY`/`DEVELOPMENT_TEAM` 透传给 xcodebuild（本地无签名环境回退 `"-"`），project.yml Release 开 `ENABLE_HARDENED_RUNTIME: YES`。~0.5 天，需真机验证。
 
-### P1-3 macOS widget 数据只在托盘刷新路径写入，定时刷新不更新
+### P1-3 窗口位置不持久化（规格明确要求的能力缺失）
 
-**位置**: `src-tauri/src/tray_status.rs:166`（`write_widget_data` 全仓唯一调用点）；`src-tauri/src/app_commands.rs` 的 `list_repo_statuses` 不写 widget 数据
+**位置**: 全仓无任何窗口位置持久化代码（`grep` 证实）；`DESIGN_AND_BUILD_SPEC.md` §8 将 "Window persistence" 列为后端职责。
 
-**问题**: 前端轻量自动刷新（默认 5 分钟）走 `list_repo_statuses`，只更新托盘与窗口，**从不更新 widget-data.json**。widget 只在应用启动和用户点托盘"刷新状态"时才有新数据——用户盯着桌面上几小时前的旧数据，而窗口里是新的。这是 macOS widget 这个核心新功能的链路断点。
+**问题**: 用户把桌面 widget 拖到顺手的位置，**每次重启应用都回到默认位置**。对一个常驻桌面、位置讲究的 widget 来说是显著体验缺陷，且属于规格承诺未实现。
 
-**建议**: 将 widget 写入下沉为 `collect_repo_statuses` 成功路径后的共享步骤（现有 5 秒 debounce 已限制频率），托盘与 IPC 两条路径统一收敛到一处。更进一步见 §6 架构建议。
-
-### P1-4 Windows 上每次托盘刷新都创建垃圾 `~/Library/` 目录
-
-**位置**: `src-tauri/src/widget_data.rs:52-58`（`widget_data_path()` 无 `#[cfg(target_os = "macos")]` gate）、`tray_status.rs:166`（无条件调用）
-
-**问题**: Windows 用户每次刷新都会在 `C:\Users\<user>\Library\Application Support\GitaView\` 下生成一份没人读取的 widget-data.json——既困惑用户，也干扰备份工具，还浪费 I/O。
-
-**建议**: 将 widget 写入整体 gate 到 macOS（其他平台 no-op）；路径改用与 `app_settings.rs` 相同的 `app_data_dir()` 来源，避免两处口径分叉。
-
-### P1-5 30 秒硬超时作用于 fetch/pull/push，且无按仓库操作锁
-
-**位置**: `src-tauri/src/git/commands.rs:178`（`GIT_OPERATION_TIMEOUT` 供 `run_git` 全部调用方使用）、`app_commands.rs:200-247`
-
-**问题**:
-- 慢网络上的大仓库 fetch/pull 合理耗时超过 30s，子进程树被强杀：被杀的 `git pull` 可能留下 `MERGE_HEAD`（仓库卡在合并中态），fetch 可能留下 `refs` 锁文件使后续操作报 "cannot lock ref"。
-- 双击/重复触发没有互斥，两次并发 `pull` 争抢 `index.lock` 直接报错。
-
-**建议**: 状态读取保留 30s（甚至降到 10s），网络操作用独立的长超时或无超时；用 per-repo-path 的 in-flight map 做互斥，重复触发返回"操作进行中"；超时错误信息中检测遗留的 `*.lock` / `MERGE_HEAD` 并给出恢复指引。
-
-### P1-6 settings.json 一旦损坏，应用永久不可用
-
-**位置**: `src-tauri/src/storage/store.rs:6-14`（解析失败直接 `Err`）、`app_settings.rs:12-28`（向上传播）
-
-**问题**: 一次崩溃中的半写入（当前写入流程无 fsync，见 P2-3）或一次手滑编辑，会让 `get_settings`、`list_repo_statuses`、所有仓库操作、托盘刷新**全部**永久失败，直到用户自己找到并删除数据文件。没有任何自愈路径。
-
-**建议**: 解析失败时把损坏文件改名为 `settings.json.corrupt-<timestamp>` 留档，返回 `AppSettings::default()` 让应用自愈并记录日志。顺带为该路径补上单测（当前 store.rs 没有 corrupt-JSON 测试）。
-
-### P1-7 macOS 图形界面启动找不到 Homebrew git
-
-**位置**: `src-tauri/src/git/commands.rs:115`（`Command::new("git")` 裸 PATH 解析）
-
-**问题**: 从 Finder/Dock 启动的 GUI 应用只继承最小 PATH（`/usr/bin:/bin:...`）。只装了 Homebrew git 的 macOS 用户会**所有仓库全部"读取失败"**，且诊断日志难以看出原因。Windows 因 Git for Windows 安装器写 PATH 基本不受影响。
-
-**建议**: 应用启动时解析一次 git 绝对路径：先 `$SHELL -lc 'command -v git'`，再探测 `/opt/homebrew/bin`、`/usr/local/bin` 等常见位置，缓存进状态并在诊断日志输出（可脱敏）。
+**建议**: 关闭/移动时把窗口位置存入 settings（或独立轻量文件），启动时恢复；需处理显示器拔插/分辨率变化的越界钳制（`windowMotion.ts` 的 workArea 钳制逻辑可复用到恢复路径）。~1 天。
 
 ---
 
-## 4. P2 中优先级（健壮性、无障碍、流程，2–4 周）
+## 4. P2 中优先级
 
-### P2-1 设置读-改-写竞态 + async 命令中的阻塞 I/O
-`app_commands.rs:95-140`（add）、`:143-156`（remove）、`:44-60`（save）都是"load → 修改 → save"，两个并发写命令交错时后写覆盖先写（静默丢失仓库/分组变更）；且同步 `fs` I/O 直接跑在 tokio worker 上。建议：所有设置变更经 `tauri::State<Mutex<()>>` 或单一写任务串行化；I/O 包 `spawn_blocking`。
-
-### P2-2 状态收集的伸缩性：批处理 join + 每仓库 4–5 次 git spawn
-`repo_status.rs:7,45-96`（批大小 4，整批 join 后才开下一批）、`git/commands.rs:204-266`（`branch_state` 串行 4–5 个子进程）。30 个仓库 ≈ 120–150 次 spawn；一个挂死的网络驱动器仓库可拖满所在批次的 30s。建议：改为有界并发（信号量，N≈2×核数）替代批 join；`branch_state` 用 `git status --porcelain=v2 --branch` + 一次 `rev-list` 折叠为 1–2 次 spawn。
-
-### P2-3 写入无 fsync + widget debounce 丢数据
-`widget_data.rs:74-90`、`storage/store.rs:22-26`：临时文件写后未 `sync_all()` 即 rename，断电可能留下零字节文件（联动 P1-6）；`write_widget_data` 的 5s debounce 是 leading-edge，刷新完成早于窗口时**新数据被静默丢弃却返回 Ok**。建议：写-刷-改名的完整原子序列；debounce 改 trailing-edge 或直接移除（刷新节奏本就是分钟级）；失败时清理 `.tmp`。
-
-### P2-4 托盘 generation guard 的 check-then-act 窗口
-`tray_status.rs:75-85,148-155`：原子检查 generation 与 `set_menu` 之间，另一线程可插入更新导致过期菜单覆盖新菜单。窗口极小但 guard 的存在意义正是消除它。建议：用 `Mutex<u64>` 覆盖"检查+应用"全程。
-
-### P2-5 目录扫描无时间/条目上限，路径 IPC 往返有损
-`app_commands.rs:62-92`、`git/discovery.rs:28-60,88-91`：指向 `C:\` 或用户主目录时无预算限制（skip 列表不含 `Library`/`AppData`/`.cargo`/`.rustup`），UI 全程等待无法取消；路径经 `to_string_lossy` 字符串化再 `PathBuf::from` 还原，Windows 上含未配对代罪的路径会被 U+FFFD 损坏。建议：加 10s 死线与条目上限；扩充 skip 列表或跳过全部隐藏目录；IPC 边界避免 lossy 转换。
-
-### P2-6 无障碍缺口（四项）
-- 过滤器/设置导航激活态仅靠 CSS class：`GroupFilters.tsx:9-14`、`StatusFilters.tsx:27-46`、`SettingsShell.tsx:51-59` 缺 `aria-pressed` / `aria-current`。
-- 表格列宽调整仅鼠标可操作：`RepoTable.tsx:85-115` 的 handle 无键盘路径（可加 `role="separator"` + 方向键，或放弃 resize）；`<th>` 缺 `scope="col"`；状态点（`:143`）对读屏是空单元格——`.sr-only` 工具类（`widget.css:110-120`）已定义却从未使用。
-- 折叠态右键菜单无键盘触发：`WidgetCollapsed.tsx:59-67`，键盘用户可展开但无法从折叠态刷新/退出（补 `ContextMenu` 键 / Shift+F10）。
-- 对比度：amber 文字按钮 `#b57412` ≈3.8:1（`widget.css:493-496`，11px 需 4.5:1），`--gv-muted` 在多处 10–11px 小字上处于 4.5:1 边缘（`tokens.css:4`）。建议为文字用途加深色阶（如 `#8a5a0a`、`#5a6a80`），色点保持亮色。
-
-### P2-7 视图切换时窗口帧同步执行两次
-`useWidgetView.ts:158-164`（`showView` 直调 `syncNativeWindowFrame`）+ `:241-248`（effect 在 state 变化后再调一次）。每次折叠/展开都做两轮背景色翻转 + IPC，加重 resize 保护窗（140ms）附近的闪烁。删直调即可（effect 已覆盖）。
-
-### P2-8 文档与实现漂移
-- `AGENTS.md:87` 仍写 "Planning complete, implementation pending"，但 macOS WidgetKit widget 已实现（`widget-extension/` 存在、`beforeBundleCommand` 已配置、CI 已在构建扩展）。README 状态分类表也已与 AGENTS.md 口径一致（`error` 说明已补），唯此处未跟上。
-- `README.md:81-88` 叠了三个"最后更新"脚注，是追加式编辑的痕迹；建议删除日期脚注，让 git 历史承担版本信息。
-- `NATIVE_WIDGET_IMPLEMENTATION_PLAN.md` 状态行同步更新为"已实现（需 Apple Developer 签名才能实际加载）"。
-
-### P2-9 CI 缺类型检查；无依赖更新自动化
-- CI 只跑 `npm test`（vitest 不做类型检查），`npm run build`（即 tsc，README 明言 "this IS the typecheck"）只在打 tag 后的 release 流程执行——TypeScript 错误会在发布日而非 PR 日暴露。ci.yml 增加 `npm run build` 即可。
-- 无 dependabot/renovate：npm、Cargo、GitHub Actions 三个依赖面（含 sharp、vite、tauri、windows crate）都没有安全补丁自动化。加 `dependabot.yml`（三个 ecosystem，weekly）。
-- 仓库无任何 ESLint/Prettier 配置；是否引入见 P3-8 一起决策。
-
-### P2-10 发布通道缺口：无更新器、签名收尾未完成
-- `tauri.conf.json` 无 `plugins.updater` / `createUpdaterArtifacts`：常驻型 widget 应用只能靠手动重装升级，摩擦显著。建议启用 tauri-plugin-updater + 签名密钥 + latest.json 发布（若有意推迟，在 RELEASE_SIGNING.md 写明）。
-- `docs/RELEASE_SIGNING.md` 自述的 v0.2.2 草稿清理仍无执行记录；`docs/platform-acceptance-checklist.md` 对 v0.3.2-unsigned 三平台仍全部 `_TBD_`——这是发布前自身设定的门禁。
-- `configure-windows-signing.ps1` 会在 runner 上原地改写 tauri.conf.json 的证书指纹，本地构建静默产出未签名包，文档应加一句说明。
-
-### P2-11 测试体系转型：文本契约 → 行为契约
-14/29 个测试文件把源码当文本做正则断言（含对一个 `.md` 和测试文件自身的断言），P0-2 是第一个实证牺牲品，且部分断言重复编译器保证。建议：UI 结构类断言迁移到渲染测试（扩展 `renderSmoke.test.tsx` 模式：Pull/Push 二次确认流、筛选联动、设置页导航三个优先场景）；仅保留无法用行为表达的跨语言边界检查。同时补 P2-2（并发收集）、store.rs 损坏路径、`repo_status` 整批 join 行为等 Rust 行为测试。这也是旧报告遗留项（Playwright/Testing Library 层交互测试）的落地方式。
-
-### P2-12 错误展示一致性（设置页）
-`RepositorySettings.tsx:222`、`GroupSettings.tsx:83`、`RefreshSettings.tsx:69`、`AppearanceSettings.tsx:56` 把成功与失败写进同一个灰色 `.settings-message`（`settings.css:376-381`）。失败看起来像确认。加 `isError` 标志 + 红色变体（与 P1-1 同一 CSS 基建）。
+| # | 项目 | 位置 | 问题与建议 |
+|---|------|------|-----------|
+| P2-1 | timeline `.never` 无兜底刷新 | `Provider.swift:16-20` | 应用崩溃/退出前未写、或 `reloadAllTimelines` 在扩展注册前调用丢失时，widget 永久停留旧数据/空态。改为 `.after(now + 15min)` 兜底，与 app 驱动刷新叠加。 |
+| P2-2 | 构建脚本 skip 时 bundle 断链 | `scripts/build-widget-extension.cjs:11-20`、`tauri.conf.json:48-50` | 无 Xcode 环境时脚本 exit 0 跳过，但 bundle 配置无条件映射 `.appex` → 打包报"文件不存在"或静默缺失扩展。skip 时应输出明确错误（release 构建 fail hard）或条件剥离 files 映射。 |
+| P2-3 | Windows watchdog 跨线程 HWND 操作、无退避 | `desktop_widget/windows.rs:179-207` | 后台线程每 5s 直接 `SetParent`/`SetWindowLongPtrW`（同步消息发往 UI 线程），UI 忙时 watchdog 卡顿，宿主探测瞬时失败会引发重附风暴。改为 `app.run_on_main_thread` 派发 + 连续失败指数退避 + main 窗口不存在时停止重试。 |
+| P2-4 | 日志脱敏靠调用点自觉，已有 3 处缺口 | `git/commands.rs:39`（git 全路径含用户名）、`lib.rs:79`（deep-link 全 URL 含 query）、`Provider.swift:27`（全路径） | `redact_path` 本身可靠但无强制。加一个中心化 log 包装：对 `X:\Users\...`、`/Users/...` 模式统一打码；deep link 只记 scheme+host。 |
+| P2-5 | `branch_state` 每仓库 4-5 次 git spawn | `git/commands.rs:204-266` | 遗留性能项：用 `git status --porcelain=v2 --branch` + 一次 `rev-list` 折叠为 1-2 次 spawn，30 仓库的刷新 spawn 数从 ~150 降到 ~60。与工作池（已做）叠加后刷新延迟显著下降。需完整回归状态分类测试。 |
+| P2-6 | 手动刷新在自动刷新 in-flight 时被静默丢弃 | `useWidgetView.ts:181` | `refreshInFlightRef` 对手动/自动一视同仁直接 return。手动点击应有反馈地"排队"（记 pending 标记，in-flight 结束后补一次），而不是让用户以为点了没用。 |
+| P2-7 | deep link 无路由、widget 无点击目标 | `lib.rs:77-93`、Swift Views | `on_open_url` 只判断 scheme 就聚焦窗口，host/path 全丢弃；Swift 视图没有 `.widgetURL`，点 widget 没有任何反应（WidgetKit 必须显式声明）。加 `.widgetURL(URL(string:"gitaview://open"))` + 路由 `gitaview://open/repo/<id>`。 |
 
 ---
 
-## 5. P3 低优先级（卫生与打磨，择机）
+## 5. P3 低优先级
 
 | # | 项目 | 位置 | 建议 |
 |---|------|------|------|
-| P3-1 | 死代码 `CollapsedBucket` | `domain/status.rs:26-43`（仅同文件测试引用，`lib.rs` 全 pub 导致死代码 lint 失效） | 删除或接线到 `tray_menu_rows` |
-| P3-2 | 依赖卫生 | `Cargo.toml:11,14`（dialog 精确 pin 2.7.1 与整体 `^2` 风格不一；`dirs = "5"` 与 lock 中 dirs 6 并存）；`package.json:24`（`png-to-ico` 无引用）；根目录 `create-icon.cjs` 游离 | dirs 升 6；统一 pin 风格；删 png-to-ico；脚本移入 `scripts/` 并挂 `npm run icon` 或删除 |
-| P3-3 | 无 `[profile.release]` | `Cargo.toml` | 常驻应用加 `lto="thin"`、`strip=true`、`codegen-units=1` 可显著缩包 |
-| P3-4 | 权限最小化 | `capabilities/default.json` | `deep-link:allow-register`/`get-current` 前端从未调用（注册在 `lib.rs:76` 原生完成），移除 |
-| P3-5 | 时间戳 URL 占位 | `tauri.conf.json:44`（`timestampUrl: ""`） | 启用签名时设默认 RFC 3161 地址，避免无时间戳签名 |
-| P3-6 | release.yml 重复块 | `release.yml:105-155` | 签名/未签名两个 tauri-action 步骤仅差 env 与 prerelease，用条件合并 |
-| P3-7 | i18n 基础 | 全部组件 + `"全部分组"` sentinel | 抽 `strings.ts`；用显式 `"all"` 过滤值或 `settings.defaultGroup` 替代中文哨兵串做逻辑比较（`statusModel.ts:37-38`、`commands.ts:37,43`、`domain/settings.rs:79,82`） |
-| P3-8 | lint 工具链 | 仓库级 | 与 P2-9 合并决策：引入 ESLint + Prettier + `npm run lint` 进 CI |
-| P3-9 | 类型契约死字段 | `types.ts:49-52` | `safety.confirmPull/confirmPush` UI 不可编辑且 Rust 端强制归 true，从 TS 契约移除或改为只读展示 |
-| P3-10 | 渲染打磨 | `RepoTable.tsx:157`（Fragment 内冗余 key）、`RepoTable.tsx:121-167`（可 memo）、`RepositorySettings.tsx:226`（scanResults 以路径字符串为 key 可碰撞） | 低成本随手修 |
+| P3-1 | settings 归一化不校验 version、不去重 | `domain/settings.rs:99-135` | `version: 99` 被当 v1 静默改写；重复 repo `id` / 重复组名导致 `find_repo` 遮蔽、`remove_repository` 双删。`normalized()` 补版本上限检查与去重。 |
+| P3-2 | `system_open` URL 校验是前缀式的 | `system_open.rs:12-18,42-45` | 放行控制字符/空白（`open`/explorer 可能吞掉）；`spawn()` 结果丢弃，Linux `xdg-open` 失败用户无感知。拒绝 <0x20 字符；映射退出码为错误消息。 |
+| P3-3 | Windows 签名验证不绑定证书 | `scripts/verify-windows-signatures.ps1:11-17` | 只查 `Status -eq Valid`，任何受信证书都过——补 `Thumbprint -eq $env:WINDOWS_CERTIFICATE_THUMBPRINT` 断言。 |
+| P3-4 | 版本校验脚本子串匹配 | `scripts/validate-release-version.cjs:18-20` | `includes('version = "0.3.2"')` 会命中依赖行；改为解析 `[package]` 段。 |
+| P3-5 | `.corrupt` 留档无限累积 | `storage/store.rs` | 留最近 N 份（如 3），超出删除最旧。 |
+| P3-6 | `add_repository` 已存在时仍重写设置文件 | `app_commands.rs` | no-op 路径提前返回，避免无谓 I/O 与 mtime 抖动。 |
+| P3-7 | 登录 shell 探测取整段 stdout | `git/commands.rs:88` | profile echo 会污染解析；取最后一个非空行。 |
+| P3-8 | `formatActionResult` 空串语义 | `src/lib/actionResults.ts` | `message ?? fallback` 把 `""` 当有效消息渲染空 span；改 `||` 或入口归一。 |
+| P3-9 | widget 数据路径双语言各自硬编码 | `Provider.swift:23`、`widget_data.rs:75-81` | 从 bundle identifier 派生或以 fixture 常量共享，防漂移（P0-1 就是这种漂移的实证）。 |
+
+另有一项**实机确认**：折叠态加"数据未更新"提示后与多状态桶同屏的溢出表现（第一轮改动引入，CSS 无 overflow 处理），需在真机看一眼。
 
 ---
 
-## 6. 架构演进建议（贯穿 P1/P2 的结构性主题）
+## 6. 架构演进（延续第一轮，本轮仍开放）
 
-**单一状态所有者**：当前"最新仓库状态"没有唯一 owner——托盘刷新（`tray_status.rs`）、IPC 刷新（`list_repo_statuses`）、widget 写入（`widget_data.rs`）是 `collect_repo_statuses` 的三个平行消费者，行为分叉（P1-3 即其症状），且互不共享缓存，同一时刻可能重复拉起几十个 git 进程。建议引入一个后台状态服务（`tauri::State` 持有 `Arc<Mutex<RepoSnapshot>>` + 版本号）：刷新入口统一、消费方（托盘/IPC/widget）从快照读取并订阅变更。这一步能同时化解 P1-3、P2-1（竞态）、P2-4（guard 竞态）的根因。
+1. **单一状态所有者**：托盘刷新、IPC 刷新、widget 写入仍是 `collect_repo_statuses` 的三个平行消费者（虽有 debounce/锁保护），无共享缓存。引入 `tauri::State` 持有的状态服务（快照 + 版本号 + 订阅），三个消费者收敛后可同时消除重复 git spawn 和多处竞态防御代码。
+2. **类型化错误模型**：后端全线 `Result<_, String>` + 各层拼中文文案，IPC 边界无法枚举/测试。改为带错误码的 serde 枚举 DTO，前端按码决定呈现等级与重试策略。这是 P2-6（刷新排队）、P2-7（deep link）等功能的自然地基。
 
-**错误模型**：后端全线 `Result<_, String>` 且中文文案在各层拼接，IPC 边界无法枚举、无法测试。中期可改为带错误码的枚举 serde DTO，前端据码决定呈现（info/warn/error + 是否可重试），P1-1/P1-2/P2-12 的呈现规则就有了统一挂靠点。
+建议在 P0/P1 稳定后、且 dependabot 大版本升级（vite 8 等）消化完之后，作为独立 PR 系列推进，避免与行为修复混在同一批。
 
 ---
 
-## 7. 实施路线图
+## 7. 工程体系与流程
+
+### 7-1 跨语言/跨进程契约测试（本轮最大结构性投资）
+
+本轮 P0 + P1-2 + P3-9 三个发现全部位于**没有测试覆盖的边界**上。具体缺口：Swift 端零测试（project.yml 无 test target）、`widget-bridge/WidgetReloader.m`、全部 `scripts/*`、`desktop_widget/macos.rs`、`lib.rs` 装配层均无测试。优先级排序：
+
+1. **Rust ↔ Swift JSON 契约**（随 P0-1 一起做）：共享 fixture + 双端断言。
+2. **发布脚本冒烟**：validate-*.cjs 至少用临时 fixture 跑通正反两例。
+3. **Swift 单测 target**：Provider.loadEntry 对坏 JSON/缺文件/空文件的容错。
+
+### 7-2 文本契约测试迁移（第一轮 P2-11 延续）
+
+29 个测试文件中 14 个仍以正则/`toContain` 断言源码文本（含对 README 和其他测试文件的断言）。已实证脆弱（第一轮 4 个失效）。迁移策略：UI 结构断言 → `renderSmoke` 渲染模式；跨语言边界 → §7-1 的 fixture 契约；纯编译期保证（import 存在等）→ 删除。
+
+### 7-3 交互层测试
+
+补三个核心用户流程的组件交互测试（Testing Library，不必上 Playwright）：Pull/Push 二次确认全流程（确认态 → invoke → 成功/失败双分支呈现）、筛选联动（组 → 状态计数）、设置页导航与保存。`renderToStaticMarkup` 覆盖不了事件路径，这是当前的空白。
+
+### 7-4 dependabot 消化（9 个 PR 开放中）
+
+- **可安全合并**：#18（npm/cargo minor+patch 组，9 项）已三平台 CI 全绿。
+- **需单独评估的大版本**：#20 vite 7→8、#21 plugin-react 5→6、#19 @types/node 24→26、#13 tauri-action 0→1。各建独立分支验证（`npm run build` + `npm test` + 一次 `tauri build`），特别是 vite 8 的 plugin 兼容矩阵。
+- cargo/windows crate 升级（#17）在 Windows runner 上验证即可。
+
+### 7-5 其他流程项（延续开放）
+
+- ESLint/Prettier 决策（建议引入 eslint + `@typescript-eslint` 最小规则集，进 CI 的 `npm run lint`）。
+- `docs/reviews/` 凭据文件的 git 历史清除（需 force-push 决策）。
+- `docs/platform-acceptance-checklist.md` 实机验收（对 v0.3.2 仍全 `_TBD_`；P0-1 修复后 mac 清单必须重跑）。
+- release.yml 签名/未签名双 tauri-action 块条件合并（~30 行重复）。
+
+---
+
+## 8. 产品规格漂移治理
+
+`DESIGN_AND_BUILD_SPEC.md`（v1 契约）与实现已有多处口径分叉，建议一次性对齐（以实现为准，除非有意改实现）：
+
+| 章节 | 规格说 | 实现是 |
+|------|--------|--------|
+| §4 设置导航 | 5 项：`仓库/分组/刷新/安全操作/外观` | 2 组：`仓库设置`（含分组卡片）/`常规设置`（刷新+安全+外观） |
+| §6 状态模型 | 5 种 relation，无 `error` | 5 + 应用层 `error`（README 已说明，spec 未跟上），排序首位 |
+| §7 AppSettings | `safety.confirmPull` 单项、`appearance.compactMode` | 双确认强制为 true（不可配置）、`compactMode` 已删、新增 `allowWidgetDrag` |
+| §5 色板 | `--gv-muted: #667488`、无 amber-text | 无障碍修复后 `#5a6a80` + 新增 `--gv-amber-text` |
+| §3.3 动作反馈 | "超过 300ms 才显示 loading" | loading 立即显示（无延迟门槛） |
+| §7 数据模型 | `RepoStatus` 无 `hasRemote` | 实现有 `hasRemote`（操作可用性判定依赖） |
+
+`PRODUCT.md` 的 a11y 要求（reduced-motion、非纯色传达、键盘可达）经核查**已达成**，无漂移。
+
+`NATIVE_WIDGET_IMPLEMENTATION_PLAN.md` 状态行已标"已实现"，但 P0-1 修复前应追加说明"数据链路修复中"。
+
+---
+
+## 9. 实施路线图
 
 | 阶段 | 内容 | 出口标准 |
 |------|------|----------|
-| **一（本周）** | P0-1、P0-2、P0-3 | CI 三平台全绿且含 `npm run build`；`npm test` 全绿；可疑文件出库 |
-| **二（1–2 周）** | P1-1 ~ P1-7 | 失败可见（操作错误红显 + 折叠态停更提示）；widget 数据随任意刷新更新；Windows 无 `Library/` 目录；网络操作不受 30s 限制且有互斥；损坏 settings 自愈；macOS Homebrew git 可用 |
-| **三（2–4 周）** | P2-1 ~ P2-12 | 设置写入串行化 + fsync；扫描有上限；无障碍四项关闭；文档口径一致；dependabot + concurrency 运转；文本契约迁移过半 |
-| **四（择机）** | P3 全部 + 更新器 + 状态服务重构 | P3 清零；updater 通道上线（或文档写明推迟）；单一状态所有者落地 |
+| **一（1 周）** | P0-1（含跨语言契约测试基建）、P1-1、P1-2、P1-3 | 真 macOS 实机上 widget 显示真实仓库数据并随刷新更新；双开启动只激活单实例；带签名身份的 `.appex` 构建；重启后窗口位置恢复 |
+| **二（1–2 周）** | P2-1 ~ P2-7 | 兜底刷新生效；无 Xcode 环境的构建行为明确；watchdog 主线程化 + 退避；日志无用户名/URL 泄漏；`branch_state` 1-2 次 spawn；手动刷新排队；widget 点击打开应用 |
+| **三（并行/持续）** | §7 体系项 + §8 规格对齐 | 契约 fixture 入 CI；文本契约测试 <50%；三个交互测试场景落地；9 个 dependabot PR 清零；spec 与实现口径一致 |
+| **四（择机）** | §6 架构演进、updater 通道（tauri-plugin-updater + latest.json）、i18n 字符串模块 | 状态服务落地、错误码枚举、更新通道上线（或文档明确推迟）、`全部分组` sentinel 移除 |
 
-顺序依据：门禁先于功能（门禁不红才能保证后续每个 PR 的质量）；用户可见正确性先于内部健壮性；结构性重构放在行为修复稳定之后，避免在移动的地基上施工。
+依赖关系：P0-1 必须最先（它是"旗舰功能从未工作"级别的问题）；P1-2 的签名验证依赖 P0-1 之后才有意义（数据对了才有东西可显示）；§6 架构演进放在 dependabot 大版本消化之后，避免变更叠加。
 
 ---
 
-## 8. 验证与验收
-
-每项完成后按 AGENTS.md 全量验证：
+## 10. 验证与验收
 
 ```bash
 npm test
@@ -235,21 +203,24 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 npm run build
 ```
 
-另需专项验收：
-- P1-3/P1-4：macOS 实机确认 widget 数据随前端刷新更新；Windows 实机确认 `~/Library` 不再出现。
-- P1-5：用 `git config http.lowSpeedLimit` 或限速代理模拟慢网络，验证 pull 不被 30s 杀死、重复点击返回"操作进行中"。
-- P1-6：手工写入坏 JSON 启动应用，确认自愈 + 留档。
+专项验收：
+- P0-1：**macOS 真机**（Apple Developer 签名环境下）widget 显示真实数据、刷新后 15s 内更新、`console`/统一日志无 decode 错误。
+- P1-1：应用运行中再次启动（含 `gitaview://` 链接），只激活已有实例。
+- P1-3：拖动 widget → 退出 → 重启，位置还原；外接显示器拔除后启动不越界。
+- P2-5：状态分类回归全绿（synced/local_ahead/remote_ahead/diverged/no_remote/detached/error 全分支）。
 - 行为修复一律先补回归测试（AGENTS.md 既有约定）。
 
 ---
 
-## 附录：本次分析实际执行的验证
+## 附录：本轮分析实际执行的验证
 
 | 验证 | 结果 |
 |------|------|
-| `npm test`（本地） | **4 失败**（settingsSaveFreshnessContract ×3、desktopWidgetContract ×1），114 通过 |
-| `gh run list` | CI 自 2026-07-28 连续 4 次失败，日志确认 npm ci EUSAGE + rust-cache "could not find Cargo.toml" |
-| `grep write_widget_data` | 唯一生产调用点 `tray_status.rs:166` |
-| `widget_data.rs` / `git/commands.rs` / `storage/store.rs` 源码抽查 | P1-4、P1-5、P1-6 所述代码逐行核实 |
-| `docs/reviews/` 目录 | 存在疑似凭据文件（内容已脱敏查看） |
-| `swatinem/rust-cache` | ci.yml:44 与 release.yml:46 均未配置 `workspaces` |
+| Swift `WidgetData.swift` / `Provider.swift` 与 Rust `WidgetPayload` 逐行对照 | P0-1 双重必败证实（键名 + Date 策略） |
+| `grep single.instance` 全仓 | 无单实例插件，证实 P1-1 |
+| `project.yml` Release 段 | `CODE_SIGN_IDENTITY: "-"` + `ENABLE_HARDENED_RUNTIME: NO`，证实 P1-2 |
+| 全仓 grep 窗口位置持久化 | 无任何实现，证实 P1-3（spec §8 要求） |
+| `gh pr list` | 9 个 dependabot PR 开放（#13–#21） |
+| `gh pr checks 18` | minor+patch 组三平台绿 |
+| `grep prefers-reduced-motion` | widget.css:568 已支持（PRODUCT.md a11y 达标） |
+| `DESIGN_AND_BUILD_SPEC.md` 逐节对照 | §4/§5/§6/§7/§3.3 五处漂移（§8 详表） |
