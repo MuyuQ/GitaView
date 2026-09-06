@@ -182,3 +182,8 @@ export function exitApp(): Promise<void> {
   if (!hasTauriRuntime()) return Promise.resolve();
   return invoke<void>("exit_app");
 }
+
+export function saveWindowState(x: number, y: number): Promise<void> {
+  if (!hasTauriRuntime()) return Promise.resolve();
+  return invoke<void>("save_window_state", { x, y });
+}

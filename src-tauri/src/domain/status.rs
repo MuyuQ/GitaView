@@ -12,6 +12,18 @@ pub enum RemoteRelation {
 }
 
 impl RemoteRelation {
+    /// 与 serde 序列化的 snake_case 值保持一致（spec §6 的线上取值）
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RemoteRelation::Error => "error",
+            RemoteRelation::Diverged => "diverged",
+            RemoteRelation::RemoteAhead => "remote_ahead",
+            RemoteRelation::LocalAhead => "local_ahead",
+            RemoteRelation::Synced => "synced",
+            RemoteRelation::NoRemote => "no_remote",
+        }
+    }
+
     pub fn sort_rank(self) -> u8 {
         match self {
             RemoteRelation::Error => 0,
