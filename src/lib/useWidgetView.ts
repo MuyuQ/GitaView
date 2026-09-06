@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
-import { listRepoStatuses, getSettings, exitApp, syncDesktopWidgetFrame } from "./commands";
+import { listRepoStatuses, getSettings, exitApp, saveWindowState, syncDesktopWidgetFrame } from "./commands";
 import { subscribeToSettingsUpdates } from "./settingsEvents";
 import { hasTauriRuntime } from "./runtime";
 import { shouldShowSettingsView } from "./statusModel";
@@ -254,6 +254,35 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
   useEffect(() => () => {
     if (resizeGuardTimer.current === null) return;
     window.clearTimeout(resizeGuardTimer.current);
+  }, []);
+
+  // 窗口位置持久化（规格 §8）：移动后防抖 800ms 保存物理坐标，
+  // 恢复在 Rust setup 阶段完成（先于前端首次帧同步）
+  useEffect(() => {
+    if (!hasTauriRuntime()) return;
+    const appWindow = getCurrentWindow();
+    let saveTimer: number | null = null;
+    let unlisten: (() => void) | null = null;
+    let disposed = false;
+    appWindow
+      .onMoved(({ payload }) => {
+        if (saveTimer !== null) window.clearTimeout(saveTimer);
+        saveTimer = window.setTimeout(() => {
+          saveTimer = null;
+          saveWindowState(payload.x, payload.y).catch((err) => {
+            console.error("保存窗口位置失败", err);
+          });
+        }, 800);
+      })
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+      if (saveTimer !== null) window.clearTimeout(saveTimer);
+    };
   }, []);
 
   useEffect(() => subscribeToSettingsUpdates(applySettings), [applySettings]);

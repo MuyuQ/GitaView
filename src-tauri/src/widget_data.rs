@@ -28,8 +28,14 @@ fn notify_widget_refresh() {
     // Windows/Linux 不支持 WidgetKit，静默跳过
 }
 
-/// Widget 数据 JSON 格式
+/// Widget 数据 JSON 格式。
+///
+/// 这是与 Swift `WidgetData`（widget-extension/GitaViewWidget/Models）之间的
+/// 跨语言契约：容器键为 camelCase，`relation` 值为 snake_case 枚举名，
+/// `lastUpdated` 为 ISO-8601 字符串。任何改动必须同步
+/// `fixtures/widget-data.json` 与 Swift 测试（GitaViewWidgetTests）。
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct WidgetPayload {
     version: u32,
     last_updated: String,
@@ -38,6 +44,7 @@ struct WidgetPayload {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct WidgetRepo {
     id: String,
     name: String,
@@ -49,6 +56,7 @@ struct WidgetRepo {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct WidgetSummary {
     synced: u32,
     local_ahead: u32,
@@ -245,7 +253,8 @@ fn build_payload(statuses: &[RepoStatusDto]) -> WidgetPayload {
                 name: s.name.clone(),
                 group: s.group.clone(),
                 branch: s.branch.clone(),
-                relation: format!("{:?}", s.relation).to_lowercase(),
+                // 线上值用 snake_case（与 spec §6 及 Swift colorForRelation 一致）
+                relation: s.relation.as_str().to_string(),
                 change_label: s.change_label.clone(),
                 hint: s.hint.clone(),
             }
@@ -370,9 +379,57 @@ mod tests {
         assert_eq!(repo.name, "test-repo");
         assert_eq!(repo.group, "业务");
         assert_eq!(repo.branch, "feature/test");
-        assert_eq!(repo.relation, "localahead");
+        assert_eq!(repo.relation, "local_ahead");
         assert_eq!(repo.change_label, "3 ahead");
         assert_eq!(repo.hint, "Push 3 commits");
+    }
+
+    #[test]
+    fn widget_payload_matches_cross_language_fixture() {
+        // 跨语言契约：本 fixture 是 Rust 序列化输出与 Swift 解码输入的唯一事实源，
+        // 由 GitaViewWidgetTests 解码断言。改动 WidgetPayload 后用
+        //   GITA_VIEW_WRITE_WIDGET_FIXTURE=1 cargo test --manifest-path src-tauri/Cargo.toml
+        // 重新生成，并同步 Swift 侧测试。
+        let statuses = vec![
+            make_status("gitaview", RemoteRelation::Synced),
+            make_status("api-server", RemoteRelation::LocalAhead),
+        ];
+        let payload = build_payload(&statuses);
+        let mut value = serde_json::to_value(&payload).unwrap();
+        value["lastUpdated"] = serde_json::Value::String("2026-09-06T00:00:00Z".to_string());
+
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("widget-extension/Fixtures/widget-data.json");
+        if std::env::var("GITA_VIEW_WRITE_WIDGET_FIXTURE").is_ok() {
+            fs::write(&fixture_path, serde_json::to_string_pretty(&value).unwrap()).unwrap();
+        }
+
+        // 线上键名锁定：camelCase 容器键 + snake_case relation 取值，
+        // 防止 rename 属性被静默移除
+        assert!(value.get("last_updated").is_none());
+        assert!(value.get("lastUpdated").is_some());
+        assert_eq!(value["repos"][0]["relation"], "synced");
+        assert_eq!(value["repos"][1]["relation"], "local_ahead");
+        assert!(value["repos"][1].get("changeLabel").is_some());
+        assert_eq!(value["summary"]["localAhead"], 1);
+        assert_eq!(value["summary"]["total"], 2);
+
+        let committed: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&fixture_path).unwrap())
+                .expect("fixture must be valid JSON");
+        assert_eq!(
+            value, committed,
+            "widget fixture drift: regenerate with GITA_VIEW_WRITE_WIDGET_FIXTURE=1 and update the Swift test"
+        );
+    }
+
+    #[test]
+    fn relation_as_str_matches_serde_snake_case() {
+        assert_eq!(RemoteRelation::LocalAhead.as_str(), "local_ahead");
+        assert_eq!(RemoteRelation::RemoteAhead.as_str(), "remote_ahead");
+        assert_eq!(RemoteRelation::NoRemote.as_str(), "no_remote");
+        let serialized = serde_json::to_string(&RemoteRelation::LocalAhead).unwrap();
+        assert_eq!(serialized, "\"local_ahead\"");
     }
 
     #[test]

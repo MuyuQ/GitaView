@@ -1,0 +1,32 @@
+{
+  "lastUpdated": "2026-09-06T00:00:00Z",
+  "repos": [
+    {
+      "branch": "main",
+      "changeLabel": "clean",
+      "group": "默认分组",
+      "hint": "",
+      "id": "gitaview",
+      "name": "gitaview",
+      "relation": "synced"
+    },
+    {
+      "branch": "main",
+      "changeLabel": "clean",
+      "group": "默认分组",
+      "hint": "",
+      "id": "api-server",
+      "name": "api-server",
+      "relation": "local_ahead"
+    }
+  ],
+  "summary": {
+    "diverged": 0,
+    "localAhead": 1,
+    "noRemote": 0,
+    "remoteAhead": 0,
+    "synced": 1,
+    "total": 2
+  },
+  "version": 1
+}
