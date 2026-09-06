@@ -24,6 +24,27 @@ targets:
         Debug:
           CODE_SIGN_IDENTITY: "-"
         Release:
+          # 本地/无签名 CI 保持 ad-hoc；正式发布由 build-widget-extension.cjs
+          # 通过 xcodebuild 命令行覆盖为 APPLE_SIGNING_IDENTITY + hardened runtime
           CODE_SIGN_IDENTITY: "-"
     entitlements:
       path: GitaViewWidget/GitaViewWidget.entitlements
+
+  GitaViewWidgetTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - GitaViewWidgetTests
+      - path: Fixtures/widget-data.json
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gitaview.desktop.widgettests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "5.9"
+        CODE_SIGN_STYLE: Automatic
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY: "-"
+        Release:
+          CODE_SIGN_IDENTITY: "-"

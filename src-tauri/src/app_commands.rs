@@ -355,6 +355,20 @@ pub async fn sync_desktop_widget_frame(
 }
 
 #[tauri::command]
+pub async fn save_window_state(app: tauri::AppHandle, x: i32, y: i32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = crate::window_state::window_state_path(&app)?;
+        crate::window_state::save_window_position(
+            &path,
+            &crate::window_state::WindowPosition { x, y },
+        )
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn exit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
