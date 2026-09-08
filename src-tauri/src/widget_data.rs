@@ -67,15 +67,15 @@ struct WidgetSummary {
 }
 
 /// 写入 widget 数据（仅 macOS 生效；其他平台为空操作，避免产生无人读取的文件）
-pub fn write_widget_data(statuses: &[RepoStatusDto]) -> Result<(), String> {
+pub fn write_widget_data(statuses: &[RepoStatusDto], generation: u64) -> Result<(), String> {
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = statuses;
+        let _ = (statuses, generation);
         Ok(())
     }
 
     #[cfg(target_os = "macos")]
-    enqueue_widget_write(widget_data_path(), statuses.to_vec())
+    enqueue_widget_write(widget_data_path(), statuses.to_vec(), Some(generation))
 }
 
 /// 获取 widget-data.json 的路径（macOS 专用，与 WidgetKit 扩展共享）
@@ -94,15 +94,30 @@ const DEBOUNCE_DURATION: Duration = Duration::from_secs(5);
 /// 保证防抖窗口内到达的新数据不会被静默丢弃。
 struct WidgetWriteState {
     last_write: Option<Instant>,
-    pending: Option<Vec<RepoStatusDto>>,
+    pending: Option<(Option<u64>, Vec<RepoStatusDto>)>,
+    latest_generation: u64,
     flush_scheduled: bool,
 }
 
 static WRITE_STATE: Mutex<WidgetWriteState> = Mutex::new(WidgetWriteState {
     last_write: None,
     pending: None,
+    latest_generation: 0,
     flush_scheduled: false,
 });
+
+impl WidgetWriteState {
+    fn accept(&mut self, generation: Option<u64>, statuses: Vec<RepoStatusDto>) -> bool {
+        if let Some(generation) = generation {
+            if generation < self.latest_generation {
+                return false;
+            }
+            self.latest_generation = generation;
+        }
+        self.pending = Some((generation, statuses));
+        true
+    }
+}
 
 /// 落盘互斥：同一时刻只允许一个写入者，且写入者在自己回合开始时
 /// 取走当前最新的 pending —— 结构上保证文件永远不会被更旧的数据回写。
@@ -136,11 +151,17 @@ fn flush_decision(last_write: Option<Instant>, now: Instant) -> FlushDecision {
 }
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-fn enqueue_widget_write(path: PathBuf, statuses: Vec<RepoStatusDto>) -> Result<(), String> {
+fn enqueue_widget_write(
+    path: PathBuf,
+    statuses: Vec<RepoStatusDto>,
+    generation: Option<u64>,
+) -> Result<(), String> {
     let now = Instant::now();
     {
         let mut state = WRITE_STATE.lock().map_err(|e| e.to_string())?;
-        state.pending = Some(statuses);
+        if !state.accept(generation, statuses) {
+            return Ok(());
+        }
         match flush_decision(state.last_write, now) {
             FlushDecision::Defer(remaining) => {
                 // trailing-edge：窗口结束后由延迟写入者补写最新数据
@@ -174,9 +195,13 @@ fn perform_widget_write(path: PathBuf) -> Result<(), String> {
         let mut state = WRITE_STATE.lock().map_err(|e| e.to_string())?;
         state.pending.take()
     };
-    let Some(statuses) = pending else {
+    let Some((generation, statuses)) = pending else {
         return Ok(());
     };
+    // Deferred writes must still belong to the current refresh when they reach disk.
+    if generation.is_some_and(|value| !crate::tray_status::is_current_tray_menu_generation(value)) {
+        return Ok(());
+    }
     let result = write_widget_data_to(&path, &statuses);
     match &result {
         Ok(()) => {
@@ -188,7 +213,7 @@ fn perform_widget_write(path: PathBuf) -> Result<(), String> {
         Err(_) => {
             if let Ok(mut state) = WRITE_STATE.lock() {
                 if state.pending.is_none() {
-                    state.pending = Some(statuses);
+                    state.pending = Some((generation, statuses));
                 }
             }
         }
@@ -308,6 +333,40 @@ mod tests {
             has_remote: true,
             remote_url: None,
         }
+    }
+
+    #[test]
+    fn stale_pending_snapshot_is_discarded_before_disk_write() {
+        let _serial = WIDGET_TEST_SERIAL.lock().unwrap();
+        let temp = unique_temp_dir("gitaview_stale_widget");
+        let path = temp.join("widget-data.json");
+        reset_widget_write_state_for_tests(None);
+        {
+            let mut state = WRITE_STATE.lock().unwrap();
+            state.accept(
+                Some(u64::MAX),
+                vec![make_status("stale", RemoteRelation::Synced)],
+            );
+        }
+        perform_widget_write(path.clone()).unwrap();
+        assert!(!path.exists());
+        reset_widget_write_state_for_tests(None);
+    }
+
+    #[test]
+    fn late_old_refresh_cannot_replace_new_widget_snapshot() {
+        let mut state = WidgetWriteState {
+            last_write: None,
+            pending: None,
+            latest_generation: 0,
+            flush_scheduled: false,
+        };
+        assert!(state.accept(Some(2), vec![make_status("new", RemoteRelation::Synced)]));
+        assert!(!state.accept(
+            Some(1),
+            vec![make_status("old", RemoteRelation::LocalAhead)]
+        ));
+        assert_eq!(state.pending.as_ref().unwrap().1[0].id, "new");
     }
 
     #[test]
@@ -484,8 +543,12 @@ mod tests {
 
         // 模拟刚写过：进入防抖窗口，数据只入队，不落盘
         reset_widget_write_state_for_tests(Some(Instant::now()));
-        enqueue_widget_write(path.clone(), vec![make_status("a", RemoteRelation::Synced)])
-            .expect("enqueue should succeed");
+        enqueue_widget_write(
+            path.clone(),
+            vec![make_status("a", RemoteRelation::Synced)],
+            None,
+        )
+        .expect("enqueue should succeed");
         assert!(!path.exists(), "deferred write must not land immediately");
 
         // 手动触发 trailing flush：写入的是入队的最新数据
@@ -506,8 +569,12 @@ mod tests {
         let path = temp.join("widget-data.json");
 
         reset_widget_write_state_for_tests(None);
-        enqueue_widget_write(path.clone(), vec![make_status("a", RemoteRelation::Synced)])
-            .expect("enqueue should succeed");
+        enqueue_widget_write(
+            path.clone(),
+            vec![make_status("a", RemoteRelation::Synced)],
+            None,
+        )
+        .expect("enqueue should succeed");
 
         assert!(path.exists(), "immediate write must land right away");
         let text = fs::read_to_string(&path).expect("widget data file should exist");
@@ -544,6 +611,7 @@ mod tests {
         let mut state = WRITE_STATE.lock().unwrap();
         state.last_write = last_write;
         state.pending = None;
+        state.latest_generation = 0;
         state.flush_scheduled = false;
     }
 
@@ -551,7 +619,7 @@ mod tests {
     fn write_widget_data_is_a_no_op_off_macos() {
         // 非 macOS 平台不得创建任何文件或目录
         let temp = unique_temp_dir("gitaview_widget_noop_test");
-        write_widget_data(&[]).expect("write_widget_data should not fail off macOS");
+        write_widget_data(&[], 0).expect("write_widget_data should not fail off macOS");
         #[cfg(not(target_os = "macos"))]
         assert!(!temp.exists(), "no files should be created off macOS");
         let _ = fs::remove_dir_all(&temp);

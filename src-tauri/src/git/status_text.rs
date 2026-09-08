@@ -41,6 +41,7 @@ mod tests {
 
     fn sample_state(relation: RemoteRelation) -> GitBranchState {
         GitBranchState {
+            remote_branch: Some("main".to_string()),
             branch: "main".to_string(),
             relation,
             ahead: 0,

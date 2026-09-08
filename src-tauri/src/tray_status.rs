@@ -9,24 +9,11 @@ use tauri::{AppHandle, Manager, Runtime};
 pub const MAIN_TRAY_ID: &str = "main-tray";
 pub use crate::tray_menu_rows::{TRAY_QUIT_ID, TRAY_REFRESH_ID, TRAY_SHOW_ID};
 
-/// 托盘菜单代数：用 Mutex 而非原子量，让"检查代数 + 应用菜单"成为原子序列，
-/// 消除检查与应用之间被并发更新插入的竞态窗口。
+/// 刷新代数只短暂加锁；菜单在主线程执行前重新检查代数。
 static TRAY_MENU_GENERATION: Mutex<u64> = Mutex::new(0);
-
-/// 菜单应用互斥：所有 `tray.set_menu` 调用在此串行化。
-/// 该锁会跨 set_menu 持有（set_menu 可能向主线程派发并阻塞），
-/// 因此菜单事件路径绝不能等待它——事件处理器只短暂取 generation 锁。
-/// 锁序固定为 apply → generation，与事件路径之间不存在倒置。
-static TRAY_MENU_APPLY_LOCK: Mutex<()> = Mutex::new(());
 
 fn lock_tray_generation() -> std::sync::MutexGuard<'static, u64> {
     TRAY_MENU_GENERATION
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
-fn lock_menu_apply() -> std::sync::MutexGuard<'static, ()> {
-    TRAY_MENU_APPLY_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
@@ -78,16 +65,28 @@ fn error_tray_menu<R: Runtime, M: Manager<R>>(
     build_menu_from_rows(manager, &error_tray_rows(message))
 }
 
-pub fn set_loading_menu(app: &AppHandle) -> Result<(), String> {
-    crate::diagnostics::log("tray.set_loading.start", "");
-    let _apply = lock_menu_apply();
-    replace_tray_menu(app, loading_tray_menu)
+// All menu work runs on the UI thread. No caller waits for UI work while holding a lock.
+fn schedule_menu_update(
+    app: &AppHandle,
+    generation: u64,
+    update: impl FnOnce(&AppHandle) -> Result<(), String> + Send + 'static,
+) -> Result<bool, String> {
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        if !is_current_tray_menu_generation(generation) {
+            return;
+        }
+        if let Err(err) = update(&handle) {
+            crate::diagnostics::log("tray.apply.error", err);
+        }
+    })
+    .map_err(|err| err.to_string())?;
+    Ok(true)
 }
 
 pub fn set_status_menu(app: &AppHandle, statuses: &[RepoStatusDto]) -> Result<(), String> {
-    begin_tray_menu_update();
-    let _apply = lock_menu_apply();
-    set_status_menu_inner(app, statuses)
+    let generation = begin_tray_menu_update();
+    set_status_menu_if_current(app, generation, statuses).map(|_| ())
 }
 
 pub fn begin_tray_menu_update() -> u64 {
@@ -99,14 +98,13 @@ pub fn set_status_menu_if_current(
     generation: u64,
     statuses: &[RepoStatusDto],
 ) -> Result<bool, String> {
-    // 应用锁内完成"检查代数 + 应用菜单"：过期的应用会被拒绝，
-    // 且锁不跨 generation 更新路径，主线程菜单事件不会被长时间阻塞
-    let _apply = lock_menu_apply();
     if !is_current_tray_menu_generation(generation) {
         return Ok(false);
     }
-    set_status_menu_inner(app, statuses)?;
-    Ok(true)
+    let statuses = statuses.to_vec();
+    schedule_menu_update(app, generation, move |app| {
+        set_status_menu_inner(app, &statuses)
+    })
 }
 
 fn set_error_menu_if_current(
@@ -114,12 +112,10 @@ fn set_error_menu_if_current(
     generation: u64,
     message: &str,
 ) -> Result<bool, String> {
-    let _apply = lock_menu_apply();
-    if !is_current_tray_menu_generation(generation) {
-        return Ok(false);
-    }
-    set_error_menu_inner(app, message)?;
-    Ok(true)
+    let message = message.to_string();
+    schedule_menu_update(app, generation, move |app| {
+        set_error_menu_inner(app, &message)
+    })
 }
 
 fn set_status_menu_inner(app: &AppHandle, statuses: &[RepoStatusDto]) -> Result<(), String> {
@@ -160,7 +156,9 @@ fn replace_tray_menu(
 pub fn refresh_tray_menu_async(app: AppHandle) {
     let generation = begin_tray_menu_update();
     crate::diagnostics::log("tray.refresh.schedule", format!("generation={generation}"));
-    if let Err(err) = set_loading_menu(&app) {
+    if let Err(err) = schedule_menu_update(&app, generation, |app| {
+        replace_tray_menu(app, loading_tray_menu)
+    }) {
         eprintln!("更新托盘读取状态失败: {err}");
         crate::diagnostics::log(
             "tray.refresh.loading_error",
@@ -204,7 +202,9 @@ pub fn refresh_tray_menu_async(app: AppHandle) {
                 // 异步写入 widget 数据，不阻塞 tray 刷新
                 let statuses_clone = statuses.clone();
                 tauri::async_runtime::spawn_blocking(move || {
-                    if let Err(err) = crate::widget_data::write_widget_data(&statuses_clone) {
+                    if let Err(err) =
+                        crate::widget_data::write_widget_data(&statuses_clone, generation)
+                    {
                         crate::diagnostics::log("widget_data.write_error", &err);
                     }
                 });
@@ -250,7 +250,7 @@ fn next_tray_menu_generation() -> u64 {
     *current
 }
 
-fn is_current_tray_menu_generation(generation: u64) -> bool {
+pub(crate) fn is_current_tray_menu_generation(generation: u64) -> bool {
     *lock_tray_generation() == generation
 }
 

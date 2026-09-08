@@ -12,7 +12,7 @@ describe("settings save freshness contract", () => {
   it("serializes persistence against freshly loaded settings in the shared queue", () => {
     const queue = readProjectFile("src/lib/settingsMutations.ts");
 
-    expect(queue).toContain("persistSettings(patch(await loadSettings()))");
+    expect(queue).toContain("persistSettings(patch(structuredClone(expected)), expected)");
     expect(queue).toMatch(/pending\.then/);
   });
 
