@@ -110,12 +110,13 @@ export function getSettings(): Promise<AppSettings> {
   return invoke<AppSettings>("get_settings");
 }
 
-export function saveSettings(settings: AppSettings): Promise<AppSettings> {
+export async function saveSettings(settings: AppSettings, expected?: AppSettings): Promise<AppSettings> {
   if (!hasTauriRuntime()) {
     Object.assign(previewSettings, structuredClone(settings));
     return previewResult(previewSettings);
   }
-  return invoke<AppSettings>("save_settings", { settings });
+  if (!expected) throw new Error("保存设置需要读取时的快照");
+  return invoke<AppSettings>("save_settings", { settings, expected });
 }
 
 export function scanDirectory(path: string): Promise<string[]> {

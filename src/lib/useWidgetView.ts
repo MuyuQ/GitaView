@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import { createRefreshQueue } from "./refreshQueue";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { listRepoStatuses, getSettings, exitApp, saveWindowState, syncDesktopWidgetFrame } from "./commands";
 import { subscribeToSettingsUpdates } from "./settingsEvents";
@@ -60,7 +61,8 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
   const hasLoadedOnce = useRef(false);
   const resizeGuardTimer = useRef<number | null>(null);
   const latestRefreshGeneration = useRef(0);
-  const refreshInFlightRef = useRef(false);
+  const refreshQueueRef = useRef<ReturnType<typeof createRefreshQueue> | null>(null);
+  const initialRefreshPending = useRef(false);
 
   const applySettings = useCallback((settings: AppSettings) => {
     setRefreshSettings(settings.refresh);
@@ -177,16 +179,16 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
     });
   }, []);
 
-  const refreshRepos = useCallback((opts: { initial: boolean }) => {
-    if (refreshInFlightRef.current) return;
-    refreshInFlightRef.current = true;
+  const runRefresh = useCallback(() => {
+    const opts = { initial: initialRefreshPending.current };
+    initialRefreshPending.current = false;
     const requestGeneration = ++latestRefreshGeneration.current;
     if (opts.initial) {
       setInitialLoading(true);
     }
     setRefreshing(true);
     setRefreshError(null);
-    listRepoStatuses()
+    return listRepoStatuses()
       .then((data) => {
         if (!resolveRefreshCompletion(requestGeneration, latestRefreshGeneration.current)) return;
         setRepos(data);
@@ -206,12 +208,17 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
         }
       })
       .finally(() => {
-        refreshInFlightRef.current = false;
         if (!resolveRefreshCompletion(requestGeneration, latestRefreshGeneration.current)) return;
         setInitialLoading(false);
         setRefreshing(false);
         hasLoadedOnce.current = true;
       });
+  }, []);
+
+  if (!refreshQueueRef.current) refreshQueueRef.current = createRefreshQueue(runRefresh);
+  const refreshRepos = useCallback((opts: { initial: boolean }) => {
+    initialRefreshPending.current ||= opts.initial;
+    void refreshQueueRef.current!();
   }, []);
 
   const startDrag = useCallback(() => {

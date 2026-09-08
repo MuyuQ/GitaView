@@ -34,10 +34,7 @@ describe("review follow-up contracts", () => {
   it("guards lightweight refreshes from overlapping repository scans", () => {
     const hook = readFileSync(resolve(projectRoot, "src/lib/useWidgetView.ts"), "utf8");
 
-    expect(hook).toContain("refreshInFlightRef");
-    expect(hook).toContain("if (refreshInFlightRef.current) return;");
-    expect(hook).toContain("refreshInFlightRef.current = true;");
-    expect(hook).toContain("refreshInFlightRef.current = false;");
+    expect(hook).toContain("createRefreshQueue(runRefresh)");
   });
 
   it("splits repository settings busy state by operation area", () => {

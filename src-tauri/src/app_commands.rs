@@ -49,6 +49,7 @@ pub async fn get_settings(app: tauri::AppHandle) -> Result<AppSettings, String> 
 pub async fn save_settings(
     app: tauri::AppHandle,
     settings: AppSettings,
+    expected: AppSettings,
 ) -> Result<AppSettings, String> {
     let started = Instant::now();
     crate::diagnostics::log(
@@ -58,6 +59,7 @@ pub async fn save_settings(
     // 与 add/remove 共用互斥，避免并发读改写互相覆盖
     let saved = tauri::async_runtime::spawn_blocking(move || {
         crate::app_settings::mutate_app_settings(&app, |current| {
+            crate::app_settings::check_settings_snapshot(current, &expected)?;
             *current = settings;
             Ok(())
         })
@@ -227,7 +229,7 @@ pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusD
     // 前端刷新路径同样更新 widget 数据，保证桌面 widget 不落后于窗口/托盘
     let widget_statuses = statuses.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        if let Err(err) = crate::widget_data::write_widget_data(&widget_statuses) {
+        if let Err(err) = crate::widget_data::write_widget_data(&widget_statuses, tray_generation) {
             crate::diagnostics::log("widget_data.write_error", &err);
         }
     });
@@ -271,7 +273,12 @@ pub async fn pull_repo(
         validate_repo_git_operation(RepoGitOperation::Pull, state.relation, state.has_remote)?;
         run_git_args_with_timeout(
             &repo_path,
-            origin_pull_args(&state.branch),
+            origin_pull_args(
+                state
+                    .remote_branch
+                    .as_deref()
+                    .ok_or("缺少 origin 目标分支")?,
+            ),
             GIT_NETWORK_TIMEOUT,
         )
     })
@@ -296,7 +303,12 @@ pub async fn push_repo(
         validate_repo_git_operation(RepoGitOperation::Push, state.relation, state.has_remote)?;
         run_git_args_with_timeout(
             &repo_path,
-            origin_push_args(&state.branch),
+            origin_push_args(
+                state
+                    .remote_branch
+                    .as_deref()
+                    .ok_or("缺少 origin 目标分支")?,
+            ),
             GIT_NETWORK_TIMEOUT,
         )
     })
