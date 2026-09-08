@@ -11,6 +11,7 @@ use crate::git::remote::normalize_remote_url;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitBranchState {
     pub branch: String,
+    pub remote_branch: Option<String>,
     pub relation: RemoteRelation,
     pub ahead: u32,
     pub behind: u32,
@@ -276,7 +277,11 @@ pub(crate) fn origin_fetch_args() -> Vec<String> {
 }
 
 pub(crate) fn origin_pull_args(branch: &str) -> Vec<String> {
-    vec!["pull".to_string(), "origin".to_string(), branch.to_string()]
+    vec![
+        "pull".to_string(),
+        "origin".to_string(),
+        format!("refs/heads/{branch}"),
+    ]
 }
 
 pub(crate) fn origin_push_args(branch: &str) -> Vec<String> {
@@ -332,6 +337,7 @@ pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
     if branch == "HEAD" {
         return Ok(GitBranchState {
             branch,
+            remote_branch: None,
             relation: RemoteRelation::NoRemote,
             ahead: 0,
             behind: 0,
@@ -343,6 +349,7 @@ pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
     let Some(compare_ref) = comparison_ref(repo_path, &branch, has_origin_remote) else {
         return Ok(GitBranchState {
             branch,
+            remote_branch: None,
             relation: RemoteRelation::NoRemote,
             ahead: 0,
             behind: 0,
@@ -373,6 +380,7 @@ pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
     };
 
     Ok(GitBranchState {
+        remote_branch: compare_ref.strip_prefix("origin/").map(str::to_owned),
         branch,
         relation,
         ahead,
@@ -413,6 +421,60 @@ mod tests {
     }
 
     #[test]
+    fn actions_use_the_configured_origin_branch_when_local_name_differs() {
+        let temp = unique_temp_dir("gitaview_different_upstream");
+        let repo = temp.join("repo");
+        let remote = temp.join("remote.git");
+        fs::create_dir_all(&repo).unwrap();
+        fs::create_dir_all(&remote).unwrap();
+        test_git(&remote, &["init", "--bare"]);
+        test_git(&repo, &["init", "-b", "main"]);
+        test_git(&repo, &["config", "user.email", "test@example.test"]);
+        test_git(&repo, &["config", "user.name", "Test"]);
+        test_git(&repo, &["commit", "--allow-empty", "-m", "initial"]);
+        test_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        test_git(&repo, &["push", "-u", "origin", "main"]);
+        test_git(&repo, &["branch", "-m", "feature"]);
+        test_git(&repo, &["commit", "--allow-empty", "-m", "local"]);
+        let state = branch_state(&repo).unwrap();
+        assert_eq!(state.branch, "feature");
+        assert_eq!(state.remote_branch.as_deref(), Some("main"));
+        let target = state.remote_branch.as_deref().unwrap();
+        assert_eq!(
+            origin_pull_args(target),
+            vec!["pull", "origin", "refs/heads/main"]
+        );
+        run_git_args_with_timeout(&repo, origin_push_args(target), GIT_NETWORK_TIMEOUT).unwrap();
+        assert!(run_git(&remote, &["show-ref", "--verify", "refs/heads/main"]).is_ok());
+        assert!(run_git(&remote, &["show-ref", "--verify", "refs/heads/feature"]).is_err());
+        let peer = temp.join("peer");
+        test_git(
+            &temp,
+            &[
+                "clone",
+                "-b",
+                "main",
+                remote.to_str().unwrap(),
+                peer.to_str().unwrap(),
+            ],
+        );
+        test_git(&peer, &["config", "user.email", "test@example.test"]);
+        test_git(&peer, &["config", "user.name", "Test"]);
+        test_git(&peer, &["commit", "--allow-empty", "-m", "remote change"]);
+        test_git(&peer, &["push", "origin", "main"]);
+        run_git_args_with_timeout(&repo, origin_pull_args(target), GIT_NETWORK_TIMEOUT).unwrap();
+        assert_eq!(
+            run_git(&repo, &["rev-parse", "HEAD"]).unwrap(),
+            run_git(&peer, &["rev-parse", "HEAD"]).unwrap()
+        );
+        assert_eq!(branch_state(&repo).unwrap().branch, "feature");
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
     fn formats_git_failure_message() {
         assert_eq!(
             format_git_failure(&["fetch"], b"fatal: failed"),
@@ -430,7 +492,10 @@ mod tests {
     #[test]
     fn origin_action_args_pin_remote_and_branch() {
         assert_eq!(origin_fetch_args(), vec!["fetch", "origin"]);
-        assert_eq!(origin_pull_args("main"), vec!["pull", "origin", "main"]);
+        assert_eq!(
+            origin_pull_args("main"),
+            vec!["pull", "origin", "refs/heads/main"]
+        );
         assert_eq!(
             origin_push_args("main"),
             vec!["push", "origin", "HEAD:refs/heads/main"],

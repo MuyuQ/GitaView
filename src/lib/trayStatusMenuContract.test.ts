@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { readProjectFile, readProjectFileCompact } from "./sourceContract";
 
 describe("tray status menu contract", () => {
+  it("dispatches menu work without an application lock and checks freshness on the UI thread", () => {
+    const tray = readProjectFile("src-tauri/src/tray_status.rs");
+    expect(tray).not.toContain("TRAY_MENU_APPLY_LOCK");
+    expect(tray).toMatch(/run_on_main_thread\(move \|\| \{\s*if !is_current_tray_menu_generation\(generation\)/);
+  });
   it("uses a stable tray id, keeps right-click behavior, and refreshes after setup", () => {
     const lib = readProjectFileCompact("src-tauri/src/lib.rs");
 

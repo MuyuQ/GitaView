@@ -12,6 +12,26 @@ const initialSettings: AppSettings = {
 };
 
 describe("createSettingsUpdateQueue", () => {
+  it("reapplies a patch after a concurrent repository addition", async () => {
+    let persisted = structuredClone(initialSettings);
+    let saves = 0;
+    const update = createSettingsUpdateQueue(
+      async () => structuredClone(persisted),
+      async (next, expected) => {
+        if (++saves === 1) {
+          persisted.repos.push({ id: "new", name: "new", path: "/new", group: "全部分组" });
+        }
+        if (JSON.stringify(expected) !== JSON.stringify(persisted)) throw "SETTINGS_CONFLICT";
+        persisted = next;
+        return structuredClone(persisted);
+      },
+    );
+    await update((settings) => ({ ...settings, appearance: { allowWidgetDrag: false } }));
+    expect(persisted.repos.map((repo) => repo.id)).toEqual(["new"]);
+    expect(persisted.appearance.allowWidgetDrag).toBe(false);
+    expect(saves).toBe(2);
+  });
+
   it("serializes patches against the latest persisted settings", async () => {
     let persisted = structuredClone(initialSettings);
     const updateSettings = createSettingsUpdateQueue(

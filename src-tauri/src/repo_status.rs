@@ -158,6 +158,7 @@ mod tests {
         let status = repo_status_from_branch_result(
             sample_repo("ready"),
             Ok(GitBranchState {
+                remote_branch: Some("main".to_string()),
                 branch: "main".to_string(),
                 relation: RemoteRelation::RemoteAhead,
                 ahead: 0,
@@ -183,6 +184,7 @@ mod tests {
             repo_status_from_branch_result(
                 sample_repo("no-remote"),
                 Ok(GitBranchState {
+                    remote_branch: Some("main".to_string()),
                     branch: "main".to_string(),
                     relation: RemoteRelation::NoRemote,
                     ahead: 0,
@@ -195,6 +197,7 @@ mod tests {
             repo_status_from_branch_result(
                 sample_repo("synced"),
                 Ok(GitBranchState {
+                    remote_branch: Some("main".to_string()),
                     branch: "main".to_string(),
                     relation: RemoteRelation::Synced,
                     ahead: 0,

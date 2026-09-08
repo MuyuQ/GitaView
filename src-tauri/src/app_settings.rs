@@ -7,6 +7,20 @@ use tauri::Manager;
 /// 该锁保证整个"读取 → 修改 → 保存"序列的原子性。
 static SETTINGS_MUTATION_LOCK: Mutex<()> = Mutex::new(());
 
+pub fn check_settings_snapshot(
+    current: &AppSettings,
+    expected: &AppSettings,
+) -> Result<(), String> {
+    // Compare persisted fields only; legacy fields are read but intentionally not serialized.
+    let current = serde_json::to_value(current).map_err(|err| err.to_string())?;
+    let expected =
+        serde_json::to_value(expected.clone().normalized()).map_err(|err| err.to_string())?;
+    if current != expected {
+        return Err("SETTINGS_CONFLICT".to_string());
+    }
+    Ok(())
+}
+
 pub fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(app
         .path()
@@ -69,4 +83,36 @@ pub fn save_app_settings(
         ),
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignored_legacy_fields_do_not_cause_permanent_conflicts() {
+        let mut value = serde_json::to_value(AppSettings::default()).unwrap();
+        value["appearance"]["compactMode"] = true.into();
+        let current: AppSettings = serde_json::from_value(value).unwrap();
+        let expected = serde_json::from_value(serde_json::to_value(&current).unwrap()).unwrap();
+        assert!(check_settings_snapshot(&current, &expected).is_ok());
+    }
+
+    #[test]
+    fn rejects_a_snapshot_taken_before_a_repository_addition() {
+        let expected = AppSettings::default();
+        let mut current = expected.clone();
+        current.repos.push(crate::domain::repo::RepoRecord {
+            id: "new".into(),
+            name: "new".into(),
+            path: "/new".into(),
+            group: "全部分组".into(),
+        });
+        assert_eq!(
+            check_settings_snapshot(&current, &expected),
+            Err("SETTINGS_CONFLICT".into())
+        );
+        assert_eq!(current.repos.len(), 1);
+        assert!(check_settings_snapshot(&expected, &expected).is_ok());
+    }
 }
