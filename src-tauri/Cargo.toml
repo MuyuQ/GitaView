@@ -12,7 +12,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = "2"
 time = { version = "0.3", features = ["formatting", "macros"] }
-dirs = "6"
+dirs = "7"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
