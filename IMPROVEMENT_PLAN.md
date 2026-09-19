@@ -15,7 +15,7 @@
 | 项 | 本轮结果 |
 |----|----------|
 | P2-1 widget timeline 兜底 | ✅ `Provider.swift` 改为 `.after(now + 15min)`，应用崩溃/退出时 widget 也不会永久停留旧数据 |
-| P2-2 构建脚本 skip 断链 | ✅ macOS 无完整 Xcode 时 fail hard（附修复指引），`GITAVIEW_ALLOW_SKIP_WIDGET_EXTENSION=1` 可显式恢复软跳过 |
+| P2-2 构建脚本 skip 断链 | ✅ 以 `TAURI_ENV_*` 区分场景：tauri build 的 beforeBundleCommand（真打包）缺 Xcode 时 fail hard（附修复指引）；CI validate 等独立调用（不随后打包）保持软跳过 + 显式警告。此前 CI 的软跳过正是有意设计——validate 阶段不 bundle，不会断链 |
 | P2-3 Windows watchdog | ✅ SetParent/样式切换经 `run_on_main_thread` 派发；连续失败指数退避（5s→80s 上限）；主窗口退出即停止 |
 | P2-4 日志脱敏 | ✅ 三处缺口全修：deep link 只记 scheme/host/path（`redact_url`）、git 程序路径脱敏、Swift 日志只记文件名；另加中心化兜底 `redact_home_paths`（写日志前打码 `/Users/*`、`/home/*`、`X:\Users\*` 用户名段） |
 | P2-5 branch_state spawn 合并 | ✅ 改用 `for-each-ref --format=%(HEAD)%09%(refname:short)%09%(upstream:short)%09%(upstream:track,nobracket)` 一次取回分支/upstream/ahead/behind；happy path 每仓库 5 次 spawn → 2 次，stale upstream 场景 6 → 3。**未按原计划用 `status --porcelain=v2`**：status 会全量扫描工作树，大仓库下反而更慢，而本应用只需要分支关系 |
