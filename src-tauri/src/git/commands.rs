@@ -734,9 +734,17 @@ mod tests {
         test_git(&repo, &["commit", "-m", "local"]);
         // 远端领先 2
         let peer = temp.join("peer");
+        // -b main：bare 远端 HEAD 未指向 main 时，不同 git 版本的 clone
+        // fallback 不一致（CI 上会落到 unborn master），必须显式指定分支
         test_git(
             &temp,
-            &["clone", remote.to_str().unwrap(), peer.to_str().unwrap()],
+            &[
+                "clone",
+                "-b",
+                "main",
+                remote.to_str().unwrap(),
+                peer.to_str().unwrap(),
+            ],
         );
         test_git(&peer, &["config", "user.email", "gitaview@example.test"]);
         test_git(&peer, &["config", "user.name", "GitaView Test"]);

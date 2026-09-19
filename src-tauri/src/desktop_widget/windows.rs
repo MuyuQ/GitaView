@@ -34,7 +34,8 @@ const WM_CREATE_DESKTOP_WORKER: u32 = 0x052C;
 const WATCHDOG_INTERVAL: Duration = Duration::from_secs(5);
 /// 连续失败时的退避上限，避免宿主异常时的重附风暴
 const WATCHDOG_BACKOFF_MAX: Duration = Duration::from_secs(80);
-const WATCHDOG_BACKOFF_FACTOR: u32 = 2;
+// u64：与 Duration::as_secs() 的返回类型一致（saturating_mul 参数要求同型）
+const WATCHDOG_BACKOFF_FACTOR: u64 = 2;
 /// 主窗口已退出时停止 watchdog 的哨兵错误（不可恢复，重试无意义）
 const WATCHDOG_STOP_SENTINEL: &str = "desktop_widget.watchdog.stop: main window closed";
 
