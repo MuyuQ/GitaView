@@ -10,11 +10,15 @@ pub(crate) fn open_http_url(url: &str) -> Result<(), String> {
 }
 
 fn validate_http_url(url: &str) -> Result<(), String> {
-    if url.starts_with("http://") || url.starts_with("https://") {
-        Ok(())
-    } else {
-        Err("只支持 HTTP/HTTPS URL".to_string())
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("只支持 HTTP/HTTPS URL".to_string());
     }
+    // 拒绝控制字符与空白：`open`/`explorer` 可能吞掉或拆分参数，
+    // 浏览器安全的远端 URL（见 remote.rs 规范化）不会包含这些字符
+    if url.chars().any(|ch| (ch as u32) < 0x21 || ch == '\u{7f}') {
+        return Err("URL 包含非法字符".to_string());
+    }
+    Ok(())
 }
 
 fn spawn_system_open(target: &str, error_prefix: &str) -> Result<(), String> {
@@ -39,9 +43,24 @@ fn spawn_system_open(target: &str, error_prefix: &str) -> Result<(), String> {
         cmd
     };
 
-    command
+    let mut child = command
         .spawn()
         .map_err(|err| format!("{error_prefix}：{err}"))?;
+    let status = child
+        .wait()
+        .map_err(|err| format!("{error_prefix}：{err}"))?;
+
+    // Windows explorer 成功时也常返回非零退出码，不能当作失败依据；
+    // macOS open / Linux xdg-open 的非零退出码代表真的失败了
+    #[cfg(target_os = "windows")]
+    let _ = status;
+    #[cfg(not(target_os = "windows"))]
+    if !status.success() {
+        return Err(match status.code() {
+            Some(code) => format!("{error_prefix}：进程退出码 {code}"),
+            None => format!("{error_prefix}：进程被信号终止"),
+        });
+    }
     Ok(())
 }
 
@@ -66,5 +85,14 @@ mod tests {
             "只支持 HTTP/HTTPS URL"
         );
         assert_eq!(validate_http_url("").unwrap_err(), "只支持 HTTP/HTTPS URL");
+    }
+
+    #[test]
+    fn validate_http_url_rejects_control_characters_and_whitespace() {
+        assert!(validate_http_url("https://example.com/a\nb").is_err());
+        assert!(validate_http_url("https://example.com/a\tb").is_err());
+        assert!(validate_http_url("https://example.com/a b").is_err());
+        assert!(validate_http_url("https://example.com/\u{7f}").is_err());
+        assert!(validate_http_url("https://example.com/ok_path?q=1").is_ok());
     }
 }

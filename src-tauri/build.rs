@@ -1,6 +1,10 @@
 fn main() {
-    #[cfg(target_os = "macos")]
-    {
+    // build script 本体按宿主机编译，#[cfg(target_os)] 判断的是宿主而非目标；
+    // 交叉构建（如 macOS 上 check Windows target）时必须用 CARGO_CFG_TARGET_OS
+    // 判断目标平台，否则会把 macOS 专属的 ObjC 桥接库错误地带进非 macOS 构建。
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
+    if target_os == "macos" {
         use std::process::Command;
 
         let widget_bridge_dir = std::path::Path::new("widget-bridge");

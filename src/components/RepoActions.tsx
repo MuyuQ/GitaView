@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { RepoStatus } from "../types";
 import { fetchRepo, pullRepo, pushRepo, openRepoDirectory, openRepoRemote } from "../lib/commands";
 import { getRepoActionAvailability } from "../lib/statusModel";
+import { uiStrings } from "../lib/strings";
 import {
   actionResultClassName,
   actionResultRole,
@@ -54,36 +55,36 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
     <div className="repo-actions" onClick={(event) => event.stopPropagation()}>
       <button
         className="action-btn"
-        onClick={() => runAction("目录", () => openRepoDirectory(repo.id))}
+        onClick={() => runAction(uiStrings.actions.directory, () => openRepoDirectory(repo.id))}
         disabled={loading !== null || !actions.canOpenDirectory}
-        title="在文件管理器中打开仓库目录"
+        title={uiStrings.actions.directoryTitle}
       >
-        {loading === "目录" ? "加载中..." : "目录"}
+        {loading === uiStrings.actions.directory ? uiStrings.actions.loading : uiStrings.actions.directory}
       </button>
       <button
         className="action-btn"
-        onClick={() => runAction("远端", () => openRepoRemote(repo.id))}
+        onClick={() => runAction(uiStrings.actions.remote, () => openRepoRemote(repo.id))}
         disabled={loading !== null || !actions.canOpenRemote}
-        title={repo.remoteUrl ? "在浏览器中打开远端仓库页面" : "未配置远端仓库"}
+        title={repo.remoteUrl ? uiStrings.actions.remoteTitle : uiStrings.actions.remoteMissingTitle}
       >
-        {loading === "远端" ? "加载中..." : "远端"}
+        {loading === uiStrings.actions.remote ? uiStrings.actions.loading : uiStrings.actions.remote}
       </button>
       <button
         className="action-btn"
-        onClick={() => runAction("Fetch", () => fetchRepo(repo.id))}
+        onClick={() => runAction(uiStrings.actions.fetch, () => fetchRepo(repo.id))}
         disabled={loading !== null || !actions.canFetch}
-        title="从远端获取最新分支信息"
+        title={uiStrings.actions.fetchTitle}
       >
-        {loading === "Fetch" ? "加载中..." : "Fetch"}
+        {loading === uiStrings.actions.fetch ? uiStrings.actions.loading : uiStrings.actions.fetch}
       </button>
       {actions.showPush && (
         <button
           className={`action-btn push-btn ${confirmPush ? "confirm" : ""}`}
           onClick={handlePush}
           disabled={loading !== null}
-          title="将本地提交推送到远端"
+          title={uiStrings.actions.pushTitle}
         >
-          {loading === "Push" ? "加载中..." : confirmPush ? "确认 Push" : "Push"}
+          {loading === uiStrings.actions.push ? uiStrings.actions.loading : confirmPush ? uiStrings.actions.confirmPush : uiStrings.actions.push}
         </button>
       )}
       {actions.showPull && (
@@ -91,16 +92,16 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
           className={`action-btn pull-btn ${confirmPull ? "confirm" : ""}`}
           onClick={handlePull}
           disabled={loading !== null}
-          title="从远端拉取更新并合并到本地"
+          title={uiStrings.actions.pullTitle}
         >
-          {loading === "Pull" ? "加载中..." : confirmPull ? "确认 Pull" : "Pull"}
+          {loading === uiStrings.actions.pull ? uiStrings.actions.loading : confirmPull ? uiStrings.actions.confirmPull : uiStrings.actions.pull}
         </button>
       )}
       {confirmPull && (
-        <span className="action-warning">Pull 会修改当前仓库工作区，是否继续？</span>
+        <span className="action-warning">{uiStrings.actions.pullWarning}</span>
       )}
       {confirmPush && (
-        <span className="action-warning">Push 会更新远端分支，是否继续？</span>
+        <span className="action-warning">{uiStrings.actions.pushWarning}</span>
       )}
       {result && (
         <span className={actionResultClassName(result.kind)} role={actionResultRole(result.kind)}>

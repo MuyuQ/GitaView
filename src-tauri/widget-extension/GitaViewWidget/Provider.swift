@@ -15,16 +15,20 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetEntry>) -> Void) {
         let entry = loadEntry() ?? WidgetEntry.empty
-        let timeline = Timeline(entries: [entry], policy: .never)
+        // 兜底刷新：应用崩溃/退出前未写数据时，widget 也不会永久停留旧数据；
+        // 正常情况下应用侧刷新会驱动 reloadAllTimelines 提前更新。
+        let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
+        let timeline = Timeline(entries: [entry], policy: .after(nextRefresh))
         completion(timeline)
     }
 
     private func loadEntry() -> WidgetEntry? {
         let path = NSString(string: "~/Library/Application Support/GitaView/widget-data.json")
             .expandingTildeInPath
-        
+
         guard let data = FileManager.default.contents(atPath: path) else {
-            logger.info("widget data file not found: \(path)")
+            // 日志只记文件名，不落全路径（避免用户名泄漏）
+            logger.info("widget data file not found: \(NSString(string: path).lastPathComponent, privacy: .public)")
             return nil
         }
         

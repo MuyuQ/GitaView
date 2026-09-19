@@ -67,7 +67,8 @@ describe("review remediation contracts", () => {
     const index = readProjectFile("index.html");
 
     expect(collapsed).toContain("summarizeActionableCollapsed");
-    expect(collapsed).toContain('className="repo-word">仓库</span>');
+    // 文案经 src/lib/strings.ts 集中管理，断言品牌词 span 仍存在并引用集中文案
+    expect(collapsed).toContain('className="repo-word">{uiStrings.collapsed.repoWord}</span>');
     expect(collapsed).toContain("{item.label}");
     expect(collapsed).not.toContain("summaryShortLabel");
     expect(styles).not.toContain(".summary-short-label");

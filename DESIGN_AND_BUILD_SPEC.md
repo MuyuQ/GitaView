@@ -127,7 +127,7 @@ Actions:
 - `目录`: open local folder.
 - `远端`: open remote URL in browser.
 - `Fetch`: run `git fetch`.
-- `Pull`: run `git pull`.
+- `Pull`: run `git pull` only when the upstream has commits to pull.
 - `Push`: run `git push` only when the repository is local-ahead or diverged.
 
 Rules:
@@ -135,7 +135,7 @@ Rules:
 - Actions apply only to the selected repository.
 - `Pull` requires confirmation because it modifies the working tree.
 - `远端` is disabled if no remote URL exists.
-- Show loading and result feedback for actions longer than 300ms.
+- Show loading immediately when an action starts, and keep result feedback until the next action.
 - Show `Push` only for local-ahead or diverged repositories and require confirmation before invoking it.
 - Do not implement arbitrary command panels in v1.
 
@@ -145,14 +145,11 @@ Settings page uses the same visual language as the widget.
 
 Structure:
 
-- Left navigation:
-  - `仓库`
-  - `分组`
-  - `刷新`
-  - `安全操作`
-  - `外观`
+- Left navigation (two groups):
+  - `仓库设置`: repository management card plus group management card.
+  - `常规设置`: refresh, safety, and appearance cards.
 
-Default section: `仓库`.
+Default section: `仓库设置`.
 
 Repository settings must include:
 
@@ -179,20 +176,34 @@ Style direction:
 - Chinese-first readability.
 - Swiss/grid-like alignment.
 
-Use these color tokens:
+Tokens live in `src/styles/tokens.css` as a semantic design-token system:
+surfaces (`--gv-bg`, `--gv-surface`, `--gv-veil`), text (`--gv-ink`,
+`--gv-muted`), hairlines (`--gv-line`, `--gv-line-strong`), status colors
+split into dot / text / soft variants (`--gv-green-dot`, `--gv-green-text`,
+`--gv-green-soft`, and matching `amber`, `red`, `slate` families), accent and
+focus colors, radius/spacing/motion scales, and a shared window radius
+`--gv-window-radius: 18px`.
+
+Light is the default theme; dark applies automatically via
+`prefers-color-scheme`, with `html[data-theme="dark"]` / `"light"` reserved as
+manual override hooks. Reference light values:
 
 ```css
 :root {
-  --gv-ink: #172033;
-  --gv-muted: #667488;
-  --gv-line: #dce3ec;
-  --gv-green: #2f9f67;
+  --gv-ink: #1a2233;
+  --gv-muted: #5b6b82;
+  --gv-line: #e4e9f1;
+  --gv-green-text: #1e7a4c;
   --gv-amber: #b57412;
+  --gv-amber-text: #8a5a0a;
   --gv-red: #b94736;
   --gv-slate: #64748b;
-  --gv-bg: #f7f9fc;
+  --gv-bg: #f4f6fa;
 }
 ```
+
+The full contract (including dark variants and AA contrast requirements for
+11-12px text) is the source file; this snippet is orientation only.
 
 Typography:
 
@@ -213,10 +224,13 @@ UI rules:
 
 ## 6. Git Status Model
 
-Backend must preserve five remote relation states:
+Backend must preserve five remote relation states plus one app-layer
+read-failure state (not a sixth Git relation — it means GitaView could not
+read the repository, e.g. the path vanished or Git failed):
 
 ```ts
 type RemoteRelation =
+  | "error"
   | "synced"
   | "local_ahead"
   | "remote_ahead"
@@ -226,11 +240,13 @@ type RemoteRelation =
 
 Meaning:
 
+
 - `synced`: local branch equals upstream.
 - `local_ahead`: local has commits not on upstream.
 - `remote_ahead`: upstream has commits not local.
 - `diverged`: both local and upstream have unique commits.
 - `no_remote`: branch has no supported `origin` comparison.
+- `error`: app read-failure state, sorted first so broken repositories surface immediately.
 
 Collapsed buckets:
 
@@ -244,21 +260,23 @@ type CollapsedBucket =
 
 Mapping:
 
+- `error` -> `needs_attention`
 - `synced` -> `synced`
 - `local_ahead` -> `syncable`
 - `remote_ahead` -> `syncable`
 - `diverged` -> `needs_attention`
-- `no_remote` -> `no_remote`
+- `no_remote` -> `no_remote` (always last in compact summaries, filters, and expanded lists)
 
 Expanded sort rank:
 
 ```ts
 const expandedRank = {
-  diverged: 0,
-  remote_ahead: 1,
-  local_ahead: 2,
-  synced: 3,
-  no_remote: 4,
+  error: 0,
+  diverged: 1,
+  remote_ahead: 2,
+  local_ahead: 3,
+  synced: 4,
+  no_remote: 5,
 };
 ```
 
@@ -289,6 +307,7 @@ interface RepoStatus {
   relation: RemoteRelation;
   changeLabel: string;
   hint: string;
+  hasRemote: boolean;
   remoteUrl: string | null;
 }
 ```
@@ -297,6 +316,7 @@ Settings:
 
 ```ts
 interface AppSettings {
+  version: number; // schema version; normalized() clamps future versions
   repos: RepoRecord[];
   groups: GroupRecord[];
   defaultGroup: string;
@@ -305,10 +325,11 @@ interface AppSettings {
     intervalMinutes: number;
   };
   safety: {
-    confirmPull: boolean;
+    confirmPull: boolean; // always forced true by backend normalization
+    confirmPush: boolean; // always forced true by backend normalization
   };
   appearance: {
-    compactMode: boolean;
+    allowWidgetDrag: boolean; // compactMode was removed in v0.3
   };
 }
 
@@ -322,8 +343,9 @@ Defaults:
 
 - `defaultGroup`: `全部分组`
 - `lightweightRefreshEnabled`: `true`
-- `intervalMinutes`: `5`
-- `confirmPull`: `true`
+- `intervalMinutes`: `5` (clamped to 1..60)
+- `confirmPull` / `confirmPush`: `true`, mandatory and not configurable
+- `allowWidgetDrag`: `true`
 
 ## 8. Backend Responsibilities
 

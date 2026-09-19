@@ -74,7 +74,7 @@ fn append_line(path: &Path, event: &str, message: &str) {
         std::process::id(),
         std::thread::current().id(),
         event,
-        message.replace('\n', "\\n")
+        redact_home_paths(&message.replace('\n', "\\n"))
     );
 }
 
@@ -96,6 +96,78 @@ pub fn redact_path(path: &Path) -> String {
         .and_then(|name| name.to_str())
         .unwrap_or("<root>");
     format!("<path>/{name}")
+}
+
+/// 深链只记 scheme+host（含路径形状但不带 query/frag）：
+/// `gitaview://open/repo/<id>?from=tray` → `gitaview://open/repo/<id>`
+pub fn redact_url(url: &str) -> String {
+    let (without_fragment, _) = url
+        .split_once('#')
+        .map(|(head, _)| (head, ()))
+        .unwrap_or((url, ()));
+    match without_fragment.split_once('?') {
+        Some((head, _)) => head.to_string(),
+        None => without_fragment.to_string(),
+    }
+}
+
+/// 中心化兜底：append 前对消息里的用户主目录路径模式统一打码。
+/// 覆盖 `/Users/<name>/…`、`/home/<name>/…` 与 `X:\Users\<name>\…`
+/// （含正斜杠变体），防止个别调用点漏走 redact_path 泄漏用户名。
+pub fn redact_home_paths(message: &str) -> String {
+    let mut result = String::with_capacity(message.len());
+    let mut rest = message;
+    while !rest.is_empty() {
+        if let Some((replacement, consumed)) = match_home_prefix(rest) {
+            result.push_str(&replacement);
+            rest = &rest[consumed..];
+        } else {
+            let ch = rest.chars().next().unwrap_or('\0');
+            result.push(ch);
+            rest = &rest[ch.len_utf8()..];
+        }
+    }
+    result
+}
+
+fn match_home_prefix(rest: &str) -> Option<(String, usize)> {
+    for prefix in ["/Users/", "/home/"] {
+        if let Some(after) = rest.strip_prefix(prefix) {
+            let segment = username_segment(after);
+            if segment > 0 {
+                return Some((format!("{prefix}<user>"), prefix.len() + segment));
+            }
+            return None;
+        }
+    }
+    // Windows：`X:\Users\name` 或 `X:/Users/name`
+    let bytes = rest.as_bytes();
+    if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+    {
+        for sep in ['\\', '/'] {
+            let users_prefix = format!("Users{sep}");
+            if let Some(after) = rest[3..].strip_prefix(users_prefix.as_str()) {
+                let segment = username_segment(after);
+                if segment > 0 {
+                    return Some((
+                        format!("{}{users_prefix}<user>", &rest[..3]),
+                        3 + users_prefix.len() + segment,
+                    ));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// 用户名段在任一路径分隔符/引号/空白处结束；全为 ASCII 分隔符，字节索引安全
+fn username_segment(after: &str) -> usize {
+    after
+        .find(['/', '\\', '"', '\'', ' ', '\n', '\t'])
+        .unwrap_or(after.len())
 }
 
 fn timestamp_ms() -> String {
@@ -135,5 +207,36 @@ mod tests {
             redact_path(Path::new("/Users/muyu/projects")),
             "<path>/projects"
         );
+    }
+
+    #[test]
+    fn redacts_url_queries_and_fragments() {
+        assert_eq!(
+            redact_url("gitaview://open/repo/abc?token=secret#frag"),
+            "gitaview://open/repo/abc"
+        );
+        assert_eq!(redact_url("gitaview://open"), "gitaview://open");
+        assert_eq!(redact_url("no-scheme"), "no-scheme");
+    }
+
+    #[test]
+    fn redacts_user_home_paths_in_free_form_messages() {
+        // 只打码用户名段，保留路径形状便于排障
+        assert_eq!(
+            redact_home_paths("cwd=/Users/alice/projects/demo command=git"),
+            "cwd=/Users/<user>/projects/demo command=git"
+        );
+        assert_eq!(
+            redact_home_paths("home /home/bob/x and C:\\Users\\carol\\repo ok"),
+            "home /home/<user>/x and C:\\Users\\<user>\\repo ok"
+        );
+        assert_eq!(
+            redact_home_paths("forward D:/Users/dave/log.txt"),
+            "forward D:/Users/<user>/log.txt"
+        );
+        // 无用户名的 /Users/（如共享目录）不打码
+        assert_eq!(redact_home_paths("/Users/"), "/Users/");
+        // 普通消息原样通过
+        assert_eq!(redact_home_paths("no paths here"), "no paths here");
     }
 }

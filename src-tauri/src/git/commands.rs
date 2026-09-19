@@ -37,7 +37,14 @@ static RESOLVED_GIT: OnceLock<&'static str> = OnceLock::new();
 pub fn git_program() -> &'static str {
     RESOLVED_GIT.get_or_init(|| match resolve_git_program() {
         Some(path) => {
-            crate::diagnostics::log("git.resolved", format!("program={path}"));
+            // git 可能安装在用户目录（如 ~/.cargo/bin），路径脱敏后记录
+            crate::diagnostics::log(
+                "git.resolved",
+                format!(
+                    "program={}",
+                    crate::diagnostics::redact_path(Path::new(&path))
+                ),
+            );
             Box::leak(path.into_boxed_str())
         }
         None => {
@@ -299,70 +306,96 @@ pub fn format_git_failure(args: &[&str], stderr: &[u8]) -> String {
 
 pub const GIT_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 
-fn comparison_ref(repo_path: &Path, branch: &str, has_remote: bool) -> Option<String> {
-    if let Ok(upstream) = run_git(
-        repo_path,
-        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
-    ) {
-        if upstream.starts_with("origin/") {
-            return Some(upstream);
-        }
-    }
+/// for-each-ref 输出行字段分隔符（tab，git 引用名不允许包含）
+const REF_FIELD_SEP: char = '\t';
 
-    if !has_remote {
-        return None;
-    }
+/// 一次 for-each-ref 取回当前分支、upstream 与 ahead/behind 轨迹，
+/// 替代旧的 rev-parse×2 + rev-list 组合，把 happy path 的 git spawn
+/// 从每仓库 5 次降到 2 次。track 取 nobracket 形式：""（同步）、
+/// "ahead 1, behind 2"、upstream 缺失时为 "gone"。
+/// 不用 `status --porcelain=v2 --branch` 的原因：status 会全量扫描工作树，
+/// 大仓库下远慢于 for-each-ref，而本应用只需要分支关系，不需要文件变更。
+const CURRENT_BRANCH_FORMAT: &str =
+    "%(HEAD)%09%(refname:short)%09%(upstream:short)%09%(upstream:track,nobracket)";
 
-    let origin_branch = format!("origin/{branch}");
-    let full_origin_ref = format!("refs/remotes/{origin_branch}");
-    run_git(
-        repo_path,
-        &["rev-parse", "--verify", "--quiet", &full_origin_ref],
-    )
-    .ok()
-    .map(|_| origin_branch)
+struct CurrentBranchLine {
+    branch: String,
+    upstream: Option<String>,
+    track: String,
 }
 
-pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
-    let inside = run_git(repo_path, &["rev-parse", "--is-inside-work-tree"])?;
-    if inside != "true" {
-        return Err("不是有效的 Git 工作区".to_string());
+fn current_branch_line(repo_path: &Path) -> Result<CurrentBranchLine, String> {
+    let output = run_git(
+        repo_path,
+        &[
+            "for-each-ref",
+            &format!("--format={CURRENT_BRANCH_FORMAT}"),
+            "refs/heads",
+        ],
+    )?;
+    let current = output
+        .lines()
+        .find(|line| line.starts_with('*'))
+        .ok_or_else(|| "HEAD".to_string())?;
+    // 行首是 "*<tab>"：同时去掉星标与其后的字段分隔符
+    let mut fields = current
+        .strip_prefix('*')
+        .and_then(|rest| rest.strip_prefix(REF_FIELD_SEP))
+        .unwrap_or_default()
+        .split(REF_FIELD_SEP);
+    let branch = fields.next().unwrap_or_default().trim().to_string();
+    if branch.is_empty() {
+        return Err("HEAD".to_string());
     }
-    let branch = run_git(repo_path, &["rev-parse", "--abbrev-ref", "HEAD"])?;
-    let raw_remote_url = run_git(repo_path, &["config", "--get", "remote.origin.url"]).ok();
-    let has_origin_remote = raw_remote_url
-        .as_ref()
-        .is_some_and(|url| !url.trim().is_empty());
-    let remote_url = raw_remote_url.and_then(|url| normalize_remote_url(&url));
-    if branch == "HEAD" {
-        return Ok(GitBranchState {
-            branch,
-            remote_branch: None,
-            relation: RemoteRelation::NoRemote,
-            ahead: 0,
-            behind: 0,
-            has_remote: has_origin_remote,
-            remote_url,
-        });
+    let upstream = fields
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned);
+    let track = fields.next().unwrap_or_default().trim().to_string();
+    Ok(CurrentBranchLine {
+        branch,
+        upstream,
+        track,
+    })
+}
+
+fn parse_track_counts(track: &str) -> Option<(u32, u32)> {
+    let mut ahead = 0u32;
+    let mut behind = 0u32;
+    let mut seen = false;
+    for part in track.split(',') {
+        let part = part.trim();
+        let Some((label, value)) = part.split_once(' ') else {
+            continue;
+        };
+        let Ok(value) = value.trim().parse::<u32>() else {
+            continue;
+        };
+        match label {
+            "ahead" => {
+                ahead = value;
+                seen = true;
+            }
+            "behind" => {
+                behind = value;
+                seen = true;
+            }
+            _ => {}
+        }
     }
+    seen.then_some((ahead, behind))
+}
 
-    let Some(compare_ref) = comparison_ref(repo_path, &branch, has_origin_remote) else {
-        return Ok(GitBranchState {
-            branch,
-            remote_branch: None,
-            relation: RemoteRelation::NoRemote,
-            ahead: 0,
-            behind: 0,
-            has_remote: has_origin_remote,
-            remote_url,
-        });
-    };
-
-    let rev_range = format!("HEAD...{compare_ref}");
+/// upstream 缺失（[gone]）或未配置时回退到 origin/<branch>：
+/// 与旧行为一致——仅当该引用真实存在时才参与比较（rev-list 失败即视为无远端）。
+fn fallback_origin_ahead_behind(repo_path: &Path, branch: &str) -> Option<(u32, u32)> {
+    let rev_range = format!("HEAD...origin/{branch}");
     let counts = run_git(
         repo_path,
         &["rev-list", "--left-right", "--count", &rev_range],
-    )?;
+    )
+    .ok()?;
     let mut parts = counts.split_whitespace();
     let ahead = parts
         .next()
@@ -372,6 +405,65 @@ pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
         .next()
         .and_then(|v| v.parse::<u32>().ok())
         .unwrap_or(0);
+    Some((ahead, behind))
+}
+
+pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
+    let raw_remote_url = run_git(repo_path, &["config", "--get", "remote.origin.url"]).ok();
+    let has_origin_remote = raw_remote_url
+        .as_ref()
+        .is_some_and(|url| !url.trim().is_empty());
+    let remote_url = raw_remote_url.and_then(|url| normalize_remote_url(&url));
+
+    let line = match current_branch_line(repo_path) {
+        Ok(line) => line,
+        // detached HEAD：for-each-ref 没有 * 标记行；保持只读 no_remote 关系
+        Err(message) if message == "HEAD" => {
+            return Ok(GitBranchState {
+                branch: "HEAD".to_string(),
+                remote_branch: None,
+                relation: RemoteRelation::NoRemote,
+                ahead: 0,
+                behind: 0,
+                has_remote: has_origin_remote,
+                remote_url,
+            });
+        }
+        Err(err) => return Err(err),
+    };
+
+    // v1 只支持 origin 远端比较：非 origin upstream 一律 no_remote
+    let origin_upstream = line
+        .upstream
+        .as_ref()
+        .filter(|upstream| upstream.starts_with("origin/"));
+
+    let (compare_ref, counts) = match origin_upstream {
+        Some(upstream) if line.track != "gone" => {
+            let counts = parse_track_counts(&line.track).unwrap_or((0, 0));
+            (Some(upstream.clone()), counts)
+        }
+        // upstream 未配置、非 origin、或已 gone：回退 origin/<branch>
+        _ if has_origin_remote => match fallback_origin_ahead_behind(repo_path, &line.branch) {
+            Some(counts) => (Some(format!("origin/{}", line.branch)), counts),
+            None => (None, (0, 0)),
+        },
+        _ => (None, (0, 0)),
+    };
+
+    let Some(compare_ref) = compare_ref else {
+        return Ok(GitBranchState {
+            branch: line.branch,
+            remote_branch: None,
+            relation: RemoteRelation::NoRemote,
+            ahead: 0,
+            behind: 0,
+            has_remote: has_origin_remote,
+            remote_url,
+        });
+    };
+
+    let (ahead, behind) = counts;
     let relation = match (ahead, behind) {
         (0, 0) => RemoteRelation::Synced,
         (_, 0) => RemoteRelation::LocalAhead,
@@ -381,7 +473,7 @@ pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
 
     Ok(GitBranchState {
         remote_branch: compare_ref.strip_prefix("origin/").map(str::to_owned),
-        branch,
+        branch: line.branch,
         relation,
         ahead,
         behind,
@@ -613,6 +705,94 @@ mod tests {
         let missing = std::env::temp_dir().join("gitaview_missing_repo_path_for_branch_state");
         let _ = std::fs::remove_dir_all(&missing);
         assert!(branch_state(&missing).is_err());
+    }
+
+    #[test]
+    fn branch_state_reports_diverged_counts_from_upstream_track() {
+        let temp = unique_temp_dir("gitaview_diverged_track_test");
+        let repo = temp.join("repo");
+        let remote = temp.join("remote.git");
+        fs::create_dir_all(&repo).unwrap();
+        fs::create_dir_all(&remote).unwrap();
+
+        test_git(&remote, &["init", "--bare"]);
+        test_git(&repo, &["init", "-b", "main"]);
+        test_git(&repo, &["config", "user.email", "gitaview@example.test"]);
+        test_git(&repo, &["config", "user.name", "GitaView Test"]);
+        fs::write(repo.join("README.md"), "base\n").unwrap();
+        test_git(&repo, &["add", "README.md"]);
+        test_git(&repo, &["commit", "-m", "base"]);
+        test_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        test_git(&repo, &["push", "-u", "origin", "main"]);
+
+        // 本地领先 1（改动独立文件，避免与远端改动冲突）
+        fs::write(repo.join("local.txt"), "local\n").unwrap();
+        test_git(&repo, &["add", "local.txt"]);
+        test_git(&repo, &["commit", "-m", "local"]);
+        // 远端领先 2
+        let peer = temp.join("peer");
+        test_git(
+            &temp,
+            &["clone", remote.to_str().unwrap(), peer.to_str().unwrap()],
+        );
+        test_git(&peer, &["config", "user.email", "gitaview@example.test"]);
+        test_git(&peer, &["config", "user.name", "GitaView Test"]);
+        fs::write(peer.join("remote1.txt"), "remote1\n").unwrap();
+        test_git(&peer, &["add", "remote1.txt"]);
+        test_git(&peer, &["commit", "-m", "remote1"]);
+        fs::write(peer.join("remote2.txt"), "remote2\n").unwrap();
+        test_git(&peer, &["add", "remote2.txt"]);
+        test_git(&peer, &["commit", "-m", "remote2"]);
+        test_git(&peer, &["push", "origin", "main"]);
+        test_git(&repo, &["fetch", "origin"]);
+
+        let state = branch_state(&repo).unwrap();
+
+        assert_eq!(state.relation, RemoteRelation::Diverged);
+        assert_eq!(state.ahead, 1);
+        assert_eq!(state.behind, 2);
+        assert_eq!(state.remote_branch.as_deref(), Some("main"));
+
+        // rebase 整合远端后本地领先 1，推送恢复同步
+        test_git(&repo, &["pull", "--rebase", "origin", "main"]);
+        let rebased = branch_state(&repo).unwrap();
+        assert_eq!(rebased.relation, RemoteRelation::LocalAhead);
+        test_git(&repo, &["push", "origin", "main"]);
+        let synced = branch_state(&repo).unwrap();
+        assert_eq!(synced.relation, RemoteRelation::Synced);
+        assert_eq!((synced.ahead, synced.behind), (0, 0));
+
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn branch_state_falls_back_to_no_remote_when_origin_branch_is_missing() {
+        let temp = unique_temp_dir("gitaview_gone_upstream_test");
+        let repo = temp.join("repo");
+        let remote = temp.join("remote.git");
+        fs::create_dir_all(&repo).unwrap();
+        fs::create_dir_all(&remote).unwrap();
+
+        test_git(&remote, &["init", "--bare"]);
+        test_git(&repo, &["init", "-b", "main"]);
+        test_git(&repo, &["config", "user.email", "gitaview@example.test"]);
+        test_git(&repo, &["config", "user.name", "GitaView Test"]);
+        test_git(&repo, &["commit", "--allow-empty", "-m", "initial"]);
+        test_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        // 从未 push：upstream 未配置，origin/main 也不存在 → no_remote
+        let state = branch_state(&repo).unwrap();
+
+        assert_eq!(state.relation, RemoteRelation::NoRemote);
+        assert!(state.has_remote, "配置了 origin 即视为有远端");
+        assert_eq!(state.remote_branch, None);
+
+        let _ = fs::remove_dir_all(&temp);
     }
 
     #[cfg(target_os = "windows")]

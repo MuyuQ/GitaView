@@ -32,6 +32,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
 /// 消息码：通知 Progman 创建 WorkerW 窗口
 const WM_CREATE_DESKTOP_WORKER: u32 = 0x052C;
 const WATCHDOG_INTERVAL: Duration = Duration::from_secs(5);
+/// 连续失败时的退避上限，避免宿主异常时的重附风暴
+const WATCHDOG_BACKOFF_MAX: Duration = Duration::from_secs(80);
+const WATCHDOG_BACKOFF_FACTOR: u32 = 2;
+/// 主窗口已退出时停止 watchdog 的哨兵错误（不可恢复，重试无意义）
+const WATCHDOG_STOP_SENTINEL: &str = "desktop_widget.watchdog.stop: main window closed";
 
 #[derive(Clone, Copy)]
 struct WindowAttachmentSnapshot {
@@ -177,15 +182,52 @@ fn child_position_from_screen(hwnd: HWND, x: i32, y: i32) -> Result<(i32, i32), 
 }
 
 pub fn start_desktop_widget_watchdog(app: tauri::AppHandle) {
-    std::thread::spawn(move || loop {
-        std::thread::sleep(WATCHDOG_INTERVAL);
-        if let Err(err) = ensure_desktop_widget_layer(&app) {
-            crate::diagnostics::log(
-                "desktop_widget.watchdog.error",
-                format!("error_len={}", err.len()),
-            );
+    std::thread::spawn(move || {
+        let mut interval = WATCHDOG_INTERVAL;
+        loop {
+            std::thread::sleep(interval);
+            match ensure_desktop_widget_layer_on_main_thread(&app) {
+                Ok(()) => interval = WATCHDOG_INTERVAL,
+                Err(err) if err == WATCHDOG_STOP_SENTINEL => {
+                    crate::diagnostics::log("desktop_widget.watchdog.stopped", "");
+                    return;
+                }
+                Err(err) => {
+                    // 指数退避：宿主探测瞬时失败（Explorer 重启中）不应引发重附风暴
+                    crate::diagnostics::log(
+                        "desktop_widget.watchdog.error",
+                        format!(
+                            "error_len={} retry_after_ms={}",
+                            err.len(),
+                            interval.as_millis()
+                        ),
+                    );
+                    interval = Duration::from_secs(
+                        (interval.as_secs().saturating_mul(WATCHDOG_BACKOFF_FACTOR))
+                            .min(WATCHDOG_BACKOFF_MAX.as_secs()),
+                    );
+                }
+            }
         }
     });
+}
+
+/// SetParent/样式切换属于跨线程 HWND 操作，必须派发到主线程执行；
+/// 阻塞等待结果以维持 watchdog 的成败语义（驱动退避/复位）。
+fn ensure_desktop_widget_layer_on_main_thread(app: &tauri::AppHandle) -> Result<(), String> {
+    // 主窗口已退出：桌面 widget 无从附着，请求 watchdog 停止
+    if app.get_webview_window("main").is_none() {
+        return Err(WATCHDOG_STOP_SENTINEL.to_string());
+    }
+    let handle = app.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = sender.send(ensure_desktop_widget_layer(&handle));
+    })
+    .map_err(|err| format!("派发主线程失败: {err}"))?;
+    receiver
+        .recv()
+        .map_err(|err| format!("主线程执行结果不可用: {err}"))?
 }
 
 fn ensure_desktop_widget_layer(app: &tauri::AppHandle) -> Result<(), String> {
