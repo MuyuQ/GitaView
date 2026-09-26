@@ -1,21 +1,45 @@
 const { execFileSync } = require("child_process");
 const path = require("path");
 
-if (process.platform !== "darwin") {
-  console.log("Skipping Widget Extension build (not macOS)");
+// tauri.conf.json 的 bundle.macOS.files 无条件映射 .appex：
+// 打包（tauri build）阶段缺 .appex 必然失败，因此"即将打包却没构建扩展"要 fail hard。
+// 判据：tauri CLI 执行 beforeBundleCommand 时会注入 TAURI_ENV_* 环境变量；
+// CI validate 等独立调用（不随后打包）保持软跳过 + 显式警告。
+// 特殊情况可用 GITAVIEW_ALLOW_SKIP_WIDGET_EXTENSION=1 恢复软跳过（打包仍会失败）。
+const allowSkip = process.env.GITAVIEW_ALLOW_SKIP_WIDGET_EXTENSION === "1";
+const isBundleContext = Boolean(process.env.TAURI_ENV_PLATFORM);
+
+function skip(message) {
+  if (process.platform === "darwin" && !allowSkip && isBundleContext) {
+    console.error(`ERROR: ${message}`);
+    console.error(
+      "macOS 打包需要 Widget Extension（bundle.macOS.files 已映射 .appex）。\n" +
+        "请安装完整版 Xcode 并运行 `xcode-select -s /Applications/Xcode.app`。",
+    );
+    process.exit(1);
+  }
+  if (process.platform === "darwin" && !allowSkip) {
+    console.warn(
+      `WARNING: skipping Widget Extension build (${message})；` +
+        "本次调用不会打包，但请勿在 tauri build 的 beforeBundleCommand 场景依赖此跳过",
+    );
+  }
+  console.log(`Skipping Widget Extension build (${message})`);
   process.exit(0);
+}
+
+if (process.platform !== "darwin") {
+  skip("not macOS");
 }
 
 // 检查是否有完整的 Xcode（不只是 Command Line Tools）
 try {
   const xcodePath = execFileSync("xcode-select", ["-p"], { encoding: "utf-8" }).trim();
   if (!xcodePath.includes("Xcode.app")) {
-    console.log("Skipping Widget Extension build (full Xcode not found, using Command Line Tools)");
-    process.exit(0);
+    skip("full Xcode not found, using Command Line Tools");
   }
-} catch (e) {
-  console.log("Skipping Widget Extension build (xcode-select failed)");
-  process.exit(0);
+} catch {
+  skip("xcode-select failed");
 }
 
 const extDir = path.join(__dirname, "..", "src-tauri", "widget-extension");

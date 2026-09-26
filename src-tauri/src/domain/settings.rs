@@ -70,33 +70,25 @@ pub struct AppSettings {
     pub appearance: AppearanceSettings,
 }
 
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            version: default_version(),
-            repos: Vec::new(),
-            groups: vec![GroupRecord {
-                name: "全部分组".to_string(),
-                repo_ids: Vec::new(),
-            }],
-            default_group: "全部分组".to_string(),
-            refresh: RefreshSettings {
-                lightweight_refresh_enabled: true,
-                interval_minutes: 5,
-            },
-            safety: SafetySettings {
-                confirm_pull: true,
-                confirm_push: true,
-            },
-            appearance: AppearanceSettings::default(),
-        }
-    }
-}
+/// 当前实现支持的 schema 版本上限。未来迁移（1 → 2）时递增，
+/// 并在 normalized() 中补写迁移逻辑。
+pub const MAX_SUPPORTED_VERSION: u32 = 1;
 
 impl AppSettings {
-    /// version 字段由 serde 反序列化时的 default_version() 降级到 1；
-    /// 未来 schema 迁移（如 version 1 → 2）的逻辑应在此方法中实现。
+    /// 规范化：修复缺失的默认分组、把 repo 归位到存在的分组、重建分组成员、
+    /// 收紧刷新间隔与安全开关，并对未来版本的配置做降级标记。
     pub fn normalized(mut self) -> Self {
+        if self.version > MAX_SUPPORTED_VERSION {
+            // 更新版本写入的配置被旧版本读到时，未知字段已被 serde 丢弃；
+            // 把版本号压回受支持上限，避免"声明 v99、内容实为 v1"的混合状态。
+            crate::diagnostics::log(
+                "settings.version_downgraded",
+                format!("from={} to={MAX_SUPPORTED_VERSION}", self.version),
+            );
+            self.version = MAX_SUPPORTED_VERSION;
+        }
+        self.dedup_repos_by_id();
+        self.dedup_groups_by_name();
         if self.default_group.trim().is_empty() {
             self.default_group = "全部分组".to_string();
         }
@@ -132,6 +124,41 @@ impl AppSettings {
         self.safety.confirm_pull = true;
         self.safety.confirm_push = true;
         self
+    }
+
+    /// 重复的 repo id 会让 find_repo 遮蔽、remove_repository 双删，只保留首个
+    fn dedup_repos_by_id(&mut self) {
+        let mut seen = std::collections::HashSet::new();
+        self.repos.retain(|repo| seen.insert(repo.id.clone()));
+    }
+
+    /// 重复的分组名会形成影子分组；保留首个，其余丢弃（成员随后重建）
+    fn dedup_groups_by_name(&mut self) {
+        let mut seen = std::collections::HashSet::new();
+        self.groups.retain(|group| seen.insert(group.name.clone()));
+    }
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            version: default_version(),
+            repos: Vec::new(),
+            groups: vec![GroupRecord {
+                name: "全部分组".to_string(),
+                repo_ids: Vec::new(),
+            }],
+            default_group: "全部分组".to_string(),
+            refresh: RefreshSettings {
+                lightweight_refresh_enabled: true,
+                interval_minutes: 5,
+            },
+            safety: SafetySettings {
+                confirm_pull: true,
+                confirm_push: true,
+            },
+            appearance: AppearanceSettings::default(),
+        }
     }
 }
 
@@ -181,5 +208,66 @@ mod tests {
         let restored: AppSettings = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.version, 2);
         assert_eq!(restored, settings);
+    }
+
+    #[test]
+    fn normalization_clamps_future_versions_to_supported_maximum() {
+        let settings = AppSettings {
+            version: 99,
+            ..AppSettings::default()
+        };
+        assert_eq!(settings.normalized().version, MAX_SUPPORTED_VERSION);
+    }
+
+    #[test]
+    fn normalization_dedups_repos_by_id_and_groups_by_name() {
+        let mut settings = AppSettings::default();
+        settings.repos.push(crate::domain::repo::RepoRecord {
+            id: "repo-a".to_string(),
+            name: "first".to_string(),
+            path: std::path::PathBuf::from("C:/repo-a"),
+            group: "全部分组".to_string(),
+        });
+        // 同 id 的影子仓库会让 remove_repository 双删，必须去掉
+        settings.repos.push(crate::domain::repo::RepoRecord {
+            id: "repo-a".to_string(),
+            name: "shadow".to_string(),
+            path: std::path::PathBuf::from("C:/repo-shadow"),
+            group: "全部分组".to_string(),
+        });
+        settings.repos.push(crate::domain::repo::RepoRecord {
+            id: "repo-b".to_string(),
+            name: "second".to_string(),
+            path: std::path::PathBuf::from("C:/repo-b"),
+            group: "业务".to_string(),
+        });
+        // 同名影子分组会让 find_repo 命中错误分组，必须去掉
+        settings.groups.push(GroupRecord {
+            name: "全部分组".to_string(),
+            repo_ids: vec!["stale".to_string()],
+        });
+        settings.groups.push(GroupRecord {
+            name: "业务".to_string(),
+            repo_ids: vec![],
+        });
+        settings.groups.push(GroupRecord {
+            name: "业务".to_string(),
+            repo_ids: vec!["stale".to_string()],
+        });
+
+        let normalized = settings.normalized();
+
+        let ids: Vec<&str> = normalized
+            .repos
+            .iter()
+            .map(|repo| repo.id.as_str())
+            .collect();
+        assert_eq!(ids, vec!["repo-a", "repo-b"]);
+        let group_names: Vec<&str> = normalized
+            .groups
+            .iter()
+            .map(|group| group.name.as_str())
+            .collect();
+        assert_eq!(group_names, vec!["全部分组", "业务"]);
     }
 }

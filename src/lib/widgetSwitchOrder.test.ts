@@ -17,9 +17,10 @@ describe("widget view switch ordering", () => {
     const hook = readFileSync(resolve(projectRoot, "src/lib/useWidgetView.ts"), "utf8");
     const syncNativeWindowFrame = hook.match(/const syncNativeWindowFrame = useCallback[\s\S]*?\[\]\);/);
 
-    expect(hook).toContain("const resizeGuardBackground");
+    expect(hook).toContain("const resizeGuardBackgroundLight");
+    expect(hook).toContain("const resizeGuardBackgroundDark");
     expect(hook).toContain("const transparentWindowBackground");
-    expect(syncNativeWindowFrame?.[0]).toMatch(/setBackgroundColor\(resizeGuardBackground\)[\s\S]*syncDesktopWidgetFrame\(/);
+    expect(syncNativeWindowFrame?.[0]).toMatch(/setBackgroundColor\(resizeGuardBackground\(\)\)[\s\S]*syncDesktopWidgetFrame\(/);
     expect(syncNativeWindowFrame?.[0]).toMatch(/setTimeout\([\s\S]*setBackgroundColor\(transparentWindowBackground\)/);
   });
 

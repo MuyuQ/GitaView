@@ -29,8 +29,86 @@ pub mod storage {
     pub mod store;
 }
 
-use tauri::{include_image, Manager};
+use tauri::{include_image, Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_open_repo_route_from_authority_form() {
+        // gitaview://open/repo/abc → host="open", path="/repo/abc"
+        assert_eq!(
+            parse_deep_link_route(Some("open"), "/repo/abc"),
+            DeepLinkRoute::OpenRepo("abc".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_open_repo_route_from_path_form() {
+        assert_eq!(
+            parse_deep_link_route(None, "/open/repo/abc"),
+            DeepLinkRoute::OpenRepo("abc".to_string())
+        );
+    }
+
+    #[test]
+    fn parses_plain_open_route() {
+        assert_eq!(parse_deep_link_route(Some("open"), ""), DeepLinkRoute::Open);
+        assert_eq!(
+            parse_deep_link_route(Some("open"), "/"),
+            DeepLinkRoute::Open
+        );
+        assert_eq!(parse_deep_link_route(None, "/open"), DeepLinkRoute::Open);
+    }
+
+    #[test]
+    fn rejects_unknown_deep_link_routes() {
+        assert_eq!(
+            parse_deep_link_route(Some("settings"), ""),
+            DeepLinkRoute::Unsupported
+        );
+        assert_eq!(
+            parse_deep_link_route(Some("open"), "/repo"),
+            DeepLinkRoute::Unsupported
+        );
+        assert_eq!(
+            parse_deep_link_route(Some("open"), "/repo/abc/extra"),
+            DeepLinkRoute::Unsupported
+        );
+    }
+}
+
+/// 深链路由结果：`gitaview://open` 只激活窗口；
+/// `gitaview://open/repo/<id>` 额外让前端展开并选中指定仓库。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeepLinkRoute {
+    Open,
+    OpenRepo(String),
+    Unsupported,
+}
+
+/// 从 URL 的 host+path 提取路由段。
+/// `gitaview://open/repo/abc` 可能解析为 host="open" + path="/repo/abc"，
+/// 也可能整体落在 path 里（取决于注册方式），两种形态都归一化处理。
+pub fn parse_deep_link_route(host: Option<&str>, path: &str) -> DeepLinkRoute {
+    let mut segments: Vec<&str> = Vec::new();
+    if let Some(host) = host {
+        if !host.is_empty() {
+            segments.push(host);
+        }
+    }
+    segments.extend(path.trim_matches('/').split('/').filter(|s| !s.is_empty()));
+    match segments.as_slice() {
+        ["open"] => DeepLinkRoute::Open,
+        ["open", "repo", repo_id] => DeepLinkRoute::OpenRepo(repo_id.to_string()),
+        _ => DeepLinkRoute::Unsupported,
+    }
+}
+
+/// 前端监听的事件名：通知展开视图并聚焦指定仓库
+pub const DEEP_LINK_OPEN_REPO_EVENT: &str = "gitaview://open-repo";
 
 pub fn run() {
     tauri::Builder::default()
@@ -118,17 +196,34 @@ pub fn run() {
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {
-                    diagnostics::log("deep_link.received", url.as_str());
-                    if url.scheme() == "gitaview" {
-                        if let Some(window) = handle.get_webview_window("main") {
-                            if let Err(err) = window.show() {
-                                diagnostics::log("deep_link.show_error", err.to_string());
+                    // 深链 query 可能携带敏感参数，只记 scheme/host/path
+                    diagnostics::log("deep_link.received", diagnostics::redact_url(url.as_str()));
+                    if url.scheme() != "gitaview" {
+                        continue;
+                    }
+                    match parse_deep_link_route(url.host_str(), url.path()) {
+                        DeepLinkRoute::Unsupported => {
+                            diagnostics::log("deep_link.unsupported_route", "");
+                        }
+                        route => {
+                            if let Some(window) = handle.get_webview_window("main") {
+                                if let Err(err) = window.show() {
+                                    diagnostics::log("deep_link.show_error", err.to_string());
+                                }
+                                if let Err(err) = window.set_focus() {
+                                    diagnostics::log("deep_link.focus_error", err.to_string());
+                                }
+                            } else {
+                                diagnostics::log("deep_link.window_not_found", "");
                             }
-                            if let Err(err) = window.set_focus() {
-                                diagnostics::log("deep_link.focus_error", err.to_string());
+                            if let DeepLinkRoute::OpenRepo(repo_id) = route {
+                                if let Err(err) = handle.emit(DEEP_LINK_OPEN_REPO_EVENT, repo_id) {
+                                    diagnostics::log(
+                                        "deep_link.emit_open_repo_error",
+                                        err.to_string(),
+                                    );
+                                }
                             }
-                        } else {
-                            diagnostics::log("deep_link.window_not_found", "");
                         }
                     }
                 }

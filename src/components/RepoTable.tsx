@@ -3,15 +3,7 @@ import { RepoActions } from "./RepoActions";
 import { Fragment, useState, useRef, useCallback, useEffect } from "react";
 import type { CSSProperties } from "react";
 import { nextSelectedRepoId } from "../lib/repoSelection";
-
-const relationLabels: Record<RepoStatus["relation"], string> = {
-  error: "读取失败",
-  synced: "已同步",
-  local_ahead: "本地领先",
-  remote_ahead: "远程领先",
-  diverged: "分叉",
-  no_remote: "无远端",
-};
+import { uiStrings } from "../lib/strings";
 
 const statusDotClass: Record<RepoStatus["relation"], string> = {
   error: "red",
@@ -81,12 +73,22 @@ export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repo
     minWidth: key === "name" ? 60 : 24,
   });
 
+  const columns: Array<{ key: string; label: string }> = [
+    { key: "status", label: uiStrings.table.status },
+    { key: "name", label: uiStrings.table.name },
+    { key: "group", label: uiStrings.table.group },
+    { key: "branch", label: uiStrings.table.branch },
+    { key: "relation", label: uiStrings.table.relation },
+    { key: "changes", label: uiStrings.table.changes },
+    { key: "hint", label: uiStrings.table.hint },
+  ];
+
   const renderResizeHandle = (columnKey: string, label: string) => (
     <div
       className="col-resize-handle"
       role="separator"
       aria-orientation="vertical"
-      aria-label={`调整${label}列宽，左右方向键步进`}
+      aria-label={uiStrings.table.resizeHint(label)}
       tabIndex={0}
       onMouseDown={(event) => handleMouseDown(columnKey, event)}
       onKeyDown={(event) => handleKeyDown(columnKey, event)}
@@ -98,47 +100,18 @@ export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repo
       <table>
         <thead>
           <tr>
-            <th scope="col" className="col-status" style={getColumnStyle("status")}>状态</th>
-            <th scope="col" className="col-name" style={getColumnStyle("name")}>
-              <div className="col-header">
-                <span>仓库</span>
-                {renderResizeHandle("name", "仓库")}
-              </div>
-            </th>
-            <th scope="col" className="col-group" style={getColumnStyle("group")}>
-              <div className="col-header">
-                <span>分类</span>
-                {renderResizeHandle("group", "分类")}
-              </div>
-            </th>
-            <th scope="col" className="col-branch" style={getColumnStyle("branch")}>
-              <div className="col-header">
-                <span>分支</span>
-                {renderResizeHandle("branch", "分支")}
-              </div>
-            </th>
-            <th scope="col" className="col-relation" style={getColumnStyle("relation")}>
-              <div className="col-header">
-                <span>关系</span>
-                {renderResizeHandle("relation", "关系")}
-              </div>
-            </th>
-            <th scope="col" className="col-changes" style={getColumnStyle("changes")}>
-              <div className="col-header">
-                <span>变更</span>
-                {renderResizeHandle("changes", "变更")}
-              </div>
-            </th>
-            <th scope="col" className="col-hint" style={getColumnStyle("hint")}>
-              <div className="col-header">
-                <span>提示</span>
-                {renderResizeHandle("hint", "提示")}
-              </div>
-            </th>
+            {columns.map((column) => (
+              <th key={column.key} scope="col" className={`col-${column.key}`} style={getColumnStyle(column.key)}>
+                <div className="col-header">
+                  <span>{column.label}</span>
+                  {column.key !== "status" && renderResizeHandle(column.key, column.label)}
+                </div>
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {repos.map((repo, index) => {
+          {repos.map((repo) => {
             const isExpanded = selectedRepoId === repo.id;
             const actionsPanelId = `repo-actions-${repo.id}`;
             const handleToggle = () => onSelect(nextSelectedRepoId(selectedRepoId, repo.id));
@@ -147,7 +120,6 @@ export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repo
               <Fragment key={repo.id}>
                 <tr
                   className={`repo-row ${isExpanded ? "selected" : ""}`}
-                  style={{ animationDelay: `${Math.min(index, 8) * 16}ms` } as CSSProperties}
                   onClick={handleToggle}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
@@ -162,7 +134,7 @@ export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repo
                 >
                   <td className="col-status">
                     <span className={`status-dot ${statusDotClass[repo.relation]}`} aria-hidden="true" />
-                    <span className="sr-only">{relationLabels[repo.relation]}</span>
+                    <span className="sr-only">{uiStrings.relation[repo.relation]}</span>
                   </td>
                   <td className="col-name">
                     <span className="repo-name-trigger">
@@ -172,7 +144,12 @@ export function RepoTable({ repos, selectedRepoId, onSelect, onRefresh }: { repo
                   </td>
                   <td className="col-group">{repo.group}</td>
                   <td className="col-branch mono-light">{repo.branch}</td>
-                  <td className="col-relation mono">{relationLabels[repo.relation]}</td>
+                  <td className="col-relation">
+                    <span className={`relation-pill relation-${repo.relation}`}>
+                      <span className={`status-dot ${statusDotClass[repo.relation]}`} aria-hidden="true" />
+                      {uiStrings.relation[repo.relation]}
+                    </span>
+                  </td>
                   <td className="col-changes mono">{repo.changeLabel}</td>
                   <td className="col-hint">{repo.hint}</td>
                 </tr>

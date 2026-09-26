@@ -34,6 +34,9 @@ pub fn load_settings(path: &Path) -> Result<AppSettings, String> {
     }
 }
 
+/// 损坏留档最多保留的份数（超出后删除最旧），避免无限累积
+const MAX_CORRUPT_BACKUPS: usize = 3;
+
 fn quarantine_corrupt_settings(path: &Path) -> Result<PathBuf, String> {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -43,7 +46,44 @@ fn quarantine_corrupt_settings(path: &Path) -> Result<PathBuf, String> {
     // rename 失败通常意味着文件被占用或权限不足，此时保留现场并报错，
     // 不能静默丢弃用户数据
     fs::rename(path, &backup).map_err(|err| err.to_string())?;
+    prune_corrupt_backups(path);
     Ok(backup)
+}
+
+/// 只保留最近 MAX_CORRUPT_BACKUPS 份留档；时间戳来自文件名后缀，
+/// 无法解析的留档按修改时间参与排序。
+fn prune_corrupt_backups(path: &Path) {
+    let Some(dir) = path.parent() else {
+        return;
+    };
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return;
+    };
+    let prefix = format!("{file_name}.corrupt-");
+    let mut backups: Vec<(u64, PathBuf)> = fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let suffix = name.strip_prefix(&prefix)?;
+            let sort_key = suffix.parse::<u64>().unwrap_or_else(|_| {
+                entry
+                    .metadata()
+                    .ok()
+                    .and_then(|meta| meta.modified().ok())
+                    .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0)
+            });
+            Some((sort_key, entry.path()))
+        })
+        .collect();
+    backups.sort_by_key(|(key, _)| *key);
+    while backups.len() > MAX_CORRUPT_BACKUPS {
+        let (_, oldest) = backups.remove(0);
+        let _ = fs::remove_file(oldest);
+    }
 }
 
 pub fn save_settings(path: &Path, settings: &AppSettings) -> Result<AppSettings, String> {
@@ -296,6 +336,48 @@ mod tests {
         assert!(settings.repos.is_empty());
         assert!(!path.exists());
         assert_eq!(count_quarantine_files(&temp), 1);
+        let _ = fs::remove_dir_all(&temp);
+    }
+
+    #[test]
+    fn quarantine_retains_only_the_newest_backups() {
+        let temp = unique_temp_dir("gitaview_store_prune");
+        let path = temp.join("settings.json");
+        fs::create_dir_all(&temp).unwrap();
+
+        // 预置 3 份旧留档（时间戳 1..3），再隔离第 4 份 → 最旧的应被清掉
+        for timestamp in 1..=3u64 {
+            fs::write(
+                temp.join(format!("settings.json.corrupt-{timestamp}")),
+                "old",
+            )
+            .unwrap();
+        }
+        fs::write(&path, "{ still corrupt ").unwrap();
+        load_settings(&path).unwrap();
+
+        assert_eq!(
+            count_quarantine_files(&temp),
+            MAX_CORRUPT_BACKUPS,
+            "backups must be capped"
+        );
+        assert!(
+            !temp.join("settings.json.corrupt-1").exists(),
+            "oldest backup should be pruned"
+        );
+        assert!(temp.join("settings.json.corrupt-3").exists());
+        assert!(
+            fs::read_dir(&temp)
+                .unwrap()
+                .filter_map(|entry| entry.ok())
+                .any(|entry| {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    name.starts_with("settings.json.corrupt-")
+                        && name != "settings.json.corrupt-2"
+                        && name != "settings.json.corrupt-3"
+                }),
+            "the freshly quarantined backup should be kept"
+        );
         let _ = fs::remove_dir_all(&temp);
     }
 
