@@ -1,7 +1,66 @@
 # GitaView 改进计划书
 
-**基线**: `main` @ `5ef22f7` / v0.3.2
-**日期**: 2026-09-06（第二轮）
+**基线**: `main` @ `cb6a781` / v0.3.2
+**日期**: 2026-09-19（第三轮：界面现代化 + 第二轮计划收尾）
+**方法**: 对第二轮计划的 18 个遗留项逐条核实证据（文件:行号）后批量实施；同时按"安静、精确、可信"的品牌个性对界面与样式结构做现代化重设计。全部改动经完整测试门禁验证。
+
+---
+
+## 0-3. 第三轮执行情况（2026-09-19，本轮）
+
+### 复盘结论
+
+第二轮阶段一（P0-1 widget 契约、P1-1 单实例、P1-2 扩展签名、P1-3 窗口位置持久化）已在 commit `5dc7079` 全部落地；dependabot 大版本（vite 8、@types/node 26）已合并。剩余项集中在 P2 批次与工程体系。本轮逐项核实后实施情况：
+
+| 项 | 本轮结果 |
+|----|----------|
+| P2-1 widget timeline 兜底 | ✅ `Provider.swift` 改为 `.after(now + 15min)`，应用崩溃/退出时 widget 也不会永久停留旧数据 |
+| P2-2 构建脚本 skip 断链 | ✅ 以 `TAURI_ENV_*` 区分场景：tauri build 的 beforeBundleCommand（真打包）缺 Xcode 时 fail hard（附修复指引）；CI validate 等独立调用（不随后打包）保持软跳过 + 显式警告。此前 CI 的软跳过正是有意设计——validate 阶段不 bundle，不会断链 |
+| P2-3 Windows watchdog | ✅ SetParent/样式切换经 `run_on_main_thread` 派发；连续失败指数退避（5s→80s 上限）；主窗口退出即停止 |
+| P2-4 日志脱敏 | ✅ 三处缺口全修：deep link 只记 scheme/host/path（`redact_url`）、git 程序路径脱敏、Swift 日志只记文件名；另加中心化兜底 `redact_home_paths`（写日志前打码 `/Users/*`、`/home/*`、`X:\Users\*` 用户名段） |
+| P2-5 branch_state spawn 合并 | ✅ 改用 `for-each-ref --format=%(HEAD)%09%(refname:short)%09%(upstream:short)%09%(upstream:track,nobracket)` 一次取回分支/upstream/ahead/behind；happy path 每仓库 5 次 spawn → 2 次，stale upstream 场景 6 → 3。**未按原计划用 `status --porcelain=v2`**：status 会全量扫描工作树，大仓库下反而更慢，而本应用只需要分支关系 |
+| P2-7 deep link 路由 | ✅ Rust `parse_deep_link_route` 归一化 host/path 两种形态，支持 `gitaview://open` 与 `gitaview://open/repo/<id>`（广播 `gitaview://open-repo` 事件）；前端 `deepLink.ts` + `useWidgetView` 订阅后展开视图并选中目标仓库（重置筛选避免目标被过滤）；Swift 三种尺寸 widget 均加 `.widgetURL(gitaview://open)`，点击 widget 可唤起应用 |
+| §7-3 交互测试 | ✅ 引入 @testing-library/react + user-event + jsdom；三大流程落地：Pull/Push 二次确认（确认态→invoke→成功/失败双分支呈现）、筛选联动（分组→状态计数联动→搜索→行展开）、设置页导航（默认节/aria-current/关闭按钮） |
+| §7-5 ESLint | ✅ ESLint 9 flat config + typescript-eslint recommended；`npm run lint` 进 CI；.cjs 脚本按 CommonJS 约定关闭 require 规则 |
+| §8 规格对齐 | ✅ `DESIGN_AND_BUILD_SPEC.md` 六处漂移全部对齐：§4 设置导航两分组、§5 设计令牌体系（含深色主题）、§6 error 应用层状态 + 排序、§7 AppSettings（version/双确认/allowWidgetDrag/hasRemote）、§3.3 loading 立即显示 |
+| P3-1 settings 归一化 | ✅ `normalized()` 补版本上限钳制（`MAX_SUPPORTED_VERSION`）、repo id 去重、分组名去重 |
+| P3-2 system_open | ✅ URL 拒绝控制字符/空白（<0x21 与 DEL）；spawn 后 `wait()` 映射退出码（Windows explorer 的非零退出码豁免） |
+| P3-5 corrupt 留档 | ✅ 只保留最近 3 份（`MAX_CORRUPT_BACKUPS`），超出删除最旧 |
+| P3-8 空消息渲染 | ✅ `formatActionResult` 空字符串消息回退默认成功文案 |
+
+### 界面现代化重设计（本轮主项）
+
+按 PRODUCT.md 品牌个性（安静、精确、可信的桌面仪器）重做视觉体系，未引入任何 UI 框架，保持纯 CSS：
+
+1. **设计令牌体系**（`src/styles/tokens.css` 重写）：表面/文本/描边/状态/强调/焦点/圆角/间距/动效全部语义化；状态色拆 dot（圆点）、text（≥AA 小字）、soft（浅底胶囊）三档；浅色默认、深色经 `prefers-color-scheme` 自动启用、`html[data-theme]` 保留手动覆盖钩子；`--gv-window-radius: 18px` 等窗口契约不变。
+2. **桌面浮窗**（`widget.css` 重写）：折叠态毛玻璃胶囊（`backdrop-filter`，@supports 降级）、品牌区与统计区极细分隔；展开态去除表格竖向网格线、行 hover/选中用主题化表面色、关系列改为"圆点+文字+浅底"胶囊（色弱可读）、状态筛选 chips 加圆点+等宽计数、刷新按钮带 spinner、错误横幅化、空态配 SVG 图标；窗口表面维持 `box-shadow: none` 与尺寸契约（collapsedWidthContract/radiusContract 全部保持通过）。
+3. **设置窗口**（`settings.css` 重写）：侧边栏导航换 SVG 图标 + 主题化激活态（accent 柔和底），卡片扁平化（纯表面 + 1px 描边），输入控件统一 focus ring（accent），主按钮墨色反白随主题自动反转。
+4. **深色模式适配原生层**：`useWidgetView` 的 resize 守卫背景色按系统主题取值（`themePreference.ts`），避免深色模式下窗口切换闪浅色。
+5. **文案集中**（`src/lib/strings.ts`）：浮窗界面中文文案统一管理，为 i18n 打底；相应源码文本契约测试迁移为断言组件引用集中文案（§7-2 方向）。
+
+对比度校准：所有文字 token 经脚本按 WCAG 相对亮度公式验证（正文 ≥4.5:1，如浅色 muted #5b6b82 = 5.43:1、深色 muted #9aa7b8 = 6.59:1、深浅两套状态 text 均达标）。
+
+### 本轮验证基线
+
+| 验证 | 结果 |
+|------|------|
+| `npm test` | 35 文件 145 测试全绿（+11 交互/契约测试） |
+| `npm run build` | 通过 |
+| `npm run lint` | 通过（ESLint 0 error） |
+| `cargo test` | 100 测试全绿（本轮新增 13：branch_state 回归×2、deep link 路由×4、settings 去重/版本钳制×2、corrupt 限量×1、system_open 控制字符×1、日志脱敏×2，其余为既有测试随重构迁移） |
+| `cargo fmt --check` / `cargo clippy -D warnings` | 通过 |
+| 浏览器视觉验收 | 折叠/展开/行展开/设置 × 浅/深 7 张截图人工核对（布局、对比度、深色可读性） |
+
+### 延后项（与第二轮路线图一致）
+
+- **§6-1 单一状态所有者 / §6-2 类型化错误模型**：架构级重构，仍建议独立 PR 系列推进。
+- **updater 通道**：依赖签名/公证基础设施（P1-2 的 Apple Developer 真机验证），维持推迟。
+- **设置页文案迁入 strings.ts**：widget 面已集中，设置页随下次重构分批迁入。
+- **实机验收**：`docs/platform-acceptance-checklist.md` 仍需真机（含 Apple Developer 签名环境）填写；深色模式在 Windows（WebView2 backdrop-filter）的表现建议一并核查。
+
+---
+
+## 0-2. 第二轮执行摘要（2026-09-06 分析）
 **方法**: 在第一轮全部执行完毕、复审修复合入之后，对项目做的新一轮全量分析。重点覆盖此前未深挖的区域（Windows/macOS 桌面层实现、Swift widget 扩展、system_open、diagnostics、发布脚本），并对照 `DESIGN_AND_BUILD_SPEC.md` / `PRODUCT.md` 逐条核对。关键结论均经人工复核源码证实。
 
 ---

@@ -12,7 +12,9 @@ export function formatActionResult(
   outcome: { ok: true; message?: string } | { ok: false; error: unknown },
 ): ActionResult {
   if (outcome.ok) {
-    return { kind: "success", text: outcome.message ?? `${action} 已完成` };
+    // 空字符串消息会渲染成空 span，回退到默认成功文案
+    const message = outcome.message?.trim() ? outcome.message : `${action} 已完成`;
+    return { kind: "success", text: message };
   }
   return { kind: "error", text: `${action} 失败：${String(outcome.error)}` };
 }

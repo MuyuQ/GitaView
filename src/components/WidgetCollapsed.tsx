@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { showCollapsedNativeContextMenu } from "../lib/collapsedContextMenu";
 import { summarizeActionableCollapsed } from "../lib/collapsedSummary";
 import { shouldPromoteCollapsedDrag, shouldStartCollapsedDrag } from "../lib/windowDrag";
+import { uiStrings } from "../lib/strings";
 import type { RepoStatus } from "../types";
 
 export function WidgetCollapsed({
@@ -34,7 +35,7 @@ export function WidgetCollapsed({
 
   // 折叠态下后台刷新失败时，明确提示数据已停更，避免展示过期数据却毫无征兆
   const staleTitle = refreshError
-    ? `数据未更新${lastRefreshAt ? `（上次刷新 ${lastRefreshAt.toLocaleTimeString("zh-CN", { hour12: false })}）` : ""}：${refreshError}`
+    ? `${uiStrings.collapsed.stalePrefix}${lastRefreshAt ? `（${uiStrings.collapsed.lastRefreshPrefix} ${lastRefreshAt.toLocaleTimeString("zh-CN", { hour12: false })}）` : ""}：${refreshError}`
     : null;
 
   function handlePointerDown(event: React.PointerEvent<HTMLButtonElement>) {
@@ -71,7 +72,7 @@ export function WidgetCollapsed({
       { x: event.clientX, y: event.clientY },
       { onRefresh, onExit },
     ).catch((err) => {
-      console.error("打开收缩态右键菜单失败", err);
+      console.error(uiStrings.collapsed.contextMenuError, err);
     });
   }
 
@@ -84,7 +85,7 @@ export function WidgetCollapsed({
       { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.bottom) },
       { onRefresh, onExit },
     ).catch((err) => {
-      console.error("打开收缩态右键菜单失败", err);
+      console.error(uiStrings.collapsed.contextMenuError, err);
     });
   }
 
@@ -99,24 +100,25 @@ export function WidgetCollapsed({
         onPointerCancel={clearDragStart}
         onContextMenu={handleContextMenu}
         onKeyDown={handleKeyDown}
-        aria-label="展开仓库状态"
-        title={allowDrag ? "点击展开，拖动移动，右键菜单" : "点击展开，右键菜单"}
+        aria-label={uiStrings.collapsed.expandLabel}
+        title={allowDrag ? uiStrings.collapsed.hintDraggable : uiStrings.collapsed.hint}
       >
-        <span className="brand">GitaView</span>
-        <span className="repo-word">仓库</span>
+        <span className="brand">{uiStrings.collapsed.brand}</span>
+        <span className="brand-sep" aria-hidden="true" />
+        <span className="repo-word">{uiStrings.collapsed.repoWord}</span>
         <span className="total">{repos.length}</span>
         <span className="summary">
           {staleTitle && (
             <span className="summary-item stale-item" role="status" title={staleTitle}>
               <span className="status-dot amber" aria-hidden="true" />
-              <span>数据未更新</span>
+              <span>{uiStrings.collapsed.stale}</span>
             </span>
           )}
           {summary.map((item) => (
             <span className="summary-item" key={item.bucket}>
               <span className={colorClass[item.bucket]} aria-hidden="true" />
               <span>{item.label}</span>
-              <span>{item.count}</span>
+              <span className="summary-count">{item.count}</span>
             </span>
           ))}
         </span>

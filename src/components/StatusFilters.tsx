@@ -1,12 +1,22 @@
 import type { RemoteRelation, RepoStatus } from "../types";
+import { uiStrings } from "../lib/strings";
 
 const statusLabels: Record<RemoteRelation, string> = {
-  error: "读取失败",
-  synced: "同步",
-  local_ahead: "本地领先",
-  remote_ahead: "远程领先",
-  diverged: "分叉",
-  no_remote: "无远端",
+  error: uiStrings.relation.error,
+  synced: uiStrings.relation.synced,
+  local_ahead: uiStrings.relation.local_ahead,
+  remote_ahead: uiStrings.relation.remote_ahead,
+  diverged: uiStrings.relation.diverged,
+  no_remote: uiStrings.relation.no_remote,
+};
+
+const statusDotClass: Record<RemoteRelation, string> = {
+  error: "red",
+  synced: "green",
+  local_ahead: "amber",
+  remote_ahead: "amber",
+  diverged: "red",
+  no_remote: "slate",
 };
 
 export function StatusFilters({ repos, selected, onSelect }: { repos: RepoStatus[]; selected: RemoteRelation | "all"; onSelect: (r: RemoteRelation | "all") => void }) {
@@ -29,9 +39,9 @@ export function StatusFilters({ repos, selected, onSelect }: { repos: RepoStatus
         onClick={() => onSelect("all")}
         aria-pressed={selected === "all"}
       >
-        全部 {repos.length}
+        {uiStrings.filters.all} <span className="filter-count">{repos.length}</span>
       </button>
-      {/* 其他状态只在数量 > 0 时显示 */}
+      {/* 其他状态只在数量 > 0 时显示，圆点 + 文字 + 计数三重编码 */}
       {statuses.map((s) => {
         const count = counts[s];
         if (count === 0) return null;
@@ -42,7 +52,8 @@ export function StatusFilters({ repos, selected, onSelect }: { repos: RepoStatus
             onClick={() => onSelect(s)}
             aria-pressed={s === selected}
           >
-            {statusLabels[s]} {count}
+            <span className={`status-dot ${statusDotClass[s]}`} aria-hidden="true" />
+            {statusLabels[s]} <span className="filter-count">{count}</span>
           </button>
         );
       })}

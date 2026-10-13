@@ -12,7 +12,7 @@ export function GroupFilters({ repos, selected, onSelect }: { repos: RepoStatus[
           onClick={() => onSelect(group.name)}
           aria-pressed={group.name === selected}
         >
-          {group.name} {group.count}
+          {group.name} <span className="filter-count">{group.count}</span>
         </button>
       ))}
     </div>

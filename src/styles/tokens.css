@@ -1,16 +1,172 @@
+/*
+ * GitaView 设计令牌
+ *
+ * 主题策略：语义 token 全部定义在 :root（浅色为默认），
+ * 深色经 prefers-color-scheme 自动启用；html[data-theme] 保留
+ * 手动覆盖钩子（"dark" / "light"），供未来的外观设置项使用。
+ * 状态色拆分为 dot（圆点/填充）、text（正文小字，≥AA）、
+ * soft（浅底色块）三档，保证“状态不依赖颜色单独传达”的前提下
+ * 仍能满足 WCAG AA 对比度。
+ */
+
 :root {
-  --gv-ink: #172033;
-  /* muted 加深一档：10-12px 小字需 4.5:1（WCAG AA） */
-  --gv-muted: #5a6a80;
-  --gv-line: #dce3ec;
-  --gv-green: #2f9f67;
-  --gv-amber: #b57412;
-  /* 文字用琥珀：亮琥珀在浅背景上不满足 AA，小字统一用深琥珀 */
-  --gv-amber-text: #8a5a0a;
-  --gv-red: #b94736;
-  --gv-slate: #64748b;
-  --gv-bg: #f7f9fc;
+  color-scheme: light;
+
+  /* ---- 形状 ---- */
   --gv-window-radius: 18px;
+  --gv-radius-lg: 12px;
+  --gv-radius-md: 8px;
+  --gv-radius-sm: 6px;
+  --gv-radius-full: 999px;
+
+  /* ---- 间距 / 排版 ---- */
+  --gv-space-1: 4px;
+  --gv-space-2: 8px;
+  --gv-space-3: 12px;
+  --gv-space-4: 16px;
+  --gv-space-5: 20px;
+  --gv-space-6: 24px;
+  --gv-font-ui: "Noto Sans SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", sans-serif;
+  --gv-font-mono: "JetBrains Mono", "SF Mono", "Cascadia Mono", ui-monospace, monospace;
+
+  /* ---- 动效 ---- */
+  --gv-dur-fast: 120ms;
+  --gv-dur: 160ms;
+  --gv-dur-slow: 240ms;
+  --gv-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ---- 表面 ---- */
+  --gv-bg: #f4f6fa;
+  --gv-surface: #ffffff;
+  --gv-veil: rgba(255, 255, 255, 0.82);
+  --gv-veil-strong: rgba(255, 255, 255, 0.95);
+  --gv-hover: rgba(23, 32, 51, 0.045);
+  --gv-selected: rgba(46, 107, 207, 0.08);
+
+  /* ---- 文本 ---- */
+  --gv-ink: #1a2233;
+  --gv-muted: #5b6b82;
+
+  /* ---- 描边 ---- */
+  --gv-line: #e4e9f1;
+  --gv-line-strong: #cfd8e3;
+
+  /* ---- 状态：synced ---- */
+  --gv-green-dot: #27a568;
+  --gv-green-text: #1e7a4c;
+  --gv-green-soft: rgba(39, 165, 104, 0.14);
+
+  /* ---- 状态：attention（amber）---- */
+  --gv-amber: #b57412;
+  --gv-amber-dot: #d08612;
+  --gv-amber-text: #8a5a0a;
+  --gv-amber-soft: rgba(181, 116, 18, 0.14);
+
+  /* ---- 状态：risk（red）---- */
+  --gv-red: #b94736;
+  --gv-red-dot: #cd5040;
+  --gv-red-soft: rgba(185, 71, 54, 0.12);
+
+  /* ---- 状态：no_remote（slate）---- */
+  --gv-slate: #64748b;
+  --gv-slate-dot: #64748b;
+  --gv-slate-text: #5b6b82;
+  --gv-slate-soft: rgba(100, 116, 139, 0.13);
+
+  /* ---- 强调 / 焦点 ---- */
+  --gv-accent: #2e6bcf;
+  --gv-accent-soft: rgba(46, 107, 207, 0.12);
+  --gv-focus: #2e6bcf;
+
+  /* ---- 阴影（仅用于窗口内部的浮层控件；窗口表面必须保持 box-shadow: none）---- */
+  --gv-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --gv-shadow-md: 0 2px 8px rgba(16, 24, 40, 0.08);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --gv-bg: #14171d;
+  --gv-surface: #1d222c;
+  --gv-veil: rgba(21, 25, 32, 0.8);
+  --gv-veil-strong: rgba(26, 31, 40, 0.95);
+  --gv-hover: rgba(255, 255, 255, 0.06);
+  --gv-selected: rgba(110, 161, 255, 0.14);
+
+  --gv-ink: #e8ecf2;
+  --gv-muted: #9aa7b8;
+
+  --gv-line: rgba(255, 255, 255, 0.09);
+  --gv-line-strong: rgba(255, 255, 255, 0.17);
+
+  --gv-green-dot: #4cc38a;
+  --gv-green-text: #4cc38a;
+  --gv-green-soft: rgba(76, 195, 138, 0.16);
+
+  --gv-amber: #e0a84f;
+  --gv-amber-dot: #e0a84f;
+  --gv-amber-text: #e0a84f;
+  --gv-amber-soft: rgba(224, 168, 79, 0.16);
+
+  --gv-red: #ef7a68;
+  --gv-red-dot: #ef7a68;
+  --gv-red-soft: rgba(239, 122, 104, 0.16);
+
+  --gv-slate: #8fa0b5;
+  --gv-slate-dot: #8fa0b5;
+  --gv-slate-text: #a5b3c4;
+  --gv-slate-soft: rgba(143, 160, 181, 0.16);
+
+  --gv-accent: #6ea1ff;
+  --gv-accent-soft: rgba(110, 161, 255, 0.16);
+  --gv-focus: #6ea1ff;
+
+  --gv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --gv-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --gv-bg: #14171d;
+    --gv-surface: #1d222c;
+    --gv-veil: rgba(21, 25, 32, 0.8);
+    --gv-veil-strong: rgba(26, 31, 40, 0.95);
+    --gv-hover: rgba(255, 255, 255, 0.06);
+    --gv-selected: rgba(110, 161, 255, 0.14);
+
+    --gv-ink: #e8ecf2;
+    --gv-muted: #9aa7b8;
+
+    --gv-line: rgba(255, 255, 255, 0.09);
+    --gv-line-strong: rgba(255, 255, 255, 0.17);
+
+    --gv-green-dot: #4cc38a;
+    --gv-green-text: #4cc38a;
+    --gv-green-soft: rgba(76, 195, 138, 0.16);
+
+    --gv-amber: #e0a84f;
+    --gv-amber-dot: #e0a84f;
+    --gv-amber-text: #e0a84f;
+    --gv-amber-soft: rgba(224, 168, 79, 0.16);
+
+    --gv-red: #ef7a68;
+    --gv-red-dot: #ef7a68;
+    --gv-red-soft: rgba(239, 122, 104, 0.16);
+
+    --gv-slate: #8fa0b5;
+    --gv-slate-dot: #8fa0b5;
+    --gv-slate-text: #a5b3c4;
+    --gv-slate-soft: rgba(143, 160, 181, 0.16);
+
+    --gv-accent: #6ea1ff;
+    --gv-accent-soft: rgba(110, 161, 255, 0.16);
+    --gv-focus: #6ea1ff;
+
+    --gv-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --gv-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
+  }
 }
 
 * {
@@ -30,7 +186,7 @@ body,
 }
 
 body {
-  font-family: "Noto Sans SC", "HarmonyOS Sans SC", "MiSans", "Microsoft YaHei", sans-serif;
+  font-family: var(--gv-font-ui);
   background: transparent;
   color: var(--gv-ink);
   -webkit-font-smoothing: antialiased;
@@ -90,7 +246,7 @@ body.gv-collapsed-view {
 
 .error-shell {
   flex-direction: column;
-  gap: 12px;
+  gap: var(--gv-space-3);
   color: var(--gv-muted);
   font-size: 13px;
   text-align: center;
@@ -98,10 +254,18 @@ body.gv-collapsed-view {
 
 .error-shell button {
   padding: 6px 14px;
-  border: 1px solid var(--gv-line);
-  border-radius: 6px;
-  background: white;
+  border: 1px solid var(--gv-line-strong);
+  border-radius: var(--gv-radius-sm);
+  background: var(--gv-surface);
   color: var(--gv-ink);
   cursor: pointer;
   font-family: inherit;
+}
+
+/* 数字与计数字段统一等宽数字，扫描时列对齐不跳动 */
+.gv-num,
+.total,
+.summary-item,
+.repo-table td {
+  font-variant-numeric: tabular-nums;
 }

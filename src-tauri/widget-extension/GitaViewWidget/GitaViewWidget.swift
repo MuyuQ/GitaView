@@ -7,11 +7,15 @@ struct GitaViewWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: Provider()) { entry in
-            if let data = entry.data {
-                WidgetContentView(entry: entry, data: data)
-            } else {
-                EmptyStateView()
+            Group {
+                if let data = entry.data {
+                    WidgetContentView(entry: entry, data: data)
+                } else {
+                    EmptyStateView()
+                }
             }
+            // WidgetKit 必须显式声明点击目标：点 widget 唤起主应用
+            .widgetURL(URL(string: "gitaview://open"))
         }
         .configurationDisplayName("GitaView")
         .description("Git 仓库状态概览")
