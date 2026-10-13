@@ -1,5 +1,6 @@
 import { useWidgetView } from "./lib/useWidgetView";
 import { shouldShowSettingsView } from "./lib/statusModel";
+import { uiStrings } from "./lib/strings";
 import { WidgetCollapsed } from "./components/WidgetCollapsed";
 import { WidgetExpanded } from "./components/WidgetExpanded";
 import { SettingsShell } from "./components/settings/SettingsShell";
@@ -7,7 +8,7 @@ import { SettingsShell } from "./components/settings/SettingsShell";
 export default function App() {
   const widget = useWidgetView();
 
-  if (widget.initialLoading) return <main className="app-shell">正在刷新仓库状态...</main>;
+  if (widget.initialLoading) return <main className="app-shell">{uiStrings.app.initialLoading}</main>;
 
   const shouldRenderSettings = shouldShowSettingsView(
     widget.view,
@@ -27,10 +28,10 @@ export default function App() {
   if (widget.initialError && widget.repos.length === 0) {
     return (
       <main className="app-shell error-shell" role="alert">
-        <p>加载仓库失败：{widget.initialError}</p>
-        <button onClick={() => widget.refreshRepos({ initial: true })}>重试</button>
+        <p>{uiStrings.app.loadFailedPrefix}：{widget.initialError}</p>
+        <button onClick={() => widget.refreshRepos({ initial: true })}>{uiStrings.app.retry}</button>
         <button onClick={widget.navigateToSettings}>
-          打开设置
+          {uiStrings.app.openSettings}
         </button>
       </main>
     );
@@ -47,6 +48,8 @@ export default function App() {
       onOpenSettings={() => widget.showView("settings")}
       allowDrag={widget.allowWidgetDrag}
       onStartDrag={widget.startDrag}
+      focusRepoId={widget.focusRepoId}
+      onFocusRepoHandled={widget.clearFocusRepo}
     />
   ) : (
     <main className="app-shell collapsed-shell">

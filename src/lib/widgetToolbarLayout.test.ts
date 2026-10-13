@@ -30,8 +30,9 @@ describe("expanded widget toolbar layout", () => {
   it("keeps repository search available in the expanded toolbar", () => {
     const component = readProjectFile("src/components/WidgetExpanded.tsx");
 
-    expect(component).toContain('aria-label="搜索仓库"');
-    expect(component).toContain('placeholder="搜索或分组"');
+    // 文案经 src/lib/strings.ts 集中管理，这里断言组件引用了集中文案
+    expect(component).toContain('aria-label={uiStrings.expanded.searchLabel}');
+    expect(component).toContain('placeholder={uiStrings.expanded.searchPlaceholder}');
     expect(component).toContain("deferredQuery");
   });
 });

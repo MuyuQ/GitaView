@@ -4,7 +4,9 @@ import { createRefreshQueue } from "./refreshQueue";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
 import { listRepoStatuses, getSettings, exitApp, saveWindowState, syncDesktopWidgetFrame } from "./commands";
 import { subscribeToSettingsUpdates } from "./settingsEvents";
+import { subscribeToOpenRepoRequests } from "./deepLink";
 import { hasTauriRuntime } from "./runtime";
+import { prefersDarkColorScheme } from "./themePreference";
 import { shouldShowSettingsView } from "./statusModel";
 import { resolveRefreshCompletion } from "./refreshGeneration";
 import { resolveAnchoredWindowPosition } from "./windowMotion";
@@ -17,9 +19,16 @@ const windowSizes: Record<WidgetStableView, WindowSizeValue> = {
   expanded: { width: 900, height: 560 },
   settings: { width: 760, height: 540 },
 } as const;
-const resizeGuardBackground = { red: 247, green: 249, blue: 252, alpha: 255 };
+// resize 守卫背景需与当前主题的画布色一致（tokens.css 的 --gv-bg），
+// 否则深色模式下窗口尺寸切换瞬间会闪一下浅色。
+const resizeGuardBackgroundLight = { red: 244, green: 246, blue: 250, alpha: 255 };
+const resizeGuardBackgroundDark = { red: 20, green: 23, blue: 29, alpha: 255 };
 const transparentWindowBackground = { red: 0, green: 0, blue: 0, alpha: 0 };
 const resizeGuardRestoreMs = 140;
+
+function resizeGuardBackground() {
+  return prefersDarkColorScheme() ? resizeGuardBackgroundDark : resizeGuardBackgroundLight;
+}
 
 export interface WidgetViewState {
   view: WidgetRenderView;
@@ -32,6 +41,8 @@ export interface WidgetViewState {
   lastRefreshAt: Date | null;
   allowWidgetDrag: boolean;
   emptySettingsDismissed: boolean;
+  /** deep link（gitaview://open/repo/<id>）请求聚焦的仓库 id，处理后清空 */
+  focusRepoId: string | null;
 }
 
 export interface WidgetViewActions {
@@ -44,6 +55,7 @@ export interface WidgetViewActions {
   startDrag: () => void;
   dismissEmptySettings: () => void;
   reloadSettings: () => void;
+  clearFocusRepo: () => void;
 }
 
 export function useWidgetView(): WidgetViewState & WidgetViewActions {
@@ -99,7 +111,7 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
     };
 
     const prepareResizeBackground = shouldUseResizeGuard
-      ? appWindow.setBackgroundColor(resizeGuardBackground).catch((err) => {
+      ? appWindow.setBackgroundColor(resizeGuardBackground()).catch((err) => {
         console.error("设置窗口 resize 背景保护失败", err);
       })
       : appWindow.setBackgroundColor(transparentWindowBackground).catch((err) => {
@@ -308,6 +320,30 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
     return () => window.clearInterval(id);
   }, [refreshSettings, refreshRepos]);
 
+  // Deep link 聚焦仓库：gitaview://open/repo/<id> → 展开视图并选中
+  const [focusRepoId, setFocusRepoId] = useState<string | null>(null);
+  const clearFocusRepo = useCallback(() => setFocusRepoId(null), []);
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    subscribeToOpenRepoRequests((repoId) => {
+      if (disposed) return;
+      setFocusRepoId(repoId);
+      showView("expanded");
+    })
+      .then((dispose) => {
+        if (disposed) dispose();
+        else unlisten = dispose;
+      })
+      .catch((err) => {
+        console.error("订阅 deep link 事件失败", err);
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [showView]);
+
   return {
     view,
     windowView,
@@ -319,6 +355,7 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
     lastRefreshAt,
     allowWidgetDrag,
     emptySettingsDismissed,
+    focusRepoId,
     expandCollapsedView,
     collapseExpandedView,
     handleExit,
@@ -328,5 +365,6 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
     navigateToSettings,
     dismissEmptySettings,
     reloadSettings,
+    clearFocusRepo,
   };
 }
