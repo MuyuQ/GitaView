@@ -1,0 +1,122 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <RootNamespace>GitaView_Native</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon Condition="Exists('Assets\AppIcon.ico')">Assets\AppIcon.ico</ApplicationIcon>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
+    <PublishProfile Condition="Exists('Properties\PublishProfiles\win-$(Platform).pubxml')">win-$(Platform).pubxml</PublishProfile>
+    <UseWinUI>true</UseWinUI>
+    <!-- 自定义 Main：单实例重定向在 WinUI / XAML 初始化之前完成
+         （OnLaunched 里重定向需先完整启动 WinUI，实测秒级延迟）。 -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <!-- 手动初始化 WASDK 并记录错误（自动初始化失败会 Environment.Exit 静默退出） -->
+    <WindowsAppSdkAutoInitialize>false</WindowsAppSdkAutoInitialize>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>MSIX</WindowsPackageType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\SplashScreen.scale-200.png" />
+    <Content Include="Assets\LockScreenLogo.scale-200.png" />
+    <Content Include="Assets\Square150x150Logo.scale-200.png" />
+    <Content Include="Assets\Square44x44Logo.scale-200.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+    <Content Include="Assets\Square44x44Logo.targetsize-48_altform-lightunplated.png" />
+    <Content Include="Assets\StoreLogo.png" />
+    <Content Include="Assets\AppIcon.ico" />
+    <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <!--
+    Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
+    Tools extension to be activated for this project even if the Windows App SDK Nuget
+    package has not yet been restored.
+  -->
+  <ItemGroup Condition="'$(DisableMsixProjectCapabilityAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+    <ProjectCapability Include="Msix" />
+  </ItemGroup>
+
+  <!--
+    Microsoft.Windows.SDK.BuildTools.WinApp adds first-class support for
+    `dotnet run` on packaged WinUI apps: it hooks the .NET CLI Run target to
+    register a debug identity via the winapp CLI and launch the app with
+    package identity (AUMID).
+    Set <EnableWinAppRunSupport>false</EnableWinAppRunSupport> in a
+    <PropertyGroup> above to opt out.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools.WinApp" Version="0.7.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\GitaView.Native.Contracts\GitaView.Native.Contracts.csproj" />
+    <ProjectReference Include="..\GitaView.Native.Interop\GitaView.Native.Interop.csproj" />
+  </ItemGroup>
+
+  <!--
+    Defining the "HasPackageAndPublishMenuAddedByProject" property here allows the Solution
+    Explorer "Package and Publish" context menu entry to be enabled for this project even if
+    the Windows App SDK Nuget package has not yet been restored.
+  -->
+  <PropertyGroup Condition="'$(DisableHasPackageAndPublishMenuAddedByProject)'!='true' and '$(EnableMsixTooling)'=='true'">
+    <HasPackageAndPublishMenu>true</HasPackageAndPublishMenu>
+  </PropertyGroup>
+
+  <!-- MSIX：dotnet publish 时生成未签名包（签名由 signtool 用证书存储完成）。 -->
+  <PropertyGroup>
+    <AppxPackage Condition="'$(AppxPackage)' == ''">true</AppxPackage>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <RepoRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', '..'))</RepoRoot>
+  </PropertyGroup>
+
+  <!-- Rust FFI：构建并作为内容打包（应用按安装位置解析 DLL，不依赖 PATH）。
+       Configuration 到 Cargo profile 的映射（review R11）：Release 加 release
+       标志并复制 target/release 产物，不再始终携带 Debug DLL。构建脚本先
+       自行编译 Rust 并传 SkipRustBuild=true，避免同一 DLL 被脚本与 MSBuild
+       各编译一次。 -->
+  <PropertyGroup>
+    <CargoReleaseFlags Condition="'$(Configuration)' == 'Release'">--release</CargoReleaseFlags>
+    <RustTargetDir Condition="'$(Configuration)' == 'Release'">release</RustTargetDir>
+    <RustTargetDir Condition="'$(RustTargetDir)' == ''">debug</RustTargetDir>
+  </PropertyGroup>
+  <Target Name="BuildRustFfi" BeforeTargets="BeforeBuild" Condition="'$(SkipRustBuild)' != 'true'">
+    <Exec Command="cargo build -p gitaview-ffi $(CargoReleaseFlags)" WorkingDirectory="$(RepoRoot)" />
+  </Target>
+
+  <!-- 独立 Widget Provider 进程：主应用是自包含布局（includedFrameworks），
+       打包应用不能依赖全局 .NET，因此 Provider 也自包含 + 单文件发布
+       （框架依赖 exe 实测报 "You must install or update .NET"）。 -->
+  <Target Name="BuildWidgetProvider" BeforeTargets="BeforeBuild">
+    <Exec Command="dotnet publish ..\GitaView.Native.WidgetProvider\GitaView.Native.WidgetProvider.csproj -c $(Configuration) -r win-x64 --self-contained true -p:PublishSingleFile=true" />
+  </Target>
+  <PropertyGroup>
+    <WidgetProviderOutput>..\GitaView.Native.WidgetProvider\bin\$(Configuration)\net10.0-windows10.0.26100.0\win-x64\publish</WidgetProviderOutput>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(WidgetProviderOutput)\GitaView.Native.WidgetProvider.exe" CopyToOutputDirectory="PreserveNewest" Link="GitaView.Native.WidgetProvider.exe" />
+    <None Include="$(WidgetProviderOutput)\*.dll" Exclude="$(WidgetProviderOutput)\GitaView.Native.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(RepoRoot)target\$(RustTargetDir)\gitaview_ffi.dll" CopyToOutputDirectory="PreserveNewest" Link="gitaview_ffi.dll" Pack="true" />
+  </ItemGroup>
+
+  <!-- Publish Properties -->
+  <PropertyGroup>
+    <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+</Project>

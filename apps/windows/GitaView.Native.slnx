@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="GitaView.Native.Contracts/GitaView.Native.Contracts.csproj" />
+  <Project Path="GitaView.Native.Interop/GitaView.Native.Interop.csproj" />
+  <Project Path="GitaView.Native.Tests/GitaView.Native.Tests.csproj" />
+  <Project Path="GitaView.Native.WidgetProvider/GitaView.Native.WidgetProvider.csproj" />
+  <Project Path="GitaView.Native/GitaView.Native.csproj">
+    <Platform Project="x86" />
+  </Project>
+</Solution>
