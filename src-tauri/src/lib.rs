@@ -5,6 +5,7 @@ pub mod diagnostics;
 pub mod repo_operation;
 pub mod repo_registry;
 pub mod repo_status;
+pub mod status_refresh;
 pub mod system_open;
 pub mod tray_menu_rows;
 pub mod tray_status;
@@ -21,6 +22,7 @@ pub mod git {
     pub mod commands;
     pub mod discovery;
     pub mod operation_lock;
+    pub(crate) mod process;
     pub mod remote;
     pub mod status_text;
 }
@@ -175,7 +177,7 @@ pub fn run() {
                 .build(app)?;
 
             diagnostics::log("app.setup.tray_ready", "main tray created");
-            tray_status::refresh_tray_menu_async(app.handle().clone());
+            status_refresh::start(app.handle())?;
             diagnostics::log("app.setup.end", "setup completed");
 
             Ok(())
@@ -187,6 +189,7 @@ pub fn run() {
             app_commands::add_repository,
             app_commands::remove_repository,
             app_commands::list_repo_statuses,
+            app_commands::get_repo_snapshot,
             app_commands::fetch_repo,
             app_commands::pull_repo,
             app_commands::push_repo,

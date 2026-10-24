@@ -15,7 +15,8 @@ struct Provider: TimelineProvider {
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<WidgetEntry>) -> Void) {
         let entry = loadEntry() ?? WidgetEntry.empty
-        let timeline = Timeline(entries: [entry], policy: .never)
+        // WidgetKit decides the actual refresh time; this also recovers from missed reloads.
+        let timeline = Timeline(entries: [entry], policy: .after(Date().addingTimeInterval(15 * 60)))
         completion(timeline)
     }
 

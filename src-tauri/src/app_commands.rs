@@ -2,7 +2,7 @@ use crate::app_settings::load_app_settings;
 use crate::domain::repo::RepoStatusDto;
 use crate::domain::settings::AppSettings;
 use crate::git::commands::{
-    branch_state, origin_fetch_args, origin_pull_args, origin_push_args, run_git,
+    branch_state, fetch_origin, origin_pull_args, origin_push_args, run_git,
     run_git_args_with_timeout, GIT_NETWORK_TIMEOUT,
 };
 use crate::git::operation_lock::try_acquire_repo_operation;
@@ -196,49 +196,24 @@ pub async fn remove_repository(app: tauri::AppHandle, repo_id: String) -> Result
 }
 
 #[tauri::command]
+pub async fn get_repo_snapshot(
+    app: tauri::AppHandle,
+    fresh: bool,
+) -> Result<crate::status_refresh::StatusSnapshot, String> {
+    let service = crate::status_refresh::service(&app);
+    let ticket = service.request(fresh);
+    tauri::async_runtime::spawn_blocking(move || service.wait(ticket))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub async fn list_repo_statuses(app: tauri::AppHandle) -> Result<Vec<RepoStatusDto>, String> {
-    let started = Instant::now();
-    let tray_generation = crate::tray_status::begin_tray_menu_update();
-    crate::diagnostics::log("command.list_repo_statuses.start", "");
-    // 设置加载与状态收集同在阻塞线程池执行
-    let app_for_task = app.clone();
-    let statuses = tauri::async_runtime::spawn_blocking(move || {
-        let settings = load_app_settings(&app_for_task)?;
-        crate::diagnostics::log(
-            "command.list_repo_statuses.settings",
-            format!("repos={}", settings.repos.len()),
-        );
-        crate::repo_status::collect_repo_statuses(settings.repos)
-    })
-    .await
-    .map_err(|err| err.to_string())??;
-    match crate::tray_status::set_status_menu_if_current(&app, tray_generation, &statuses) {
-        Ok(false) => crate::diagnostics::log(
-            "command.list_repo_statuses.tray_stale",
-            format!("generation={tray_generation}"),
-        ),
-        Err(err) => {
-            eprintln!("更新托盘状态菜单失败: {err}");
-            crate::diagnostics::log(
-                "command.list_repo_statuses.tray_error",
-                format!("error_len={}", err.len()),
-            );
-        }
-        Ok(true) => {}
+    let snapshot = get_repo_snapshot(app, true).await?;
+    match snapshot.error {
+        Some(error) => Err(error),
+        None => Ok(snapshot.repos),
     }
-    // 前端刷新路径同样更新 widget 数据，保证桌面 widget 不落后于窗口/托盘
-    let widget_statuses = statuses.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        if let Err(err) = crate::widget_data::write_widget_data(&widget_statuses, tray_generation) {
-            crate::diagnostics::log("widget_data.write_error", &err);
-        }
-    });
-    crate::diagnostics::log_duration(
-        "command.list_repo_statuses.ok",
-        started.elapsed(),
-        format!("statuses={}", statuses.len()),
-    );
-    Ok(statuses)
 }
 
 #[tauri::command]
@@ -248,9 +223,7 @@ pub async fn fetch_repo(app: tauri::AppHandle, repo_id: String) -> Result<String
         let repo = find_repo(&settings, &repo_id)?;
         let repo_path = repo.path.clone();
         let _operation = try_acquire_repo_operation(&repo_path)?;
-        let state = branch_state(&repo_path)?;
-        validate_repo_git_operation(RepoGitOperation::Fetch, state.relation, state.has_remote)?;
-        run_git_args_with_timeout(&repo_path, origin_fetch_args(), GIT_NETWORK_TIMEOUT)
+        fetch_origin(&repo_path)
     })
     .await
     .map_err(|err| err.to_string())??;

@@ -40,7 +40,9 @@ pub fn mutate_app_settings(
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut settings = load_app_settings(app)?;
     mutate(&mut settings)?;
-    save_app_settings(app, &settings)
+    let saved = save_app_settings(app, &settings)?;
+    crate::status_refresh::settings_changed(app, &saved.refresh);
+    Ok(saved)
 }
 
 pub fn load_app_settings(app: &tauri::AppHandle) -> Result<AppSettings, String> {

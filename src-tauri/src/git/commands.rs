@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::sync::OnceLock;
@@ -68,8 +67,8 @@ fn probe_git_program(program: &str) -> Result<(), ()> {
     command.args(["--version"]);
     command.env("GIT_TERMINAL_PROMPT", "0");
     configure_git_child_process(&mut command);
-    match command.stdout(Stdio::null()).stderr(Stdio::null()).status() {
-        Ok(status) if status.success() => Ok(()),
+    match run_command_with_timeout(command, GIT_STATUS_TIMEOUT) {
+        Ok(output) if output.status.success() => Ok(()),
         _ => Err(()),
     }
 }
@@ -85,12 +84,9 @@ fn probe_login_shell_git() -> Option<String> {
     #[cfg(not(target_os = "windows"))]
     {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-        let output = Command::new(&shell)
-            .args(["-lc", "command -v git"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output()
-            .ok()?;
+        let mut command = Command::new(&shell);
+        command.args(["-lc", "command -v git"]);
+        let output = run_command_with_timeout(command, GIT_STATUS_TIMEOUT).ok()?;
         if !output.status.success() {
             return None;
         }
@@ -103,59 +99,51 @@ fn probe_login_shell_git() -> Option<String> {
 }
 
 fn run_command_with_timeout(mut command: Command, timeout: Duration) -> Result<Output, String> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        command.process_group(0);
-    }
-    let mut child = command
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|err| format!("failed to spawn command: {}", err))?;
-    let mut stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| "failed to capture stdout".to_string())?;
-    let mut stderr = child
-        .stderr
-        .take()
-        .ok_or_else(|| "failed to capture stderr".to_string())?;
-    let stdout_reader = thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stdout.read_to_end(&mut bytes).map(|_| bytes)
-    });
-    let stderr_reader = thread::spawn(move || {
-        let mut bytes = Vec::new();
-        stderr.read_to_end(&mut bytes).map(|_| bytes)
-    });
-
-    let start = std::time::Instant::now();
-    loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|err| format!("failed to wait: {}", err))?
-        {
-            let stdout = stdout_reader
-                .join()
-                .map_err(|_| "stdout reader panicked".to_string())?
-                .map_err(|err| format!("failed to collect stdout: {err}"))?;
-            let stderr = stderr_reader
-                .join()
-                .map_err(|_| "stderr reader panicked".to_string())?
-                .map_err(|err| format!("failed to collect stderr: {err}"))?;
-            return Ok(Output {
-                status,
-                stdout,
-                stderr,
-            });
+    use crate::git::process::{prepare_pipe, read_pipe, ProcessTree};
+    let start = Instant::now();
+    let (mut child, tree) =
+        ProcessTree::spawn(command.stdout(Stdio::piped()).stderr(Stdio::piped()))
+            .map_err(|err| format!("failed to spawn command: {err}"))?;
+    let result = (|| {
+        let mut stdout = child.stdout.take().ok_or("failed to capture stdout")?;
+        let mut stderr = child.stderr.take().ok_or("failed to capture stderr")?;
+        prepare_pipe(&stdout).map_err(|err| err.to_string())?;
+        prepare_pipe(&stderr).map_err(|err| err.to_string())?;
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let (mut out_done, mut err_done) = (false, false);
+        let mut status = None;
+        loop {
+            if start.elapsed() >= timeout {
+                return Err(GIT_TIMEOUT_SENTINEL.to_string());
+            }
+            if !out_done {
+                out_done = read_pipe(&mut stdout, &mut out).map_err(|err| err.to_string())?;
+            }
+            if !err_done {
+                err_done = read_pipe(&mut stderr, &mut err).map_err(|err| err.to_string())?;
+            }
+            if status.is_none() {
+                status = child.try_wait().map_err(|err| err.to_string())?;
+            }
+            if out_done && err_done {
+                if let Some(status) = status {
+                    return Ok(Output {
+                        status,
+                        stdout: out,
+                        stderr: err,
+                    });
+                }
+            }
+            thread::sleep(Duration::from_millis(5));
         }
-        if start.elapsed() >= timeout {
-            terminate_child_tree(&mut child);
-            return Err(GIT_TIMEOUT_SENTINEL.to_string());
-        }
-        thread::sleep(Duration::from_millis(50));
+    })();
+    if result.is_err() {
+        tree.terminate();
+        let _ = child.kill();
+        let _ = child.wait();
     }
+    result
 }
 
 #[cfg(target_os = "windows")]
@@ -168,31 +156,6 @@ fn configure_git_child_process(command: &mut Command) {
 
 #[cfg(not(target_os = "windows"))]
 fn configure_git_child_process(_command: &mut Command) {}
-
-fn terminate_child_tree(child: &mut std::process::Child) {
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-        let _ = Command::new("taskkill")
-            .args(["/PID", &child.id().to_string(), "/T", "/F"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    #[cfg(unix)]
-    {
-        let _ = Command::new("kill")
-            .args(["-KILL", &format!("-{}", child.id())])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    let _ = child.kill();
-    let _ = child.wait();
-}
 
 pub fn run_git(repo_path: &Path, args: &[&str]) -> Result<String, String> {
     run_git_with_timeout(repo_path, args, GIT_STATUS_TIMEOUT)
@@ -276,6 +239,20 @@ pub(crate) fn origin_fetch_args() -> Vec<String> {
     vec!["fetch".to_string(), "origin".to_string()]
 }
 
+pub(crate) fn fetch_origin(repo_path: &Path) -> Result<String, String> {
+    if run_git(repo_path, &["rev-parse", "--is-inside-work-tree"])? != "true" {
+        return Err("不是有效的 Git 工作区".into());
+    }
+    let origin = run_git(repo_path, &["config", "--get", "remote.origin.url"])?;
+    crate::repo_operation::validate_repo_git_operation(
+        crate::repo_operation::RepoGitOperation::Fetch,
+        RemoteRelation::NoRemote,
+        !origin.trim().is_empty(),
+    )?;
+    // Fetch needs an origin, but does not require HEAD or an upstream comparison.
+    run_git_args_with_timeout(repo_path, origin_fetch_args(), GIT_NETWORK_TIMEOUT)
+}
+
 pub(crate) fn origin_pull_args(branch: &str) -> Vec<String> {
     vec![
         "pull".to_string(),
@@ -328,13 +305,15 @@ pub fn branch_state(repo_path: &Path) -> Result<GitBranchState, String> {
     if inside != "true" {
         return Err("不是有效的 Git 工作区".to_string());
     }
-    let branch = run_git(repo_path, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    let branch = run_git(repo_path, &["symbolic-ref", "--short", "HEAD"])
+        .or_else(|_| run_git(repo_path, &["rev-parse", "--abbrev-ref", "HEAD"]))?;
+    let has_commit = run_git(repo_path, &["rev-parse", "--verify", "HEAD"]).is_ok();
     let raw_remote_url = run_git(repo_path, &["config", "--get", "remote.origin.url"]).ok();
     let has_origin_remote = raw_remote_url
         .as_ref()
         .is_some_and(|url| !url.trim().is_empty());
     let remote_url = raw_remote_url.and_then(|url| normalize_remote_url(&url));
-    if branch == "HEAD" {
+    if branch == "HEAD" || !has_commit {
         return Ok(GitBranchState {
             branch,
             remote_branch: None,
@@ -472,6 +451,63 @@ mod tests {
         );
         assert_eq!(branch_state(&repo).unwrap().branch, "feature");
         fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn unborn_repository_with_origin_can_fetch() {
+        let temp = unique_temp_dir("gitaview_unborn_fetch");
+        let repo = temp.join("repo");
+        let remote = temp.join("remote.git");
+        let seed = temp.join("seed");
+        fs::create_dir_all(&repo).unwrap();
+        fs::create_dir_all(&remote).unwrap();
+        fs::create_dir_all(&seed).unwrap();
+        test_git(&remote, &["init", "--bare"]);
+        test_git(&repo, &["init", "-b", "main"]);
+        assert!(!branch_state(&repo).unwrap().has_remote);
+        assert!(fetch_origin(&repo).is_err());
+        test_git(&seed, &["init", "-b", "main"]);
+        test_git(&seed, &["config", "user.name", "GitaView Test"]);
+        test_git(&seed, &["config", "user.email", "gitaview@example.test"]);
+        test_git(&seed, &["commit", "--allow-empty", "-m", "initial"]);
+        test_git(&seed, &["push", remote.to_str().unwrap(), "main"]);
+        test_git(
+            &repo,
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        );
+        let state = branch_state(&repo).unwrap();
+        assert_eq!(state.branch, "main");
+        assert_eq!(state.relation, RemoteRelation::NoRemote);
+        assert!(state.has_remote);
+        fetch_origin(&repo).unwrap();
+        assert!(run_git(
+            &repo,
+            &["rev-parse", "--verify", "refs/remotes/origin/main"]
+        )
+        .is_ok());
+        assert!(run_git(&repo, &["rev-parse", "--verify", "HEAD"]).is_err());
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn timeout_includes_pipes_held_by_a_descendant_after_parent_exit() {
+        #[cfg(target_os = "windows")]
+        let mut command = {
+            let mut command = Command::new("cmd");
+            command.args(["/C", "start /b ping -n 6 127.0.0.1"]);
+            command
+        };
+        #[cfg(unix)]
+        let mut command = {
+            let mut command = Command::new("sh");
+            command.args(["-c", "sleep 5 & exit 0"]);
+            command
+        };
+        configure_git_child_process(&mut command);
+        let started = Instant::now();
+        let result = run_command_with_timeout(command, Duration::from_millis(300));
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert_eq!(result.unwrap_err(), GIT_TIMEOUT_SENTINEL);
     }
 
     #[test]
