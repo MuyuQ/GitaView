@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fx-session-004",
+  "generation": 2,
+  "stateRevision": 8,
+  "settingsRevision": 3,
+  "attemptedAtMs": 1792800300000,
+  "lastSuccessAtMs": 1792799000000,
+  "refreshState": "failed",
+  "refreshError": { "code": "SETTINGS_IO", "message": "无法读取设置" },
+  "refreshPolicy": { "enabled": true, "intervalMinutes": 5 },
+  "refresh": { "isRefreshing": false, "requestedRequestId": 5, "completedRequestId": 5 },
+  "repos": [
+    {
+      "id": "repo-api",
+      "name": "backend-api",
+      "path": "/sample/projects/api",
+      "groupId": "group-backend",
+      "readState": "ok",
+      "relation": "remote_ahead",
+      "branch": "main",
+      "hasCommit": true,
+      "hasOrigin": true,
+      "comparisonBranch": "main",
+      "ahead": 0,
+      "behind": 2,
+      "remoteUrl": "https://github.com/example/api",
+      "actions": { "canOpenDirectory": true, "canOpenRemote": true, "canFetch": true, "canPull": true, "canPush": false }
+    },
+    {
+      "id": "repo-web",
+      "name": "website",
+      "path": "/sample/projects/website",
+      "readState": "ok",
+      "relation": "synced",
+      "branch": "main",
+      "hasCommit": true,
+      "hasOrigin": true,
+      "comparisonBranch": "main",
+      "ahead": 0,
+      "behind": 0,
+      "remoteUrl": "https://github.com/example/website",
+      "actions": { "canOpenDirectory": true, "canOpenRemote": true, "canFetch": true, "canPull": false, "canPush": false }
+    },
+    {
+      "id": "repo-new",
+      "name": "newly-added",
+      "path": "/sample/projects/newly-added",
+      "readState": "pending",
+      "actions": { "canOpenDirectory": true, "canOpenRemote": false, "canFetch": false, "canPull": false, "canPush": false }
+    }
+  ]
+}

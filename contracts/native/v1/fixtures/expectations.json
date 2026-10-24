@@ -1,0 +1,55 @@
+{
+  "contractVersion": 1,
+  "description": "共享断言：Rust（gitaview-core）与两端解码测试（N10）都以此文件为唯一期望来源，不各自手写。",
+  "snapshots": {
+    "snapshot-mixed-8": {
+      "counts": { "total": 8, "synced": 2, "localAhead": 1, "remoteAhead": 1, "diverged": 1, "noRemote": 2, "error": 1, "pending": 0 },
+      "compact": { "synced": 2, "syncable": 2, "needsAttention": 2, "noRemote": 2 },
+      "attentionIds": ["repo-ci", "repo-api", "repo-docs", "repo-mobile"],
+      "absentRepoIds": []
+    },
+    "snapshot-empty": {
+      "counts": { "total": 0, "synced": 0, "localAhead": 0, "remoteAhead": 0, "diverged": 0, "noRemote": 0, "error": 0, "pending": 0 },
+      "compact": { "synced": 0, "syncable": 0, "needsAttention": 0, "noRemote": 0 },
+      "attentionIds": [],
+      "absentRepoIds": []
+    },
+    "snapshot-pending-first": {
+      "counts": { "total": 2, "synced": 0, "localAhead": 0, "remoteAhead": 0, "diverged": 0, "noRemote": 0, "error": 0, "pending": 2 },
+      "compact": { "synced": 0, "syncable": 0, "needsAttention": 0, "noRemote": 0 },
+      "attentionIds": [],
+      "absentRepoIds": []
+    },
+    "snapshot-global-failure-keeps-history": {
+      "counts": { "total": 3, "synced": 1, "localAhead": 0, "remoteAhead": 1, "diverged": 0, "noRemote": 0, "error": 0, "pending": 1 },
+      "compact": { "synced": 1, "syncable": 1, "needsAttention": 0, "noRemote": 0 },
+      "attentionIds": ["repo-api"],
+      "absentRepoIds": ["repo-legacy"],
+      "lastSuccessAtMsPreserved": 1792799000000,
+      "refreshErrorCode": "SETTINGS_IO"
+    },
+    "snapshot-unborn-origin": {
+      "counts": { "total": 1, "synced": 0, "localAhead": 0, "remoteAhead": 0, "diverged": 0, "noRemote": 1, "error": 0, "pending": 0 },
+      "compact": { "synced": 0, "syncable": 0, "needsAttention": 0, "noRemote": 1 },
+      "attentionIds": [],
+      "absentRepoIds": []
+    },
+    "snapshot-unicode": {
+      "counts": { "total": 3, "synced": 0, "localAhead": 1, "remoteAhead": 0, "diverged": 1, "noRemote": 1, "error": 0, "pending": 0 },
+      "compact": { "synced": 0, "syncable": 1, "needsAttention": 1, "noRemote": 1 },
+      "attentionIds": ["repo-frontend", "repo-docs-cn"],
+      "absentRepoIds": []
+    }
+  },
+  "staleness": {
+    "snapshot-manual": { "nowMs": 1792800000000, "expected": "manual" },
+    "snapshot-stale-boundary": {
+      "lastSuccessAtMs": 1790000000000,
+      "intervalMinutes": 10,
+      "freshAtMs": 1790001200000,
+      "staleAtMs": 1790001200001,
+      "futureAtMs": 1789999999999
+    }
+  },
+  "rejects": ["widget-unknown-schema.json"]
+}

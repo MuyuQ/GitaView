@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fx-session-006",
+  "generation": 3,
+  "stateRevision": 9,
+  "settingsRevision": 2,
+  "attemptedAtMs": 1792800000000,
+  "lastSuccessAtMs": 1792800000000,
+  "refreshState": "ready",
+  "refreshPolicy": { "enabled": true, "intervalMinutes": 5 },
+  "refresh": { "isRefreshing": false, "requestedRequestId": 6, "completedRequestId": 6 },
+  "repos": [
+    {
+      "id": "repo-frontend",
+      "name": "前端应用",
+      "path": "/示例项目/前端应用",
+      "groupId": "组-产品",
+      "readState": "ok",
+      "relation": "diverged",
+      "branch": "主干",
+      "hasCommit": true,
+      "hasOrigin": true,
+      "comparisonBranch": "主干",
+      "ahead": 2,
+      "behind": 1,
+      "remoteUrl": "https://github.com/example/frontend",
+      "actions": { "canOpenDirectory": true, "canOpenRemote": true, "canFetch": true, "canPull": true, "canPush": true }
+    },
+    {
+      "id": "repo-docs-cn",
+      "name": "文档中心",
+      "path": "/示例项目/文档中心",
+      "groupId": "组-产品",
+      "readState": "ok",
+      "relation": "local_ahead",
+      "branch": "主干",
+      "hasCommit": true,
+      "hasOrigin": true,
+      "comparisonBranch": "主干",
+      "ahead": 1,
+      "behind": 0,
+      "remoteUrl": "https://github.com/example/docs-cn",
+      "actions": { "canOpenDirectory": true, "canOpenRemote": true, "canFetch": true, "canPull": false, "canPush": true }
+    },
+    {
+      "id": "repo-archive-cn",
+      "name": "备用仓库",
+      "path": "/示例项目/备用仓库",
+      "readState": "ok",
+      "relation": "no_remote",
+      "branch": "主干",
+      "hasCommit": true,
+      "hasOrigin": false,
+      "comparisonBranch": null,
+      "ahead": null,
+      "behind": null,
+      "actions": { "canOpenDirectory": true, "canOpenRemote": false, "canFetch": false, "canPull": false, "canPush": false }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 999,
+  "sessionId": "fx-session-009",
+  "generation": 4,
+  "stateRevision": 12,
+  "settingsRevision": 2,
+  "attemptedAtMs": 1792800000000,
+  "lastSuccessAtMs": 1792799700000,
+  "refreshState": "ready",
+  "refreshErrorCode": null,
+  "refreshPolicy": { "enabled": true, "intervalMinutes": 5 },
+  "counts": { "total": 1, "synced": 1, "localAhead": 0, "remoteAhead": 0, "diverged": 0, "noRemote": 0, "error": 0, "pending": 0 },
+  "compact": { "synced": 1, "syncable": 0, "needsAttention": 0, "noRemote": 0 },
+  "attention": []
+}

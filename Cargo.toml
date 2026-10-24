@@ -1,0 +1,23 @@
+# GitaView 原生 workspace（N02 建立）
+# 共享 Rust 核心与 C ABI，供 macOS（staticlib）与 Windows（cdylib）宿主调用。
+# 旧 Tauri 客户端在 src-tauri 下独立构建，保留自己的锁文件。
+[workspace]
+members = ["crates/gitaview-core", "crates/gitaview-ffi"]
+default-members = ["crates/gitaview-core", "crates/gitaview-ffi"]
+exclude = ["src-tauri"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.95"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# FFI 产物优先体积与确定性；宿主按 release 链接
+[profile.release]
+lto = "thin"
+codegen-units = 1

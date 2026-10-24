@@ -1,0 +1,16 @@
+[package]
+name = "gitaview-ffi"
+description = "GitaView C ABI：固定函数边界与 JSON envelope（原型子集，N02）"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+gitaview-core = { path = "../gitaview-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# staticlib 供 Swift 链接，cdylib 供 C# 加载；rlib 供 Rust 测试。
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
