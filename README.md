@@ -11,6 +11,7 @@
 - **快捷操作**：Fetch、Pull，以及带二次确认的 Push
 - **桌面 Widget**：小巧窗口，常驻桌面，随时可见
 - **仓库扫描**：递归扫描目录，自动发现 Git 仓库
+- **统一刷新**：后端定时读取本地 Git 状态，窗口、托盘和 macOS Widget 共用扫描结果；自动刷新不会执行 Fetch
 
 ## 状态分类
 
@@ -20,7 +21,7 @@
 | local_ahead | 黄色 | 本地有新提交 |
 | remote_ahead | 黄色 | 远端有新提交 |
 | diverged | 红色 | 本地与远端分叉 |
-| no_remote | 灰色 | 未配置远端 |
+| no_remote | 灰色 | 无可用的 origin 分支比较，如未配置远端或尚无提交 |
 
 > `error` 是应用层状态，用于表示仓库状态读取失败；它不属于 Git 关系分类中的五种状态。
 
@@ -79,4 +80,4 @@ cargo test --manifest-path src-tauri/Cargo.toml && npm test && npm run build && 
 MIT
 
 ---
-*最后更新: 2026-09-21*
+*最后更新: 2026-10-22*
