@@ -5,7 +5,7 @@ import { getRepoActionAvailability } from "../lib/statusModel";
 import {
   actionResultClassName,
   actionResultRole,
-  formatActionResult,
+  executeRepoAction,
   type ActionResult,
 } from "../lib/actionResults";
 
@@ -19,12 +19,7 @@ export function RepoActions({ repo, onRefresh }: { repo: RepoStatus; onRefresh: 
     setLoading(action);
     setResult(null);
     try {
-      const res = await fn();
-      setResult(formatActionResult(action, { ok: true, message: typeof res === "string" ? res : undefined }));
-      const shouldRefresh = action === "Fetch" || action === "Pull" || action === "Push";
-      if (shouldRefresh) onRefresh();
-    } catch (err) {
-      setResult(formatActionResult(action, { ok: false, error: err }));
+      setResult(await executeRepoAction(action, fn, onRefresh));
     } finally {
       setLoading(null);
     }

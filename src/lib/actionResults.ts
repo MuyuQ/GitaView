@@ -5,6 +5,22 @@ export interface ActionResult {
   text: string;
 }
 
+export async function executeRepoAction(
+  action: string,
+  execute: () => Promise<string | void>,
+  onRefresh: () => void,
+): Promise<ActionResult> {
+  try {
+    const message = await execute();
+    return formatActionResult(action, { ok: true, message: typeof message === "string" ? message : undefined });
+  } catch (error) {
+    return formatActionResult(action, { ok: false, error });
+  } finally {
+    // Git can change refs or the working tree before reporting a failure.
+    if (action === "Fetch" || action === "Pull" || action === "Push") onRefresh();
+  }
+}
+
 /// 统一操作结果的成功/失败语义：失败必须有独立的 kind，
 /// 供 UI 用红色 + role="alert" 呈现，而不是与成功共用样式。
 export function formatActionResult(
