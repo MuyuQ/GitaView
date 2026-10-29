@@ -376,5 +376,8 @@ fn engine_view_query_uses_current_state_and_groups() {
     release.send(()).unwrap();
     engine.request_stop();
     assert!(engine.wait_stopped(std::time::Duration::from_secs(10)));
+    assert!(gitaview_core::diagnostics::flush(
+        std::time::Duration::from_secs(5)
+    ));
     std::fs::remove_dir_all(temp).unwrap();
 }

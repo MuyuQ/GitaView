@@ -219,6 +219,59 @@ fn legacy_schema_counts_as_corrupt_not_migrated() {
     fs::remove_dir_all(temp).unwrap();
 }
 
+fn assert_invalid_encoding_recovers(name: &str, bytes: &[u8]) {
+    let temp = unique_temp_dir(name);
+    fs::create_dir_all(&temp).unwrap();
+    fs::write(temp.join("settings.json"), bytes).unwrap();
+    let opened = match SettingsService::open(&temp) {
+        Ok(opened) => opened,
+        Err(error) => {
+            fs::remove_dir_all(&temp).unwrap();
+            panic!("encoding corruption must recover, got {error:?}");
+        }
+    };
+    let backups: Vec<_> = fs::read_dir(&temp)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(opened.warnings, vec![StartupWarning::SettingsRecovered]);
+    assert_eq!(
+        opened.service.get(),
+        gitaview_core::settings::SettingsData::default()
+    );
+    assert_eq!(backups.len(), 1);
+    assert!(backups[0].to_string_lossy().contains(".corrupt-"));
+    assert_eq!(fs::read(&backups[0]).unwrap(), bytes);
+    assert!(!temp.join("settings.json").exists());
+
+    let saved = opened
+        .service
+        .save(SettingsSaveInput {
+            expected_revision: 1,
+            settings: editable(vec![group("recovered", "Recovered")]),
+        })
+        .unwrap();
+    let reopened = SettingsService::open(&temp).unwrap();
+    assert!(reopened.warnings.is_empty());
+    assert_eq!(reopened.service.get(), saved);
+    assert_eq!(fs::read(&backups[0]).unwrap(), bytes);
+    fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
+fn invalid_utf8_settings_are_quarantined_and_recover() {
+    assert_invalid_encoding_recovers("gitaview_settings_invalid_utf8", b"{\xff\xfe}");
+}
+
+#[test]
+fn utf16_settings_are_quarantined_and_recover() {
+    let mut bytes = vec![0xff, 0xfe];
+    for unit in "{\"schemaVersion\":1}".encode_utf16() {
+        bytes.extend_from_slice(&unit.to_le_bytes());
+    }
+    assert_invalid_encoding_recovers("gitaview_settings_utf16", &bytes);
+}
+
 #[test]
 fn unreadable_settings_fails_initialization() {
     let temp = unique_temp_dir("gitaview_n06_unreadable");

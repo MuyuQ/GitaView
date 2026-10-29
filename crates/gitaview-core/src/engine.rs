@@ -303,6 +303,8 @@ pub fn engine_create(config: EngineConfig) -> Result<EngineStartup, CoreError> {
         scan_handle: Mutex::new(None),
         config_writer: Mutex::new(()),
         pre_slot_hook: config.pre_slot_hook,
+        #[cfg(test)]
+        before_business_registration: Mutex::new(None),
     });
 
     let engine = Engine {
@@ -389,6 +391,8 @@ struct EngineInner {
     config_writer: Mutex<()>,
     /// 测试注入（S05）：网络操作拿槽前调用的屏障钩子；生产 None。
     pre_slot_hook: Option<Arc<dyn Fn() + Send + Sync>>,
+    #[cfg(test)]
+    before_business_registration: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
 
 impl EngineInner {
@@ -622,13 +626,18 @@ impl Engine {
     }
 
     fn begin_business_call(&self) -> Result<InFlightGuard<'_>, CoreError> {
-        {
-            let state = self.inner.lock_state();
-            if state.lifecycle != Lifecycle::Running {
-                return Err(CoreError::EngineStopping);
-            }
+        let state = self.inner.lock_state();
+        if state.lifecycle != Lifecycle::Running {
+            return Err(CoreError::EngineStopping);
         }
+        #[cfg(test)]
+        if let Some(hook) = &*self.inner.before_business_registration.lock().unwrap() {
+            hook();
+        }
+        // Admission and registration share the lifecycle lock: stopping must not
+        // observe zero calls after a business operation has already been admitted.
         self.inner.in_flight.fetch_add(1, Ordering::SeqCst);
+        drop(state);
         Ok(InFlightGuard { inner: &self.inner })
     }
 
@@ -840,14 +849,10 @@ impl Engine {
             );
             return;
         }
-        diagnostics::log(
-            "config.commit",
-            format!(
-                "revision={} repos={} groups={}",
-                settings.revision,
-                settings.repos.len(),
-                settings.groups.len()
-            ),
+        let diagnostic = (
+            settings.revision,
+            settings.repos.len(),
+            settings.groups.len(),
         );
         state.settings = settings;
         // 剔除已删除仓库的采集缓存（S02）：collected 以 ID 为键，而移除后
@@ -859,7 +864,8 @@ impl Engine {
             .map(|repo| repo.id.clone())
             .collect();
         state.collected.retain(|id, _| managed_ids.contains(id));
-        state.refresh_error = None; // 投影已与新配置一致；后续扫描失败会重新置位
+        // Configuration reprojection is not a completed refresh attempt. Preserve
+        // its state/error pair until the next accepted scan publishes a result.
         state.state_revision += 1;
         if state.lifecycle == Lifecycle::Running {
             state.requested_request_id += 1;
@@ -870,6 +876,13 @@ impl Engine {
         }
         drop(state);
         self.inner.changed.notify_all();
+        diagnostics::log(
+            "config.commit",
+            format!(
+                "revision={} repos={} groups={}",
+                diagnostic.0, diagnostic.1, diagnostic.2
+            ),
+        );
     }
 
     // —— Git 操作 ——
@@ -973,16 +986,21 @@ impl Engine {
 
     /// 幂等停止：拒绝新工作、停止派发、唤醒全部等待者。
     pub fn request_stop(&self) {
-        {
+        let changed = {
             let mut state = self.inner.lock_state();
             if state.lifecycle == Lifecycle::Running {
-                diagnostics::log("engine.stop_request", "Running → Stopping");
                 state.lifecycle = Lifecycle::Stopping;
                 state.state_revision += 1;
+                true
+            } else {
+                false
             }
-        }
+        };
         self.inner.stop_flag.stop();
         self.inner.changed.notify_all();
+        if changed {
+            diagnostics::log("engine.stop_request", "Running → Stopping");
+        }
     }
 
     /// 等待扫描线程与在途业务调用结束；成功后进入 Stopped 并回收线程。
@@ -1019,5 +1037,186 @@ impl Engine {
             let _ = handle.join();
         }
         true
+    }
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+    use std::sync::mpsc;
+
+    #[test]
+    fn blocked_logging_does_not_block_config_queries_or_stop() {
+        let temp = std::env::temp_dir().join(format!(
+            "gitaview-slow-log-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let engine = engine_create(EngineConfig {
+            data_dir: temp.clone(),
+            log_dir: temp.join("logs"),
+            ..EngineConfig::default()
+        })
+        .unwrap()
+        .engine;
+        let settings = engine.get_settings();
+        let input = SettingsSaveInput {
+            expected_revision: settings.revision,
+            settings: crate::settings::SettingsEditable {
+                groups: vec![],
+                default_group_id: None,
+                refresh: RefreshPolicy {
+                    enabled: !settings.refresh.enabled,
+                    interval_minutes: settings.refresh.interval_minutes,
+                },
+                repo_groups: vec![],
+            },
+        };
+        let sink = diagnostics::block_sink_for_test();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (saved_tx, saved_rx) = mpsc::channel();
+        let save_engine = engine.clone();
+        let save = std::thread::spawn(move || {
+            diagnostics::before_log_for_test(move |event| {
+                if event == "config.commit" {
+                    entered_tx.send(()).unwrap();
+                }
+            });
+            saved_tx
+                .send(save_engine.save_settings(input).map(|data| data.revision))
+                .unwrap();
+        });
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (snapshot_tx, snapshot_rx) = mpsc::channel();
+        let query_engine = engine.clone();
+        let query = std::thread::spawn(move || {
+            snapshot_tx
+                .send(query_engine.snapshot_get().settings_revision)
+                .unwrap();
+        });
+        let (stopped_tx, stopped_rx) = mpsc::channel();
+        let stop_engine = engine.clone();
+        let stop = std::thread::spawn(move || {
+            stop_engine.request_stop();
+            stopped_tx
+                .send(stop_engine.wait_stopped(Duration::from_secs(3)))
+                .unwrap();
+        });
+        let saved_while_blocked = saved_rx.recv_timeout(Duration::from_millis(300)).ok();
+        let snapshot_while_blocked = snapshot_rx.recv_timeout(Duration::from_millis(300)).ok();
+        let stopped_while_blocked = stopped_rx.recv_timeout(Duration::from_millis(300)).ok();
+        drop(sink);
+        save.join().unwrap();
+        query.join().unwrap();
+        stop.join().unwrap();
+        assert!(engine.wait_stopped(Duration::from_secs(5)));
+        assert!(diagnostics::flush(Duration::from_secs(5)));
+        for attempt in 0..20 {
+            match std::fs::remove_dir_all(&temp) {
+                Ok(()) => break,
+                Err(_) if attempt < 19 => std::thread::sleep(Duration::from_millis(10)),
+                Err(error) => panic!("cleanup: {error}"),
+            }
+        }
+        assert_eq!(
+            saved_while_blocked,
+            Some(Ok(settings.revision + 1)),
+            "config commit waited for log I/O"
+        );
+        assert_eq!(
+            snapshot_while_blocked,
+            Some(settings.revision + 1),
+            "snapshot query waited for log I/O"
+        );
+        assert_eq!(stopped_while_blocked, Some(true), "stop waited for log I/O");
+    }
+
+    #[test]
+    fn stop_cannot_overtake_a_business_call_at_registration() {
+        let temp = std::env::temp_dir().join(format!(
+            "gitaview-admission-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let engine = engine_create(EngineConfig {
+            data_dir: temp.clone(),
+            log_dir: temp.join("logs"),
+            ..EngineConfig::default()
+        })
+        .unwrap()
+        .engine;
+
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let release_rx = Mutex::new(release_rx);
+        *engine.inner.before_business_registration.lock().unwrap() = Some(Arc::new(move || {
+            entered_tx.send(()).unwrap();
+            release_rx
+                .lock()
+                .unwrap()
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap();
+        }));
+        let (admitted_tx, admitted_rx) = mpsc::channel();
+        let (finish_tx, finish_rx) = mpsc::channel();
+        let business_engine = engine.clone();
+        let business = std::thread::spawn(move || {
+            let _guard = business_engine.begin_business_call().unwrap();
+            admitted_tx.send(()).unwrap();
+            finish_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        });
+        entered_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+
+        let (stop_started_tx, stop_started_rx) = mpsc::channel();
+        let (stopped_tx, stopped_rx) = mpsc::channel();
+        let stopping_engine = engine.clone();
+        let stopping = std::thread::spawn(move || {
+            stop_started_tx.send(()).unwrap();
+            stopping_engine.request_stop();
+            stopped_tx
+                .send(stopping_engine.wait_stopped(Duration::from_secs(5)))
+                .unwrap();
+        });
+        stop_started_rx
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap();
+        let stopped_before_registration = stopped_rx.recv_timeout(Duration::from_millis(500)).ok();
+        release_tx.send(()).unwrap();
+        admitted_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let stopped_during_business = if stopped_before_registration.is_none() {
+            stopped_rx.recv_timeout(Duration::from_millis(100)).ok()
+        } else {
+            None
+        };
+        finish_tx.send(()).unwrap();
+        business.join().unwrap();
+        stopping.join().unwrap();
+        let stopped = stopped_before_registration
+            .or(stopped_during_business)
+            .unwrap_or_else(|| stopped_rx.recv_timeout(Duration::from_secs(5)).unwrap());
+        assert!(stopped);
+        assert!(engine.wait_stopped(Duration::from_secs(1)));
+        assert_eq!(engine.lifecycle(), Lifecycle::Stopped);
+        assert!(matches!(
+            engine.begin_business_call(),
+            Err(CoreError::EngineStopping)
+        ));
+        assert!(diagnostics::flush(Duration::from_secs(5)));
+        assert!(temp.starts_with(std::env::temp_dir()));
+        std::fs::remove_dir_all(&temp).unwrap();
+        assert!(
+            stopped_before_registration.is_none(),
+            "stop completed before call registration"
+        );
+        assert!(
+            stopped_during_business.is_none(),
+            "stop completed while the call was in flight"
+        );
     }
 }

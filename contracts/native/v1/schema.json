@@ -72,7 +72,7 @@
         "ahead": { "type": ["integer", "null"], "minimum": 0 },
         "behind": { "type": ["integer", "null"], "minimum": 0 },
         "remoteUrl": { "type": ["string", "null"], "description": "浏览器可打开的 http(s) URL；不安全的 origin 为 null" },
-        "error": { "type": ["object", "null"], "$ref": "#/definitions/errorObject" },
+        "error": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorObject" }] },
         "actions": { "$ref": "#/definitions/repoActions" }
       },
       "allOf": [
@@ -152,7 +152,7 @@
         "attemptedAtMs": { "type": ["integer", "null"], "minimum": 0 },
         "lastSuccessAtMs": { "type": ["integer", "null"], "minimum": 0 },
         "refreshState": { "$ref": "#/definitions/refreshState" },
-        "refreshError": { "type": ["object", "null"], "$ref": "#/definitions/errorObject" },
+        "refreshError": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorObject" }] },
         "refreshPolicy": { "$ref": "#/definitions/refreshPolicy" },
         "refresh": { "$ref": "#/definitions/refreshProgress" },
         "repos": { "type": "array", "items": { "$ref": "#/definitions/repoStatus" } }
@@ -207,7 +207,7 @@
         "name": { "type": "string", "minLength": 1 },
         "readState": { "$ref": "#/definitions/readState" },
         "relation": { "type": ["string", "null"], "enum": ["diverged", "remote_ahead", "local_ahead", "error", null] },
-        "errorCode": { "type": ["string", "null"], "$ref": "#/definitions/errorCode" }
+        "errorCode": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorCode" }] }
       }
     },
     "widgetSnapshot": {
@@ -227,7 +227,7 @@
         "attemptedAtMs": { "type": ["integer", "null"], "minimum": 0 },
         "lastSuccessAtMs": { "type": ["integer", "null"], "minimum": 0 },
         "refreshState": { "$ref": "#/definitions/refreshState" },
-        "refreshErrorCode": { "type": ["string", "null"], "$ref": "#/definitions/errorCode" },
+        "refreshErrorCode": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorCode" }] },
         "refreshPolicy": { "$ref": "#/definitions/refreshPolicy" },
         "counts": { "$ref": "#/definitions/widgetCounts" },
         "compact": { "$ref": "#/definitions/compactCounts" },
@@ -475,7 +475,7 @@
         "ahead": { "type": ["integer", "null"], "minimum": 0 },
         "behind": { "type": ["integer", "null"], "minimum": 0 },
         "remoteUrl": { "type": ["string", "null"] },
-        "error": { "type": ["object", "null"], "$ref": "#/definitions/errorObject" }
+        "error": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorObject" }] }
       },
       "allOf": [
         {
@@ -518,7 +518,7 @@
     }
   },
   "type": "object",
-  "oneOf": [
+  "anyOf": [
     { "$ref": "#/definitions/envelope" },
     { "$ref": "#/definitions/appSnapshot" },
     { "$ref": "#/definitions/widgetSnapshot" },

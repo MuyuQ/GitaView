@@ -19,7 +19,7 @@
   <Identity
     Name="GitaView.Native"
     Publisher="CN=c078af0d-efbc-4831-a9e3-8955819ef156"
-    Version="0.1.4.1" />
+    Version="0.1.5.22" />
 
   <mp:PhoneIdentity PhoneProductId="4caa94b6-2e9c-455a-a482-3af61a355f64" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

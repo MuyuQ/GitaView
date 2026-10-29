@@ -53,6 +53,42 @@ public class WidgetDataWriterFacts : IDisposable
 
     private WidgetSnapshot? ReadWritten() => WidgetDataWriter.TryRead();
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task identical_snapshot_is_written_after_restart_even_if_target_is_new_or_missing(bool newDirectory)
+    {
+        var snapshot = Snapshot(321, 12);
+        WidgetDataWriter.Start();
+        WidgetDataWriter.Write(snapshot);
+        await WidgetDataWriter.StopAsync();
+        Assert.NotNull(ReadWritten());
+        if (newDirectory)
+        {
+            WidgetDataWriter.DataDirectory = Path.Combine(_dir, "second");
+            Directory.CreateDirectory(WidgetDataWriter.DataDirectory);
+        }
+        else File.Delete(Path.Combine(_dir, "widget-data.json"));
+        WidgetDataWriter.Start();
+        WidgetDataWriter.Write(snapshot);
+        await WidgetDataWriter.StopAsync();
+        Assert.Equal(321ul, ReadWritten()?.Generation);
+    }
+
+    [Fact]
+    public async Task damaged_required_object_is_not_kept_as_a_valid_first_refresh_cache()
+    {
+        var damaged = System.Text.Json.Nodes.JsonNode.Parse(WidgetCacheValidationFacts.ValidJson)!;
+        damaged["counts"] = null;
+        File.WriteAllText(Path.Combine(_dir, "widget-data.json"), damaged.ToJsonString());
+        Assert.Null(ReadWritten());
+        WidgetDataWriter.Start();
+        WidgetDataWriter.Write(Snapshot(0, 1));
+        await WidgetDataWriter.StopAsync();
+        Assert.NotNull(ReadWritten()?.Counts);
+        Assert.Equal(0ul, ReadWritten()?.Generation);
+    }
+
     [Fact]
     public async Task write_coalesces_to_latest_and_stop_flushes()
     {
@@ -133,5 +169,37 @@ public class WidgetDataWriterFacts : IDisposable
         WidgetDataWriter.Write(Snapshot(1, 6));
         await WidgetDataWriter.StopAsync();
         Assert.Equal(1ul, ReadWritten()!.Generation);
+    }
+    [Fact]
+    public async Task write_does_not_block_callers_during_disk_io()
+    {
+        // branch review B03 回归：写入器进行慢写时，Write() 的调用方不得等待
+        // 磁盘；慢写期间到来的新投影在退出前 flush（最后一代落盘）。
+        var writeEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseWrite = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        WidgetDataWriter.WriteHookOverride = (path, json) =>
+        {
+            writeEntered.TrySetResult();
+            // 模拟慢盘：等测试放行才真正落盘。
+            Assert.True(writeEntered.Task.IsCompleted);
+            File.WriteAllText(path, json);
+            releaseWrite.Task.Wait(TimeSpan.FromSeconds(10));
+        };
+        WidgetDataWriter.Start();
+        WidgetDataWriter.Write(Snapshot(1, 1));
+        var entered = await Task.WhenAny(writeEntered.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+        Assert.Equal(writeEntered.Task, entered); // 写入器已进入慢写
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        WidgetDataWriter.Write(Snapshot(2, 1)); // 慢写期间的新投影：必须立即返回
+        sw.Stop();
+        Assert.True(sw.ElapsedMilliseconds < 200,
+            $"Write blocked {sw.ElapsedMilliseconds}ms behind disk I/O");
+
+        releaseWrite.SetResult(); // 放行慢写
+        await WidgetDataWriter.StopAsync();
+        var written = ReadWritten();
+        Assert.NotNull(written);
+        Assert.Equal(2ul, written!.Generation); // 退出前 flush 最新一代
     }
 }

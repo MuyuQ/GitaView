@@ -12,24 +12,15 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
-    Background="{ThemeResource GvBgBrush}"
+    FontFamily="{StaticResource GvUiFontFamily}" Language="zh-CN" UseLayoutRounding="True"
+    Background="{ThemeResource GvSurfaceBrush}"
     NavigationCacheMode="Required">
 
     <Page.Resources>
         <Style x:Key="GvSectionCard" TargetType="Border">
-            <Setter Property="Background" Value="{ThemeResource GvSurfaceBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource GvLineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="16" />
-            <Setter Property="Margin" Value="0,0,0,12" />
-        </Style>
-        <Style x:Key="GvSmallButton" TargetType="Button">
-            <Setter Property="Padding" Value="10,4,10,4" />
-            <Setter Property="MinHeight" Value="30" />
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="0,18,0,20" />
         </Style>
     </Page.Resources>
 
@@ -39,40 +30,26 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- 标题行：返回 + 标题 -->
-        <Grid Grid.Row="0" Padding="16,8,16,8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" Content="‹ 返回" MinHeight="32" Click="OnBackClick" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
-                        Margin="12,0,0,0" Spacing="6">
-                <TextBlock Text="GitaView" FontSize="12" VerticalAlignment="Center"
-                           Foreground="{ThemeResource GvMutedBrush}" />
-                <TextBlock Text="·" FontSize="12" VerticalAlignment="Center"
-                           Foreground="{ThemeResource GvMutedBrush}" />
-                <TextBlock Text="设置" FontSize="{ThemeResource GvTitleFontSize}" VerticalAlignment="Center"
-                           Foreground="{ThemeResource GvInkBrush}" />
-            </StackPanel>
-        </Grid>
+        <TitleBar FontFamily="{StaticResource GvUiFontFamily}" x:Name="PageTitleBar" Height="56" IsBackButtonVisible="True" BackRequested="OnTitleBarBackRequested" Background="{ThemeResource GvSurfaceBrush}" Foreground="{ThemeResource GvInkBrush}">
+            <TitleBar.Resources><HorizontalAlignment x:Key="TitleBarContentHorizontalAlignment">Left</HorizontalAlignment></TitleBar.Resources>
+            <TitleBar.Content><TextBlock Text="设置" Margin="8,0,0,0" Style="{StaticResource GvBrandTitle}" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center" TitleBar.IsDragRegion="True"/></TitleBar.Content>
+        </TitleBar>
 
-        <Grid Grid.Row="1" Padding="16,0,16,16">
+        <Grid Grid.Row="1" Padding="16,8,24,20">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="132" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <!-- 侧栏导航（沿用旧版两类分区） -->
-            <StackPanel Grid.Column="0" Spacing="4">
-                <Button x:Name="NavRepoSection" Content="仓库设置" HorizontalAlignment="Stretch"
+            <StackPanel Grid.Column="0" Spacing="4" Margin="0,18,0,0">
+                <Button x:Name="NavRepoSection" Content="仓库设置" Style="{StaticResource GvQuietButton}" HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Left" MinHeight="34" Click="OnNavRepoClick" />
-                <Button x:Name="NavGeneralSection" Content="常规设置" HorizontalAlignment="Stretch"
+                <Button x:Name="NavGeneralSection" Content="常规设置" Style="{StaticResource GvQuietButton}" HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Left" MinHeight="34" Click="OnNavGeneralClick" />
             </StackPanel>
 
-            <ScrollViewer Grid.Column="1" Margin="16,0,0,0" VerticalScrollMode="Enabled">
+            <ScrollViewer Grid.Column="1" Margin="24,0,0,0" VerticalScrollMode="Enabled">
                 <StackPanel>
                     <!-- 全局反馈条 -->
                     <InfoBar x:Name="ConflictBar" IsOpen="False" Severity="Warning"
@@ -93,28 +70,13 @@
                     <StackPanel x:Name="RepoSection" Spacing="0">
                         <Border Style="{StaticResource GvSectionCard}">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="添加仓库" FontSize="14" Foreground="{ThemeResource GvInkBrush}" />
-                                <TextBlock Text="选择一个 Git 仓库目录加入管理；重复路径不会重复添加。"
-                                           FontSize="11" Foreground="{ThemeResource GvMutedBrush}"
-                                           TextWrapping="Wrap" />
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="添加仓库" FontSize="16" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" />
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="选择单个仓库，或扫描工作目录批量添加。" Style="{StaticResource GvHelpText}" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="选择目录…" Style="{StaticResource GvSmallButton}"
-                                            Click="OnPickRepoClick" />
-                                    <ProgressRing x:Name="AddRepoBusy" Width="16" Height="16" IsActive="False" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource GvSectionCard}">
-                            <StackPanel Spacing="8">
-                                <TextBlock Text="扫描目录" FontSize="14" Foreground="{ThemeResource GvInkBrush}" />
-                                <TextBlock Text="扫描一个目录下的全部 Git 仓库，勾选候选后批量加入管理。"
-                                           FontSize="11" Foreground="{ThemeResource GvMutedBrush}"
-                                           TextWrapping="Wrap" />
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="选择并扫描…" Style="{StaticResource GvSmallButton}"
-                                            Click="OnScanDirectoryClick" />
-                                    <ProgressRing x:Name="ScanBusy" Width="16" Height="16" IsActive="False" />
+                                    <Button Content="添加仓库…" Style="{StaticResource GvSmallButton}" Click="OnPickRepoClick" />
+                                    <ProgressRing x:Name="AddRepoBusy" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
+                                    <Button Content="扫描目录…" Style="{StaticResource GvSmallButton}" Click="OnScanDirectoryClick" />
+                                    <ProgressRing x:Name="ScanBusy" Width="16" Height="16" IsActive="False" Visibility="Collapsed" />
                                 </StackPanel>
                                 <StackPanel x:Name="ScanCandidatesPanel" Spacing="4" />
                                 <StackPanel Orientation="Horizontal" Spacing="8"
@@ -129,9 +91,9 @@
 
                         <Border Style="{StaticResource GvSectionCard}">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="已管理的仓库" FontSize="14" Foreground="{ThemeResource GvInkBrush}" />
-                                <TextBlock Text="移除只从管理列表删除记录，不会删除磁盘上的仓库。"
-                                           FontSize="11" Foreground="{ThemeResource GvMutedBrush}"
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="仓库列表" FontSize="16" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" />
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="移除只从管理列表删除记录，不会删除磁盘上的仓库。"
+                                           FontSize="13" Foreground="{ThemeResource GvMutedBrush}"
                                            TextWrapping="Wrap" />
                                 <ListView x:Name="ManagedRepoList" SelectionMode="None">
                                     <ListView.ItemContainerStyle>
@@ -147,43 +109,39 @@
                                                   BorderBrush="{ThemeResource GvLineBrush}"
                                                   BorderThickness="0,0,0,1">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="140" />
                                                     <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="150" />
+                                                    <ColumnDefinition Width="0" />
+                                                    <ColumnDefinition Width="130" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="{Binding Name}"
-                                                           FontSize="12" VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Foreground="{ThemeResource GvInkBrush}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding Path}"
-                                                           FontSize="11" VerticalAlignment="Center"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           Foreground="{ThemeResource GvMutedBrush}" />
-                                                <ComboBox Grid.Column="2" ItemsSource="{Binding GroupOptions}"
+                                                <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                                    <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="{Binding Name}" FontSize="14" FontWeight="Medium" TextTrimming="CharacterEllipsis" Foreground="{ThemeResource GvInkBrush}" />
+                                                    <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="{Binding Path}" FontSize="13" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Path}" Foreground="{ThemeResource GvMutedBrush}" />
+                                                </StackPanel>
+                                                <ComboBox FontFamily="{StaticResource GvUiFontFamily}" Grid.Column="2" ItemsSource="{Binding GroupOptions}"
                                                           SelectedIndex="{Binding SelectedGroupIndex, Mode=TwoWay}"
-                                                          MinWidth="140" MinHeight="30"
-                                                          FontSize="12"
+                                                          MinWidth="120" MinHeight="32"
+                                                          FontSize="13"
                                                           SelectionChanged="OnRepoGroupChanged"
-                                                          Tag="{x:Bind}" />
+                                                          Tag="{Binding}" />
                                                 <Button Grid.Column="3" Content="移除" Style="{StaticResource GvSmallButton}"
                                                         Tag="{Binding}" Click="OnRemoveRepoClick" />
                                             </Grid>
                                         </DataTemplate>
                                     </ListView.ItemTemplate>
                                 </ListView>
-                                <TextBlock x:Name="NoManagedReposText" Text="还没有仓库，使用上方入口添加。"
-                                           FontSize="11" Foreground="{ThemeResource GvMutedBrush}"
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" x:Name="NoManagedReposText" Text="还没有仓库，使用上方入口添加。"
+                                           FontSize="13" Foreground="{ThemeResource GvMutedBrush}"
                                            Visibility="Collapsed" />
                             </StackPanel>
                         </Border>
 
                         <Border Style="{StaticResource GvSectionCard}">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="分组管理" FontSize="14" Foreground="{ThemeResource GvInkBrush}" />
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="分组管理" FontSize="16" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" />
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBox x:Name="NewGroupNameBox" PlaceholderText="新分组名称"
-                                             MinWidth="180" MinHeight="30" />
+                                    <TextBox FontFamily="{StaticResource GvUiFontFamily}" x:Name="NewGroupNameBox" PlaceholderText="新分组名称" Style="{StaticResource GvInput}"
+                                             Width="180" MinHeight="32" />
                                     <Button Content="添加分组" Style="{StaticResource GvSmallButton}"
                                             Click="OnAddGroupClick" />
                                 </StackPanel>
@@ -202,7 +160,7 @@
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="Auto" />
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontSize="12"
+                                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Grid.Column="0" Text="{Binding Name}" FontSize="13"
                                                            VerticalAlignment="Center"
                                                            Foreground="{ThemeResource GvInkBrush}" />
                                                 <Button Grid.Column="1" Content="删除" Style="{StaticResource GvSmallButton}"
@@ -216,74 +174,43 @@
                     </StackPanel>
 
                     <!-- ============ 常规设置 ============ -->
-                    <StackPanel x:Name="GeneralSection" Spacing="0" Visibility="Collapsed">
+                    <StackPanel x:Name="GeneralSection" Visibility="Collapsed">
                         <Border Style="{StaticResource GvSectionCard}">
-                            <StackPanel Spacing="8">
-                                <TextBlock Text="刷新策略" FontSize="14" Foreground="{ThemeResource GvInkBrush}" />
-                                <ToggleSwitch x:Name="RefreshEnabled" OffContent="手动刷新"
-                                              OnContent="定时自动刷新" />
-                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                    <TextBlock Text="间隔（分钟，1–60）" FontSize="12" VerticalAlignment="Center"
-                                               Foreground="{ThemeResource GvMutedBrush}" />
-                                    <NumberBox x:Name="RefreshInterval" Minimum="1" Maximum="60"
-                                               SpinButtonPlacementMode="Compact" SmallChange="1"
-                                               Value="5" MinWidth="110" />
-                                </StackPanel>
+                            <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel Spacing="5"><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="外观" Style="{StaticResource GvSectionTitle}"/><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="内容区域的颜色主题。" Style="{StaticResource GvHelpText}"/></StackPanel>
+                                <ComboBox FontFamily="{StaticResource GvUiFontFamily}" x:Name="AppearanceBox" Grid.Column="1" Width="170" FontSize="14" VerticalAlignment="Center" SelectionChanged="OnAppearanceChanged" AutomationProperties.Name="外观主题"><x:String>跟随系统</x:String><x:String>浅色</x:String><x:String>深色</x:String></ComboBox>
+                            </Grid>
+                        </Border>
+                        <Border Style="{StaticResource GvSectionCard}">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="自动刷新" Style="{StaticResource GvSectionTitle}" VerticalAlignment="Center"/>
+                                    <ToggleSwitch FontFamily="{StaticResource GvUiFontFamily}" x:Name="RefreshEnabled" Grid.Column="1" OffContent="手动" OnContent="已开启" AutomationProperties.Name="自动刷新"/>
+                                </Grid>
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="保存刷新设置" Style="{StaticResource GvSmallButton}"
-                                            Click="OnSaveRefreshClick" />
-                                    <TextBlock x:Name="RefreshSavedText" Text="已保存" FontSize="11"
-                                               VerticalAlignment="Center" Visibility="Collapsed"
-                                               Foreground="{ThemeResource GvGreenBrush}" />
+                                    <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="每隔" Style="{StaticResource GvHelpText}" VerticalAlignment="Center"/>
+                                    <NumberBox FontFamily="{StaticResource GvUiFontFamily}" x:Name="RefreshInterval" Minimum="1" Maximum="60" Value="5" Width="96" FontSize="13" SpinButtonPlacementMode="Compact" SmallChange="1" AutomationProperties.Name="刷新间隔（分钟）"/>
+                                    <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="分钟" Style="{StaticResource GvHelpText}" VerticalAlignment="Center"/>
+                                    <Button Content="保存" Style="{StaticResource GvSmallButton}" Click="OnSaveRefreshClick"/>
+                                    <TextBlock FontFamily="{StaticResource GvUiFontFamily}" x:Name="RefreshSavedText" Text="已保存" FontSize="13" Foreground="{ThemeResource GvGreenBrush}" VerticalAlignment="Center" Visibility="Collapsed"/>
                                 </StackPanel>
-                                <TextBlock Text="自动刷新只读取仓库状态，不会执行 Fetch。"
-                                           FontSize="11" Foreground="{ThemeResource GvMutedBrush}"
-                                           TextWrapping="Wrap" />
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="自动刷新只读取本地状态，不会执行 Fetch。" Style="{StaticResource GvHelpText}"/>
                             </StackPanel>
                         </Border>
-
                         <Border Style="{StaticResource GvSectionCard}">
-                            <StackPanel Spacing="8">
-                                <TextBlock Text="默认分组" FontSize="14" Foreground="{ThemeResource GvInkBrush}" />
-                                <TextBlock Text="选择“全部分组”表示不做默认分组过滤。"
-                                           FontSize="11" Foreground="{ThemeResource GvMutedBrush}"
-                                           TextWrapping="Wrap" />
-                                <ComboBox x:Name="DefaultGroupBox" MinWidth="200" MinHeight="30"
-                                          SelectionChanged="OnDefaultGroupChanged" />
-                            </StackPanel>
+                            <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel Spacing="5"><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="默认分组" Style="{StaticResource GvSectionTitle}"/><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="启动时优先显示的仓库分组。" Style="{StaticResource GvHelpText}"/></StackPanel>
+                                <ComboBox FontFamily="{StaticResource GvUiFontFamily}" x:Name="DefaultGroupBox" Grid.Column="1" Width="170" FontSize="14" VerticalAlignment="Center" SelectionChanged="OnDefaultGroupChanged" AutomationProperties.Name="默认分组"/>
+                            </Grid>
                         </Border>
-
                         <Border Style="{StaticResource GvSectionCard}">
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="安全操作" FontSize="14" Foreground="{ThemeResource GvInkBrush}" />
-                                <TextBlock Text="Pull 和 Push 始终需要两段式确认（应用内先确认再执行，核心执行前再次校验状态），避免误操作修改工作区或远端分支。该规则不可关闭。"
-                                           FontSize="12" Foreground="{ThemeResource GvMutedBrush}"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
+                            <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel Spacing="5"><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="开机启动" Style="{StaticResource GvSectionTitle}"/><TextBlock FontFamily="{StaticResource GvUiFontFamily}" x:Name="StartupStateText" Text="正在读取系统状态…" Style="{StaticResource GvHelpText}"/></StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"><Button x:Name="StartupEnableButton" Content="启用" Style="{StaticResource GvSmallButton}" Click="OnStartupEnableClick"/><Button x:Name="StartupDisableButton" Content="禁用" Style="{StaticResource GvSmallButton}" Click="OnStartupDisableClick"/></StackPanel>
+                            </Grid>
                         </Border>
-
-                        <Border Style="{StaticResource GvSectionCard}">
-                            <StackPanel Spacing="8">
-                                <TextBlock Text="系统启动" FontSize="14" Foreground="{ThemeResource GvInkBrush}" />
-                                <TextBlock x:Name="StartupStateText" Text="…" FontSize="12"
-                                           Foreground="{ThemeResource GvMutedBrush}" />
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button x:Name="StartupEnableButton" Content="启用开机启动"
-                                            Style="{StaticResource GvSmallButton}" Click="OnStartupEnableClick" />
-                                    <Button x:Name="StartupDisableButton" Content="禁用开机启动"
-                                            Style="{StaticResource GvSmallButton}" Click="OnStartupDisableClick" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-
-                        <Border Style="{StaticResource GvSectionCard}">
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="系统小组件" FontSize="14" Foreground="{ThemeResource GvInkBrush}" />
-                                <TextBlock Text="在系统小组件面板（Win+W）添加 GitaView 卡片。卡片数据由主应用写入的共享投影提供；主应用退出后卡片保留最近一次结果并按过期边界提示。"
-                                           FontSize="12" Foreground="{ThemeResource GvMutedBrush}"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Border>
+                        <StackPanel Spacing="6" Margin="0,18,0,0"><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="操作确认" Style="{StaticResource GvSectionTitle}"/><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="Pull 会修改工作区，Push 会更新远端分支。每次执行前都需要确认。" Style="{StaticResource GvHelpText}"/></StackPanel>
+                        <StackPanel Spacing="6" Margin="0,18,0,0"><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="小组件" Style="{StaticResource GvSectionTitle}"/><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="按 Win+W，在小组件面板添加 GitaView。应用退出后仍显示最近一次结果；数据过期时会提示。" Style="{StaticResource GvHelpText}"/></StackPanel>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

@@ -6,15 +6,16 @@
 //! - **脱敏**：不输出完整仓库路径（用仓库 ID / 占位符）、不输出 origin 完整 URL
 //!   （仅 scheme://host）、不输出原始 git stderr 全文（首行 + 路径占位）；
 //! - 时间为 UTC ISO-8601（无依赖手写转换）；
-//! - 日志写入绝不 panic：文件错误静默忽略（诊断不能反向影响业务）；
+//! - 有界队列后台写入：队列满或写入失败时丢弃诊断，绝不反向阻塞业务；
 //! - **不得在持有引擎状态锁时写日志**（文件 IO 会放大锁争用——卡顿教训），
 //!   调用方先取数据、释放锁、再记录。
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024;
 const ROTATION_KEEP: u32 = 2;
@@ -25,6 +26,29 @@ struct Logger {
 
 static LOGGER: OnceLock<Logger> = OnceLock::new();
 static WRITE_LOCK: Mutex<()> = Mutex::new(());
+const QUEUE_CAPACITY: usize = 256;
+enum LogMessage {
+    Line(String),
+    Flush(SyncSender<()>),
+}
+static LOG_QUEUE: OnceLock<Option<SyncSender<LogMessage>>> = OnceLock::new();
+
+#[cfg(test)]
+type BeforeLogHook = Box<dyn Fn(&str)>;
+#[cfg(test)]
+thread_local! {
+    static BEFORE_LOG: std::cell::RefCell<Option<BeforeLogHook>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+pub(crate) fn before_log_for_test(hook: impl Fn(&str) + 'static) {
+    BEFORE_LOG.with(|slot| *slot.borrow_mut() = Some(Box::new(hook)));
+}
+
+#[cfg(test)]
+pub(crate) fn block_sink_for_test() -> std::sync::MutexGuard<'static, ()> {
+    WRITE_LOCK.lock().unwrap_or_else(|error| error.into_inner())
+}
 
 /// 以日志目录初始化进程级日志器。首个调用生效；写入失败静默。
 pub fn init(dir: &Path) {
@@ -54,16 +78,83 @@ pub fn log_duration(event: &str, duration: Duration, detail: impl AsRef<str>) {
     );
 }
 
+/// 等待此前入队的诊断完成，超时返回 false；不暂停或关闭日志器。
+/// 仅用于后台/测试收尾，不得从 UI 线程或持有业务锁时调用。
+pub fn flush(timeout: Duration) -> bool {
+    let Some(Some(queue)) = LOG_QUEUE.get() else {
+        return true;
+    };
+    let started = Instant::now();
+    let (sender, receiver) = sync_channel(1);
+    let mut message = LogMessage::Flush(sender);
+    loop {
+        match queue.try_send(message) {
+            Ok(()) => {
+                return receiver
+                    .recv_timeout(timeout.saturating_sub(started.elapsed()))
+                    .is_ok()
+            }
+            Err(TrySendError::Disconnected(_)) => return false,
+            Err(TrySendError::Full(returned)) => {
+                message = returned;
+                let remaining = timeout.saturating_sub(started.elapsed());
+                if remaining.is_zero() {
+                    return false;
+                }
+                std::thread::sleep(remaining.min(Duration::from_millis(1)));
+            }
+        }
+    }
+}
+
 fn write_line(level: &str, event: &str, detail: &str) {
+    #[cfg(test)]
+    BEFORE_LOG.with(|slot| {
+        if let Some(hook) = slot.borrow().as_ref() {
+            hook(event);
+        }
+    });
     let Some(logger) = LOGGER.get() else {
         return;
     };
+    let queue = LOG_QUEUE.get_or_init(|| {
+        let (sender, receiver) = sync_channel::<LogMessage>(QUEUE_CAPACITY);
+        std::thread::Builder::new()
+            .name("gitaview-diagnostics".into())
+            .spawn(move || {
+                for message in receiver {
+                    match message {
+                        LogMessage::Line(line) => append_line(logger, &line),
+                        LogMessage::Flush(completion) => {
+                            let _ = completion.try_send(());
+                        }
+                    }
+                }
+            })
+            .ok()
+            .map(|_| sender)
+    });
+    if let Some(queue) = queue {
+        // Never wait for disk, the file lock, or room in the diagnostic queue.
+        let _ = queue.try_send(LogMessage::Line(format_line(level, event, detail)));
+    }
+}
+
+#[cfg(test)]
+fn write_line_to(logger: &Logger, level: &str, event: &str, detail: &str) {
+    append_line(logger, &format_line(level, event, detail));
+}
+
+fn format_line(level: &str, event: &str, detail: &str) -> String {
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
-    let line = format!("{} {} {} {}\n", utc_string(now_ms), level, event, detail);
-    // 写入 + 轮转全程串行；单条日志很小，文件 IO 在专有序列化下开销可忽略。
+    format!("{} {} {} {}\n", utc_string(now_ms), level, event, detail)
+}
+
+fn append_line(logger: &Logger, line: &str) {
+    // 仅后台写入器等待文件锁，调用方不执行磁盘操作。
     let guard = WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -200,6 +291,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn flush_deadline_does_not_wait_forever_on_a_blocked_sink() {
+        let dir = unique_temp_dir();
+        init(&dir);
+        let sink = block_sink_for_test();
+        log("test.flush.blocked", "queued before the flush barrier");
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let flushing = std::thread::spawn(move || {
+            done_tx.send(flush(Duration::from_millis(20))).unwrap();
+        });
+        let timed_out = done_rx.recv_timeout(Duration::from_secs(1)).ok();
+        drop(sink);
+        flushing.join().unwrap();
+        assert!(flush(Duration::from_secs(5)));
+        fs::remove_dir_all(dir).unwrap();
+        assert_eq!(timed_out, Some(false));
+    }
+
+    #[test]
     fn utc_string_formats_iso8601() {
         // 2026-10-24T00:00:00Z（Python datetime 校准）
         assert_eq!(utc_string(1_792_800_000_000), "2026-10-24T00:00:00.000Z");
@@ -245,11 +354,18 @@ mod tests {
     #[test]
     fn log_writes_and_rotates() {
         let dir = unique_temp_dir();
-        init(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        // Engine tests may initialize LOGGER first. Exercise the production
+        // write/rotation path with a logger owned solely by this test.
+        let logger = std::sync::Arc::new(Logger {
+            file_path: dir.join("gitaview-core.log"),
+        });
         for index in 0..40 {
-            log(
+            write_line_to(
+                &logger,
+                "INFO",
                 "test.event",
-                format!("entry-{index} x{}", "y".repeat(200_000)),
+                &format!("entry-{index} x{}", "y".repeat(200_000)),
             );
         }
         let main = fs::metadata(dir.join("gitaview-core.log")).unwrap();
@@ -263,7 +379,10 @@ mod tests {
         );
         // 并发写入不 panic。
         let handles: Vec<_> = (0..4)
-            .map(|_| std::thread::spawn(|| log("test.concurrent", "x")))
+            .map(|_| {
+                let logger = logger.clone();
+                std::thread::spawn(move || write_line_to(&logger, "INFO", "test.concurrent", "x"))
+            })
             .collect();
         for handle in handles {
             handle.join().unwrap();

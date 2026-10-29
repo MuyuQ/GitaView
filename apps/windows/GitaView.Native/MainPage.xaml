@@ -1,258 +1,151 @@
-<?xml version="1.0" encoding="utf-8" ?>
-<!--
-    状态明细页（统一设计，升级自旧版 WidgetExpanded / RepoTable / RepoActions）。
-    结构：标题行（标题 + 刷新时间 + 搜索 + 刷新/设置）→ 刷新失败横幅 → 紧凑摘要 →
-    分组筛选条 → 状态筛选条 → 对齐的仓库表格（选中行只在行下展开操作）。
-    列顺序与旧版一致：状态 · 仓库 · 分类 · 分支 · 关系 · 变更 · 提示。
--->
-<Page
-    x:Class="GitaView_Native.MainPage"
-    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-    xmlns:local="using:GitaView_Native"
-    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    mc:Ignorable="d"
-    Background="{ThemeResource GvBgBrush}"
-    NavigationCacheMode="Required">
-
-    <Page.Resources>
-        <!-- 筛选条轻量按钮：默认透明 + 线框；选中态由代码设为 ink 底白字 -->
-        <Style x:Key="GvChipStyle" TargetType="Button">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="{ThemeResource GvLineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="6" />
-            <Setter Property="Padding" Value="10,4,10,4" />
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Foreground" Value="{ThemeResource GvMutedBrush}" />
-            <Setter Property="HorizontalAlignment" Value="Left" />
-        </Style>
-        <!-- 行内操作按钮：细边框浅底，悬停不移动布局 -->
-        <Style x:Key="GvActionButtonStyle" TargetType="Button">
-            <Setter Property="Background" Value="{ThemeResource GvSurfaceBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource GvLineBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="5" />
-            <Setter Property="Padding" Value="10,4,10,4" />
-            <Setter Property="MinWidth" Value="52" />
-            <Setter Property="MinHeight" Value="0" />
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="Foreground" Value="{ThemeResource GvInkBrush}" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
-    </Page.Resources>
-
-    <Grid Padding="0,4,0,0">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <!-- 标题行 -->
-        <Grid Grid.Row="0" Padding="16,8,16,4" ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" MaxWidth="280" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                <TextBlock Text="仓库状态" FontSize="{ThemeResource GvTitleFontSize}"
-                           Foreground="{ThemeResource GvInkBrush}" />
-                <TextBlock x:Name="RefreshTimeText" Text="尚未刷新" FontSize="{ThemeResource GvCaptionFontSize}"
-                           Foreground="{ThemeResource GvMutedBrush}" Margin="0,2,0,0" />
-            </StackPanel>
-            <TextBox x:Name="QueryBox" Grid.Column="1" PlaceholderText="搜索仓库"
-                     VerticalAlignment="Center" MinHeight="32" Padding="8,4,8,4"
-                     TextChanged="OnQueryChanged" />
-            <Button x:Name="RefreshButton" Grid.Column="2" Content="刷新" MinWidth="64"
-                    MinHeight="32" VerticalAlignment="Center" Click="OnRefreshClick" />
-            <Button Grid.Column="3" Content="设置" MinWidth="64" MinHeight="32"
-                    VerticalAlignment="Center" Click="OnOpenSettingsClick" />
-        </Grid>
-
-        <!-- 刷新失败横幅（保留历史行，只提示不覆盖） -->
-        <TextBlock x:Name="RefreshWarningText" Grid.Row="1" Margin="16,2,16,0"
-                   FontSize="{ThemeResource GvCaptionFontSize}" TextWrapping="Wrap"
-                   Foreground="{ThemeResource GvAmberTextBrush}" Visibility="Collapsed" />
-
-        <!-- 紧凑摘要（共享组件语义：GitaView · 总数 · 待同步 · 需关注 · 无远端） -->
-        <TextBlock x:Name="SummaryText" Grid.Row="2" Margin="16,4,16,2"
-                   FontSize="{ThemeResource GvCaptionFontSize}"
-                   Foreground="{ThemeResource GvMutedBrush}" />
-
-        <!-- 分组筛选条（组在前，与旧版一致） -->
-        <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Hidden"
-                      HorizontalScrollMode="Auto" VerticalScrollMode="Disabled"
-                      Padding="16,2,16,0">
-            <StackPanel x:Name="GroupChipsPanel" Orientation="Horizontal" Spacing="4" />
-        </ScrollViewer>
-        <!-- 状态筛选条 -->
-        <ScrollViewer Grid.Row="4" HorizontalScrollBarVisibility="Hidden"
-                      HorizontalScrollMode="Auto" VerticalScrollMode="Disabled"
-                      Padding="16,4,16,4" BorderBrush="{ThemeResource GvLineBrush}"
-                      BorderThickness="0,0,0,1">
-            <StackPanel x:Name="StatusChipsPanel" Orientation="Horizontal" Spacing="4" />
-        </ScrollViewer>
-
-        <!-- 表格区 -->
-        <Grid Grid.Row="5" Padding="8,0,8,8">
-            <!-- 无仓库空态 -->
-            <StackPanel x:Name="NoReposPanel" Visibility="Collapsed"
-                        HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
-                <TextBlock Text="还没有仓库" HorizontalAlignment="Center"
-                           Foreground="{ThemeResource GvInkBrush}" />
-                <TextBlock Text="在设置中添加仓库目录，或扫描目录选择候选。" HorizontalAlignment="Center"
-                           FontSize="{ThemeResource GvCaptionFontSize}"
-                           Foreground="{ThemeResource GvMutedBrush}" />
-                <Button Content="打开设置" HorizontalAlignment="Center" Click="OnOpenSettingsClick" />
-            </StackPanel>
-            <!-- 无匹配空态 -->
-            <TextBlock x:Name="NoMatchText" Text="没有匹配的仓库" Margin="12,12,0,0"
-                       FontSize="{ThemeResource GvCaptionFontSize}"
-                       Foreground="{ThemeResource GvMutedBrush}" Visibility="Collapsed" />
-
-            <ScrollViewer x:Name="TableScroll" HorizontalScrollBarVisibility="Auto"
-                          HorizontalScrollMode="Auto" VerticalScrollMode="Enabled">
-                <StackPanel MinWidth="820">
-                    <!-- 表头（列宽与行模板保持一致） -->
-                    <Grid Padding="4,8,4,8" BorderBrush="{ThemeResource GvLineBrush}"
-                          BorderThickness="0,0,0,1">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="40" />
-                            <ColumnDefinition Width="200" />
-                            <ColumnDefinition Width="88" />
-                            <ColumnDefinition Width="150" />
-                            <ColumnDefinition Width="110" />
-                            <ColumnDefinition Width="96" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="状态" FontSize="11" Foreground="{ThemeResource GvMutedBrush}" Padding="6,0,0,0" />
-                        <TextBlock Grid.Column="1" Text="仓库" FontSize="11" Foreground="{ThemeResource GvMutedBrush}" Padding="6,0,0,0" />
-                        <TextBlock Grid.Column="2" Text="分类" FontSize="11" Foreground="{ThemeResource GvMutedBrush}" Padding="6,0,0,0" />
-                        <TextBlock Grid.Column="3" Text="分支" FontSize="11" Foreground="{ThemeResource GvMutedBrush}" Padding="6,0,0,0" />
-                        <TextBlock Grid.Column="4" Text="关系" FontSize="11" Foreground="{ThemeResource GvMutedBrush}" Padding="6,0,0,0" />
-                        <TextBlock Grid.Column="5" Text="变更" FontSize="11" Foreground="{ThemeResource GvMutedBrush}" Padding="6,0,0,0" />
-                        <TextBlock Grid.Column="6" Text="提示" FontSize="11" Foreground="{ThemeResource GvMutedBrush}" Padding="6,0,0,0" />
+<?xml version="1.0" encoding="utf-8"?>
+<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:GitaView_Native" x:Class="GitaView_Native.MainPage" FontFamily="{StaticResource GvUiFontFamily}" Language="zh-CN" UseLayoutRounding="True" Background="{ThemeResource GvSurfaceBrush}" NavigationCacheMode="Required">
+    <Grid>
+        <Grid x:Name="ExpandedPanel">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TitleBar FontFamily="{StaticResource GvUiFontFamily}" x:Name="PageTitleBar" Height="56"
+                      Background="{ThemeResource GvSurfaceBrush}" Foreground="{ThemeResource GvInkBrush}">
+                <TitleBar.Resources>
+                    <HorizontalAlignment x:Key="TitleBarContentHorizontalAlignment">Stretch</HorizontalAlignment>
+                </TitleBar.Resources>
+                <TitleBar.Content>
+                    <Grid ColumnSpacing="8" Margin="16,0,4,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,0,16,0" VerticalAlignment="Center" TitleBar.IsDragRegion="True">
+                            <Image Width="28" Height="28"><Image.Source><SvgImageSource UriSource="ms-appx:///Assets/GitaView.svg"/></Image.Source></Image>
+                            <TextBlock Text="GitaView" Style="{StaticResource GvBrandTitle}" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBox Grid.Column="1" FontFamily="{StaticResource GvUiFontFamily}" x:Name="QueryBox" PlaceholderText="搜索仓库" MaxWidth="240" MinWidth="100" HorizontalAlignment="Stretch" VerticalAlignment="Center" Style="{StaticResource GvInput}" TextChanged="OnQueryChanged" AutomationProperties.Name="搜索仓库"/>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                            <Button x:Name="RefreshButton" Content="刷新" Style="{StaticResource GvQuietButton}" Click="OnRefreshClick"/>
+                            <Button Style="{StaticResource GvQuietButton}" Padding="9" Click="OnOpenSettingsClick" ToolTipService.ToolTip="设置" AutomationProperties.Name="设置"><FontIcon Glyph="&#xE713;" FontSize="16"/></Button>
+                        </StackPanel>
                     </Grid>
-                    <ListView x:Name="RepoList" SelectionMode="None" IsItemClickEnabled="True"
-                              ItemClick="OnRepoItemClick">
-                        <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
-                                <Setter Property="Padding" Value="0" />
-                                <Setter Property="Margin" Value="0" />
-                                <Setter Property="MinHeight" Value="0" />
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                                <Setter Property="Background" Value="Transparent" />
-                            </Style>
-                        </ListView.ItemContainerStyle>
-                        <ListView.ItemTemplate>
-                            <DataTemplate x:DataType="local:RepoRowVm">
-                                <StackPanel>
-                                    <!-- 仓库行：状态 · 仓库 · 分类 · 分支 · 关系 · 变更 · 提示 -->
-                                    <Grid Padding="4,8,4,8"
-                                          Background="{x:Bind RowBackground, Mode=OneWay}"
-                                          BorderBrush="{ThemeResource GvLineBrush}"
-                                          BorderThickness="0,0,0,1">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="40" />
-                                            <ColumnDefinition Width="200" />
-                                            <ColumnDefinition Width="88" />
-                                            <ColumnDefinition Width="150" />
-                                            <ColumnDefinition Width="110" />
-                                            <ColumnDefinition Width="96" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Padding="6,0,0,0" Spacing="5">
-                                            <Ellipse Width="7" Height="7" Fill="{x:Bind Dot}" />
-                                            <TextBlock Text="{x:Bind StatusLabel}" FontSize="10"
-                                                       Foreground="{ThemeResource GvMutedBrush}" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Padding="6,0,0,0" Spacing="4">
-                                            <TextBlock Text="›" FontSize="11" Foreground="{ThemeResource GvMutedBrush}"
-                                                       Visibility="{x:Bind IndicatorVisible, Mode=OneWay}" />
-                                            <TextBlock Text="{x:Bind Name}" FontSize="12" TextTrimming="CharacterEllipsis"
-                                                       Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                        <TextBlock Grid.Column="2" Text="{x:Bind GroupDisplay}" FontSize="12" Padding="6,0,0,0"
-                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                   Foreground="{ThemeResource GvInkBrush}" />
-                                        <TextBlock Grid.Column="3" Text="{x:Bind Branch}" FontSize="12" Padding="6,0,0,0"
-                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                   FontFamily="{ThemeResource GvMonoFontFamily}"
-                                                   Foreground="{ThemeResource GvInkBrush}" />
-                                        <TextBlock Grid.Column="4" Text="{x:Bind RelationLabel}" FontSize="12" Padding="6,0,0,0"
-                                                   VerticalAlignment="Center" FontFamily="{ThemeResource GvMonoFontFamily}"
-                                                   Foreground="{x:Bind RelationBrush, Mode=OneWay}" />
-                                        <TextBlock Grid.Column="5" Text="{x:Bind ChangesLabel}" FontSize="12" Padding="6,0,0,0"
-                                                   VerticalAlignment="Center" FontFamily="{ThemeResource GvMonoFontFamily}"
-                                                   Foreground="{ThemeResource GvInkBrush}" />
-                                        <TextBlock Grid.Column="6" Text="{x:Bind Hint}" FontSize="11" Padding="6,0,0,0"
-                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
-                                                   Foreground="{ThemeResource GvMutedBrush}" />
-                                    </Grid>
-                                    <!-- 选中行下方展开的操作面板（不常驻） -->
-                                    <StackPanel Padding="10,6,10,10" Spacing="6"
-                                                Visibility="{x:Bind ActionsVisible, Mode=OneWay}"
-                                                Background="{ThemeResource GvRowSelectedBrush}">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <Button Content="目录" Style="{StaticResource GvActionButtonStyle}"
-                                                    Tag="{x:Bind}" IsEnabled="{x:Bind CanOpenDirectory, Mode=OneWay}"
-                                                    Click="OnOpenDirectoryClick" />
-                                            <Button Content="远端" Style="{StaticResource GvActionButtonStyle}"
-                                                    Tag="{x:Bind}" IsEnabled="{x:Bind CanOpenRemote, Mode=OneWay}"
-                                                    Click="OnOpenRemoteClick" />
-                                            <Button Style="{StaticResource GvActionButtonStyle}" Tag="{x:Bind}"
-                                                    IsEnabled="{x:Bind CanFetch, Mode=OneWay}" Click="OnFetchClick">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="Fetch" />
-                                                    <ProgressRing Width="12" Height="12" IsActive="{x:Bind IsFetchBusy, Mode=OneWay}" />
-                                                </StackPanel>
-                                            </Button>
-                                            <Button Tag="{x:Bind}" IsEnabled="{x:Bind CanPull, Mode=OneWay}"
-                                                    Style="{StaticResource GvActionButtonStyle}"
-                                                    BorderBrush="{ThemeResource GvAmberBrush}"
-                                                    Background="{x:Bind PullBackground, Mode=OneWay}"
-                                                    Foreground="{x:Bind PullForeground, Mode=OneWay}"
-                                                    Click="OnPullClick">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="{x:Bind PullLabel, Mode=OneWay}" />
-                                                    <ProgressRing Width="12" Height="12" IsActive="{x:Bind IsPullBusy, Mode=OneWay}" />
-                                                </StackPanel>
-                                            </Button>
-                                            <Button Tag="{x:Bind}" IsEnabled="{x:Bind CanPush, Mode=OneWay}"
-                                                    Style="{StaticResource GvActionButtonStyle}"
-                                                    BorderBrush="{ThemeResource GvAmberBrush}"
-                                                    Background="{x:Bind PushBackground, Mode=OneWay}"
-                                                    Foreground="{x:Bind PushForeground, Mode=OneWay}"
-                                                    Click="OnPushClick">
-                                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <TextBlock Text="{x:Bind PushLabel, Mode=OneWay}" />
-                                                    <ProgressRing Width="12" Height="12" IsActive="{x:Bind IsPushBusy, Mode=OneWay}" />
-                                                </StackPanel>
-                                            </Button>
-                                            <TextBlock Text="{x:Bind ConfirmText, Mode=OneWay}" FontSize="11"
-                                                       VerticalAlignment="Center"
-                                                       Foreground="{ThemeResource GvRedBrush}"
-                                                       Visibility="{x:Bind ConfirmVisible, Mode=OneWay}" />
-                                            <TextBlock Text="{x:Bind ResultText, Mode=OneWay}" FontSize="11"
-                                                       VerticalAlignment="Center"
-                                                       Foreground="{x:Bind ResultBrush, Mode=OneWay}" />
+                </TitleBar.Content>
+            </TitleBar>
+            <StackPanel Grid.Row="1" Spacing="6" Margin="18,0,18,8">
+                <InfoBar x:Name="StartupRecoveryBar" IsOpen="False" Severity="Warning" IsClosable="True"
+                         Title="配置已恢复为默认值"
+                         Message="原设置文件损坏或无法识别，已隔离保留。当前使用默认设置，请重新添加仓库。"/>
+                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" x:Name="RefreshWarningText" TextWrapping="Wrap" FontSize="14" Foreground="{ThemeResource GvAmberTextBrush}" Visibility="Collapsed"/>
+            </StackPanel>
+            <Border Grid.Row="2" Background="{ThemeResource GvFilterSurfaceBrush}" BorderBrush="{ThemeResource GvLineBrush}" BorderThickness="0,1,0,0" Padding="18,10,18,4">
+                <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="44"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="分组" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center"/>
+                    <ScrollViewer Grid.Column="1" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled"><StackPanel x:Name="GroupChipsPanel" Orientation="Horizontal" Spacing="4"/></ScrollViewer>
+                </Grid>
+            </Border>
+            <Border Grid.Row="3" Background="{ThemeResource GvFilterSurfaceBrush}" BorderBrush="{ThemeResource GvLineBrush}" BorderThickness="0,0,0,1" Padding="18,4,18,10">
+                <Grid ColumnSpacing="10"><Grid.ColumnDefinitions><ColumnDefinition Width="44"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="状态" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center"/>
+                    <ScrollViewer Grid.Column="1" HorizontalScrollMode="Auto" HorizontalScrollBarVisibility="Hidden" VerticalScrollMode="Disabled"><StackPanel x:Name="StatusChipsPanel" Orientation="Horizontal" Spacing="4"/></ScrollViewer>
+                </Grid>
+            </Border>
+            <Grid Grid.Row="4">
+                <StackPanel x:Name="NoReposPanel" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+                    <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="从第一个仓库开始" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="{ThemeResource GvInkBrush}"/>
+                    <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="添加仓库目录，或扫描一个工作目录。" Style="{StaticResource GvHelpText}"/>
+                    <Button Content="添加仓库" HorizontalAlignment="Center" Style="{StaticResource GvButton}" Click="OnOpenSettingsClick"/>
+                </StackPanel>
+                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" x:Name="NoMatchText" Text="没有匹配的仓库，请调整筛选或搜索条件。" Margin="18,52,18,0" Style="{StaticResource GvHelpText}" Visibility="Collapsed"/>
+                <ScrollViewer x:Name="TableScroll" SizeChanged="OnTableSizeChanged" HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Auto" VerticalScrollMode="Enabled">
+                    <StackPanel x:Name="TableContent" MinWidth="624">
+                        <Grid x:Name="TableHeader" Padding="24,10" BorderBrush="{ThemeResource GvLineBrush}" BorderThickness="0,0,0,1" Background="{ThemeResource GvTableHeaderBrush}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="30"/>
+                                <ColumnDefinition Width="2*" MinWidth="140"/>
+                                <ColumnDefinition Width="76"/>
+                                <ColumnDefinition Width="1.2*" MinWidth="90"/>
+                                <ColumnDefinition Width="94"/>
+                                <ColumnDefinition Width="66"/>
+                                <ColumnDefinition Width="*" MinWidth="80"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid Grid.Column="0">
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="" AutomationProperties.Name="仓库状态标记" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center"/>
+                                <Thumb Width="8" HorizontalAlignment="Right" Background="Transparent" Tag="0" DragDelta="OnColumnDrag" KeyDown="OnColumnKeyDown" IsTabStop="True" AutomationProperties.Name="调整状态列宽"/>
+                            </Grid>
+                            <Grid Grid.Column="1">
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="仓库" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center"/>
+                                <Thumb Width="8" HorizontalAlignment="Right" Background="Transparent" Tag="1" DragDelta="OnColumnDrag" KeyDown="OnColumnKeyDown" IsTabStop="True" AutomationProperties.Name="调整仓库列宽"/>
+                            </Grid>
+                            <Grid Grid.Column="2">
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="分组" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center"/>
+                                <Thumb Width="8" HorizontalAlignment="Right" Background="Transparent" Tag="2" DragDelta="OnColumnDrag" KeyDown="OnColumnKeyDown" IsTabStop="True" AutomationProperties.Name="调整分组列宽"/>
+                            </Grid>
+                            <Grid Grid.Column="3">
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="分支" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center"/>
+                                <Thumb Width="8" HorizontalAlignment="Right" Background="Transparent" Tag="3" DragDelta="OnColumnDrag" KeyDown="OnColumnKeyDown" IsTabStop="True" AutomationProperties.Name="调整分支列宽"/>
+                            </Grid>
+                            <Grid Grid.Column="4">
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="关系" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center"/>
+                                <Thumb Width="8" HorizontalAlignment="Right" Background="Transparent" Tag="4" DragDelta="OnColumnDrag" KeyDown="OnColumnKeyDown" IsTabStop="True" AutomationProperties.Name="调整关系列宽"/>
+                            </Grid>
+                            <Grid Grid.Column="5">
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="差异" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center"/>
+                                <Thumb Width="8" HorizontalAlignment="Right" Background="Transparent" Tag="5" DragDelta="OnColumnDrag" KeyDown="OnColumnKeyDown" IsTabStop="True" AutomationProperties.Name="调整差异列宽"/>
+                            </Grid>
+                            <Grid Grid.Column="6">
+                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="提示" FontSize="14" FontWeight="SemiBold" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center"/>
+                            </Grid>
+                        </Grid>
+                        <ListView x:Name="RepoList" ItemsSource="{x:Bind Rows}" Padding="0" SelectionMode="None" IsItemClickEnabled="True" ItemClick="OnRepoItemClick" ItemContainerStyle="{StaticResource GvListItem}">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="local:RepoRowVm">
+                                    <StackPanel Margin="8,0" CornerRadius="6" Background="{x:Bind RowBackground, Mode=OneWay}">
+                                        <Grid x:Name="RepoDataGrid" Loaded="OnDataGridLoaded" PointerEntered="OnRowPointerEntered" PointerExited="OnRowPointerExited" Padding="16,10" BorderBrush="{ThemeResource GvLineBrush}" BorderThickness="0,0,0,1">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="30"/>
+                                                <ColumnDefinition Width="2*" MinWidth="140"/>
+                                                <ColumnDefinition Width="76"/>
+                                                <ColumnDefinition Width="1.2*" MinWidth="90"/>
+                                                <ColumnDefinition Width="94"/>
+                                                <ColumnDefinition Width="66"/>
+                                                <ColumnDefinition Width="*" MinWidth="80"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Ellipse Width="6" Height="6" HorizontalAlignment="Left" VerticalAlignment="Center" Fill="{x:Bind Dot, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind StatusLabel, Mode=OneWay}" AutomationProperties.Name="{x:Bind StatusLabel, Mode=OneWay}"/>
+                                            <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Grid.Column="1" Text="{x:Bind Name, Mode=OneWay}" FontSize="14" FontWeight="Medium" Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,10,0" ToolTipService.ToolTip="{x:Bind Path, Mode=OneWay}"/>
+                                            <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Grid.Column="2" Text="{x:Bind GroupDisplay, Mode=OneWay}" FontSize="14" Foreground="{ThemeResource GvMutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                                            <TextBlock Grid.Column="3" Text="{x:Bind Branch, Mode=OneWay}" FontSize="14" Foreground="{ThemeResource GvMutedBrush}" FontFamily="{ThemeResource GvMonoFontFamily}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,10,0" ToolTipService.ToolTip="{x:Bind Branch, Mode=OneWay}"/>
+                                            <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Grid.Column="4" Text="{x:Bind RelationLabel, Mode=OneWay}" FontSize="14" Foreground="{x:Bind RelationBrush, Mode=OneWay}" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="5" Text="{x:Bind ChangesLabel, Mode=OneWay}" FontSize="14" Foreground="{ThemeResource GvInkBrush}" FontFamily="{ThemeResource GvMonoFontFamily}" VerticalAlignment="Center"/>
+                                            <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Grid.Column="6" Text="{x:Bind Hint, Mode=OneWay}" FontSize="14" Foreground="{ThemeResource GvMutedBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{x:Bind Hint, Mode=OneWay}"/>
+                                        </Grid>
+                                        <StackPanel Padding="46,0,16,12" Spacing="9" Visibility="{x:Bind ActionsVisible, Mode=OneWay}">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <Button Content="打开目录" Tag="{x:Bind}" Style="{StaticResource GvActionButtonStyle}" IsEnabled="{x:Bind CanOpenDirectory, Mode=OneWay}" Click="OnOpenDirectoryClick"/>
+                                                <Button Content="远端" Tag="{x:Bind}" Style="{StaticResource GvActionButtonStyle}" IsEnabled="{x:Bind CanOpenRemote, Mode=OneWay}" Click="OnOpenRemoteClick"/>
+                                                <Button Content="Fetch" Tag="{x:Bind}" Style="{StaticResource GvActionButtonStyle}" IsEnabled="{x:Bind CanFetch, Mode=OneWay}" Click="OnFetchClick"/>
+                                                <Button Content="{x:Bind PullLabel, Mode=OneWay}" Tag="{x:Bind}" Style="{StaticResource GvActionButtonStyle}" IsEnabled="{x:Bind CanPull, Mode=OneWay}" Foreground="{ThemeResource GvAmberTextBrush}" Click="OnPullClick"/>
+                                                <Button Content="{x:Bind PushLabel, Mode=OneWay}" Tag="{x:Bind}" Style="{StaticResource GvActionButtonStyle}" IsEnabled="{x:Bind CanPush, Mode=OneWay}" Foreground="{ThemeResource GvAmberTextBrush}" Click="OnPushClick"/>
+                                            </StackPanel>
+                                            <StackPanel Spacing="6" Visibility="{x:Bind ConfirmVisible, Mode=OneWay}">
+                                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="{x:Bind ConfirmText, Mode=OneWay}" FontSize="14" TextWrapping="Wrap" Foreground="{ThemeResource GvAmberTextBrush}"/>
+                                                <Button Content="取消确认" Tag="{x:Bind}" Style="{StaticResource GvQuietButton}" Click="OnCancelConfirmClick"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="8" Visibility="{x:Bind ResultVisible, Mode=OneWay}">
+                                                <ProgressRing Width="14" Height="14" IsActive="{x:Bind IsBusy, Mode=OneWay}" Visibility="{x:Bind BusyVisible, Mode=OneWay}"/>
+                                                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="{x:Bind ResultText, Mode=OneWay}" FontSize="14" TextWrapping="Wrap" Foreground="{x:Bind ResultBrush, Mode=OneWay}"/>
+                                            </StackPanel>
                                         </StackPanel>
                                     </StackPanel>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                </StackPanel>
-            </ScrollViewer>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+            <Grid Grid.Row="5" Padding="24,10" Background="{ThemeResource GvFilterSurfaceBrush}" BorderBrush="{ThemeResource GvLineBrush}" BorderThickness="0,1,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" x:Name="ResultCountText" FontSize="14" Foreground="{ThemeResource GvMutedBrush}"/>
+                <TextBlock FontFamily="{StaticResource GvUiFontFamily}" x:Name="RefreshTimeText" Grid.Column="1" Text="尚未刷新" FontSize="14" Foreground="{ThemeResource GvMutedBrush}"/>
+            </Grid>
         </Grid>
     </Grid>
 </Page>

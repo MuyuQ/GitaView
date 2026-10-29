@@ -4,7 +4,7 @@
 # 用法：
 #   powershell -NoProfile -File scripts\native\build-windows.ps1 [-Configuration Debug] [-Architecture x64]
 #
-# 产物：apps\windows\GitaView.Native\pkg\build\<布局>（供 package-windows.ps1 打包）。
+# 产物：apps\windows\GitaView.Native\pkg\build\<架构>\<配置>（供打包脚本使用）。
 # 签名在 package 阶段完成；本脚本只编译与组装布局。
 
 param(
@@ -16,6 +16,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. "$PSScriptRoot\package-layout.ps1"
 Set-Location $RepoRoot
 
 Write-Host "== GitaView native build (Windows $Architecture $Configuration) =="
@@ -34,7 +35,8 @@ if ($LASTEXITCODE -ne 0) { Write-Error "cargo build failed"; exit 1 }
 Write-Host "-- dotnet publish GitaView.Native ($Configuration)"
 dotnet publish "apps\windows\GitaView.Native\GitaView.Native.csproj" `
     -c $Configuration -p:Platform=$Architecture `
-    -p:AppxPackage=true -p:AppxPackageSigningEnabled=false -p:SkipRustBuild=true
+    -p:AppxPackage=true -p:AppxPackageSigningEnabled=false -p:SkipRustBuild=true `
+    -p:PublishProfile= -p:SelfContained=true
 if ($LASTEXITCODE -ne 0) { Write-Error "dotnet publish failed"; exit 1 }
 
 # 3) 从官方 build recipe 组装 MSIX 布局（Include → PackagePath 机械复制）
@@ -46,8 +48,14 @@ if (-not (Test-Path $recipePath)) {
 }
 if (-not (Test-Path $recipePath)) { Write-Error "build recipe not found"; exit 1 }
 
-$layout = "apps\windows\GitaView.Native\pkg\build"
-if (Test-Path $layout) { Remove-Item $layout -Recurse -Force }
+$layout = Get-NativeLayoutPath $RepoRoot $Configuration $Architecture
+$layoutParent = [IO.Path]::GetFullPath((Join-Path $RepoRoot "apps\windows\GitaView.Native\pkg\build\$Architecture"))
+if ([IO.Directory]::GetParent($layout).FullName -ne $layoutParent) { throw "Unexpected layout cleanup path" }
+if (Test-Path -LiteralPath $layout) {
+    $resolvedLayout = (Resolve-Path -LiteralPath $layout).ProviderPath
+    if ($resolvedLayout -ne $layout) { throw "Unexpected resolved layout cleanup path" }
+    Remove-Item -LiteralPath $resolvedLayout -Recurse -Force
+}
 
 [xml]$recipe = Get-Content $recipePath
 $ns = New-Object System.Xml.XmlNamespaceManager($recipe.NameTable)
@@ -64,6 +72,8 @@ foreach ($item in $items) {
     Copy-Item $source $destination -Force
     $copied++
 }
+$validatedLayout = Assert-NativePackageLayout $RepoRoot $Configuration $Architecture
 Write-Host "-- layout assembled: $copied files -> $layout"
+Write-Host "-- verified layout DLL sha256: $($validatedLayout.FfiHash)"
 Write-Host "BUILD OK"
 exit 0

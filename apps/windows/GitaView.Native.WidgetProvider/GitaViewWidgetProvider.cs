@@ -3,7 +3,7 @@
 // 规则（实施说明 §12）：
 // - GetWidgetInfos 恢复已固定实例（Provider 重启 / 系统重启后无需新 Create）；
 // - 回调内只复制普通值（ID / 定义 / 尺寸字符串），异步处理不持有 WidgetContext；
-// - 更新串行（lock），Delete 从映射移除使后续更新跳过；
+// - 更新进入唯一队列，执行时读取当前尺寸与快照；Delete / 失活使排队更新跳过；
 // - 活跃期间：FileSystemWatcher 监听 widget-data.json（原子替换 / 通知丢失 →
 //   Activate 无条件重读 + 过期边界计时兜底）；全部失活后停止监听与计时；
 // - 过期边界：last + 2*interval + 1（等于阈值仍有效）；时钟回拨不调度，有界重查；
@@ -28,9 +28,9 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
         public bool IsActive;
     }
 
-    internal static readonly ManualResetEvent EmptyWidgetListEvent = new(false);
     private static readonly object Gate = new();
     private static readonly Dictionary<string, WidgetState> Widgets = new();
+    internal static readonly WidgetProviderLifetime Lifetime = new(Gate, () => Widgets.Count == 0);
 
     // —— 空闲退出（review R12）——
     // 构造时"看到空集合"不等于"以后不会有 Create"：宿主可能正处于
@@ -42,14 +42,23 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
     private static readonly TimeSpan IdleExitAfterDelete = TimeSpan.FromSeconds(10);
 
     private static FileSystemWatcher? _dataWatcher;
+    private static Timer? _dataRefreshTimer;
     private static Timer? _stalenessTimer;
 
     private static readonly DiagFile Log = new(
         Path.Combine(Windows.Storage.ApplicationData.Current.LocalFolder.Path, "logs"),
         "widgetprovider.log");
 
+    private static readonly WidgetUpdateDispatcher Updates = new(
+        CurrentActiveSize, ReadLatestSnapshot,
+        (id, size, snapshot) => SendUpdate(id, (WidgetSize)size, snapshot),
+        RescheduleStalenessTimer,
+        (id, exception) => Log.Log("ERROR", "widget.update.failed",
+            $"id={id} {exception.GetType().Name}: {exception.Message}"));
+
     public GitaViewWidgetProvider()
     {
+        using var callback = Lifetime.EnterCallback();
         // Provider 重启 / 系统重启恢复：不依赖新的 Create 回调。
         var infos = WidgetManager.GetDefault().GetWidgetInfos();
         Log.Log("INFO", "provider.start", $"restored={(infos?.Length ?? 0)} widgets");
@@ -80,10 +89,6 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
                 StartIdleExitLocked(IdleExitGrace);
             }
         }
-        if (Widgets.Count > 0)
-        {
-            RefreshAllTracked(update: false);
-        }
     }
 
     /// <summary>调用方必须持有 Gate。到期复实例表：仍为空才置退出事件。</summary>
@@ -97,7 +102,7 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
                 if (Widgets.Count == 0)
                 {
                     Log.Log("INFO", "provider.idle_exit", "no widgets after grace period");
-                    EmptyWidgetListEvent.Set();
+                    Lifetime.RequestIdleExit();
                 }
             }
         }, null, delay, Timeout.InfiniteTimeSpan);
@@ -108,25 +113,14 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
     {
         _idleExitTimer?.Dispose();
         _idleExitTimer = null;
-        EmptyWidgetListEvent.Reset();
-    }
-
-    /// <summary>
-    /// 主循环收到退出事件后的最终确认：实例表非空 → 返回 false（撤销退出，
-    /// 调用方应 Reset 事件继续等待）；为空 → 真正空闲，允许撤销 COM 服务。
-    /// </summary>
-    public static bool ConfirmIdleExit()
-    {
-        lock (Gate)
-        {
-            return Widgets.Count == 0;
-        }
+        Lifetime.CancelIdleExit();
     }
 
     // —— IWidgetProvider ——
 
     public void CreateWidget(WidgetContext widgetContext)
     {
+        using var callback = Lifetime.EnterCallback();
         Log.Log("INFO", "widget.create", $"id={widgetContext.Id} size={widgetContext.Size}");
         // 回调内复制普通值；不保存 WidgetContext 引用（回调外行为未定义）。
         // 先取消待退出（review R12）：进程要接单，不能被空闲退出带走。
@@ -142,11 +136,12 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
             };
         }
         EnsureDataWatcher();
-        PushUpdate(widgetContext.Id, widgetContext.Size);
+        PushUpdate(widgetContext.Id);
     }
 
     public void DeleteWidget(string widgetId, string customState)
     {
+        using var callback = Lifetime.EnterCallback();
         Log.Log("INFO", "widget.delete", $"id={widgetId}");
         lock (Gate)
         {
@@ -163,6 +158,7 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
 
     public void OnActionInvoked(WidgetActionInvokedArgs args)
     {
+        using var callback = Lifetime.EnterCallback();
         var verb = args.Verb; // 回调内复制
         if (verb == "open")
         {
@@ -172,6 +168,7 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
 
     public void OnWidgetContextChanged(WidgetContextChangedArgs args)
     {
+        using var callback = Lifetime.EnterCallback();
         var context = args.WidgetContext;
         var id = context.Id;
         var size = context.Size; // 尺寸枚举值复制
@@ -186,11 +183,12 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
                 return;
             }
         }
-        PushUpdate(id, size);
+        PushUpdate(id);
     }
 
     public void Activate(WidgetContext widgetContext)
     {
+        using var callback = Lifetime.EnterCallback();
         Log.Log("INFO", "widget.activate", $"id={widgetContext.Id}");
         var id = widgetContext.Id;
         // 恢复路径（GetWidgetInfos → Activate）同样取消待退出（review R12）。
@@ -200,6 +198,7 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
             if (Widgets.TryGetValue(id, out var state))
             {
                 state.IsActive = true;
+                state.Size = widgetContext.Size;
             }
             else
             {
@@ -214,12 +213,12 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
         }
         // 重新激活必须无条件重读（通知可能丢失）。
         EnsureDataWatcher();
-        EnsureStalenessTimer();
-        PushUpdate(id, widgetContext.Size);
+        PushUpdate(id);
     }
 
     public void Deactivate(string widgetId)
     {
+        using var callback = Lifetime.EnterCallback();
         Log.Log("INFO", "widget.deactivate", $"id={widgetId}");
         lock (Gate)
         {
@@ -237,56 +236,25 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
 
     // —— 更新（串行）——
 
-    private static void PushUpdate(string widgetId, WidgetSize size)
-    {
-        var state = new { Id = widgetId, Size = size }; // 普通值快照
-        Task.Run(() =>
-        {
-            lock (Gate)
-            {
-                if (!Widgets.ContainsKey(state.Id))
-                {
-                    return; // Delete 已清理：取消该实例的待更新
-                }
-            }
-            SendUpdate(state.Id, state.Size);
-            RescheduleStalenessTimer();
-        });
-    }
+    private static void PushUpdate(string widgetId) => Updates.Enqueue(widgetId);
 
-    private static void RefreshAllTracked(bool update)
+    private static int? CurrentActiveSize(string widgetId)
     {
-        KeyValuePair<string, WidgetState>[] snapshot;
         lock (Gate)
         {
-            snapshot = Widgets.ToArray();
-        }
-        foreach (var pair in snapshot)
-        {
-            if (update)
-            {
-                PushUpdate(pair.Key, pair.Value.Size);
-            }
+            return Widgets.TryGetValue(widgetId, out var state) && state.IsActive
+                ? (int)state.Size : null;
         }
     }
 
-    private static void SendUpdate(string widgetId, WidgetSize size)
+    private static void SendUpdate(string widgetId, WidgetSize size, WidgetSnapshot? snapshot)
     {
-        try
+        var options = new WidgetUpdateRequestOptions(widgetId)
         {
-            var options = new WidgetUpdateRequestOptions(widgetId)
-            {
-                Template = WidgetCardContent.TemplateFor(size),
-                Data = WidgetCardContent.DataJson(ReadLatestSnapshot()),
-            };
-            WidgetManager.GetDefault().UpdateWidget(options);
-        }
-        catch (Exception exception)
-        {
-            // 宿主回收 / 组件已删除等：下一次 Activate 或数据写入会重试。
-            Log.Log("ERROR", "widget.update.failed",
-                $"id={widgetId} {exception.GetType().Name}: {exception.Message}");
-        }
+            Template = WidgetCardContent.TemplateFor(size),
+            Data = WidgetCardContent.DataJson(snapshot),
+        };
+        WidgetManager.GetDefault().UpdateWidget(options);
     }
 
     // —— 数据读取 ——
@@ -352,34 +320,33 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
         {
             _dataWatcher?.Dispose();
             _dataWatcher = null;
+            _dataRefreshTimer?.Dispose();
+            _dataRefreshTimer = null;
         }
     }
 
     private static void OnDataFileEvent(object sender, FileSystemEventArgs e)
     {
         // 原子替换可能产生多个事件：防抖后统一刷新全部活跃组件。
-        Task.Run(() =>
+        lock (Gate)
         {
-            Thread.Sleep(200); // 防抖
-            RefreshAllActive();
-            RescheduleStalenessTimer();
-        });
+            if (_dataWatcher is null) return;
+            _dataRefreshTimer ??= new Timer(_ => RefreshAllActive());
+            _dataRefreshTimer.Change(TimeSpan.FromMilliseconds(200), Timeout.InfiniteTimeSpan);
+        }
     }
 
     private static void RefreshAllActive()
     {
+        string[] ids;
         lock (Gate)
         {
-            foreach (var pair in Widgets.Where(pair => pair.Value.IsActive))
-            {
-                SendUpdate(pair.Key, pair.Value.Size);
-            }
+            ids = Widgets.Where(pair => pair.Value.IsActive).Select(pair => pair.Key).ToArray();
         }
+        foreach (var id in ids) PushUpdate(id);
     }
 
     // —— 过期边界计时（活跃期间；无新文件也跨越边界提交过期卡片）——
-
-    private static void EnsureStalenessTimer() => RescheduleStalenessTimer();
 
     private static void StopStalenessTimer()
     {
@@ -392,36 +359,31 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
 
     private static void RescheduleStalenessTimer()
     {
-        lock (Gate)
+        // Runs on the update worker after publication. File I/O is outside Gate;
+        // callbacks only need Gate for instance and timer bookkeeping.
+        var snapshot = ReadLatestSnapshot();
+        var now = UxNowMs();
+        TimeSpan? delay = null;
+        if (snapshot is not null && snapshot.RefreshPolicy.Enabled)
         {
-            if (Widgets.Values.All(state => !state.IsActive))
-            {
-                StopStalenessTimer();
-                return;
-            }
-            var snapshot = ReadLatestSnapshot();
-            if (snapshot is null)
-            {
-                return; // 无数据卡片：不需要过期边界
-            }
-            var staleness = snapshot.ComputeStaleness(UxNowMs());
+            var staleness = snapshot.ComputeStaleness(now);
             if (staleness == WidgetStaleness.FutureTime)
             {
-                // 时钟回拨：不调度边界；有界重查（60s），不忙循环。
-                ScheduleStalenessTimer(TimeSpan.FromSeconds(60));
+                delay = TimeSpan.FromSeconds(60);
+            }
+            else if (staleness != WidgetStaleness.Stale && snapshot.StalenessBoundaryMs(now) is { } due)
+            {
+                delay = TimeSpan.FromMilliseconds(Math.Clamp(due > now ? due - now : 1, 1, int.MaxValue));
+            }
+        }
+        lock (Gate)
+        {
+            StopStalenessTimer();
+            if (Widgets.Values.All(state => !state.IsActive))
+            {
                 return;
             }
-            if (staleness == WidgetStaleness.Stale)
-            {
-                RefreshAllActive(); // 已过期：立即提交过期卡片
-                return;
-            }
-            var boundary = snapshot.StalenessBoundaryMs(UxNowMs());
-            if (boundary is { } dueMs)
-            {
-                var delayMs = Math.Clamp(dueMs - UxNowMs(), 1, int.MaxValue);
-                ScheduleStalenessTimer(TimeSpan.FromMilliseconds(delayMs));
-            }
+            if (delay is { } interval) ScheduleStalenessTimer(interval);
         }
     }
 
@@ -429,11 +391,7 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
     {
         _stalenessTimer?.Dispose();
         _stalenessTimer = new Timer(
-            _ => Task.Run(() =>
-            {
-                RefreshAllActive(); // 到点：重算并提交（过期 → 过期卡片；仍新鲜 → 重新调度）
-                RescheduleStalenessTimer();
-            }),
+            _ => RefreshAllActive(),
             null, delay, Timeout.InfiniteTimeSpan);
     }
 

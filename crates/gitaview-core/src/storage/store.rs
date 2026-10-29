@@ -11,14 +11,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// 读取结果：文件不存在不是错误（首次启动）。
 pub enum LoadOutcome {
     Missing,
-    Present(String),
+    Present(Vec<u8>),
 }
 
-/// 读取 JSON 文本。IO 错误（权限、被锁定、路径是目录等）→ SETTINGS_IO，
-/// 不与"文件不存在"混淆。
+/// 读取原始字节，让设置解码统一处理编码和 JSON 损坏。
+/// IO 错误（权限、被锁定、路径是目录等）→ SETTINGS_IO，不与文件不存在混淆。
 pub fn load_json(path: &Path) -> Result<LoadOutcome, CoreError> {
-    match fs::read_to_string(path) {
-        Ok(text) => Ok(LoadOutcome::Present(text)),
+    match fs::read(path) {
+        Ok(bytes) => Ok(LoadOutcome::Present(bytes)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(LoadOutcome::Missing),
         Err(_) => Err(CoreError::SettingsIo),
     }

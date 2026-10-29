@@ -1,9 +1,10 @@
-// Widget 数据写入器（N03；review S04 后台化）。
+// Widget 数据写入器（N03；review S04 后台化；branch review B03 锁外写盘）。
 //
 // - 唯一后台写入循环：Write() 只合并"最新待发布投影"（内存操作，任意线程
-//   立即返回），磁盘 I/O 全部在写入器任务内执行；多代快照合并为最后一次。
-// - 可等待的停止 / flush：StopAsync() 让循环写出最新投影后退出；退出流程
-//   先停写入器再销毁引擎。
+//   立即返回），磁盘 I/O 全部在写入器任务内、且在 Gate 之外执行；多代快照
+//   合并为最后一次。Gate 只保护待写状态与任务生命周期，慢盘不阻塞调用方。
+// - 可等待的停止 / flush：StopAsync() 让循环写出最新投影后退出；写盘期间
+//   到来的新投影保留 dirty，退出前补写。退出流程先停写入器再销毁引擎。
 // - 失败隔离：写入失败记录诊断 + 有界退避重试（默认 2s 步进 ×3；新投影到达
 //   即开始新一轮），绝不向调用方抛出、不终止消费循环。
 // - 首刷前有效缓存保护（实施说明 §12"尚未首刷"规则）：generation 0 且现有
@@ -22,8 +23,6 @@ public static class WidgetDataWriter
     private static readonly object Gate = new();
     private static WidgetSnapshot? _pending;
     private static bool _dirty;
-    private static string? _lastWritten;
-    private static string? _dataPath;
     private static bool _stopping;
     private static Task? _writerTask;
 
@@ -65,6 +64,9 @@ public static class WidgetDataWriter
                 return;
             }
             _stopping = false;
+            // A new lifetime may target another file, or the old file may have
+            // been removed. Only deduplicate writes within this running worker.
+            _lastWritten = null;
             _writerTask = Task.Run(WriterLoop);
         }
     }
@@ -118,6 +120,9 @@ public static class WidgetDataWriter
         }
     }
 
+    // Start 在旧任务退出后重置；运行期间只有唯一 writer 任务访问。
+    private static string? _lastWritten;
+
     private static async Task WriterLoop()
     {
         while (true)
@@ -138,6 +143,9 @@ public static class WidgetDataWriter
             }
             if (toWrite is not null)
             {
+                // 磁盘 I/O 在 Gate 外执行（B03）：编码、读缓存、写盘期间到来的
+                // 新投影只置 dirty，绝不阻塞 Write / RewriteIfStale / StopAsync
+                // 的调用方；下一轮循环会把最新投影补写出去（flush 语义不变）。
                 await WriteWithBoundedRetryAsync(toWrite).ConfigureAwait(false);
             }
         }
@@ -165,37 +173,35 @@ public static class WidgetDataWriter
         }
     }
 
+    /// <summary>调用方 = 唯一 writer 任务（锁外执行；B03）。</summary>
     private static void WriteSnapshot(WidgetSnapshot snapshot)
     {
-        lock (Gate)
+        if (snapshot.Generation == 0 && HasValidCache(snapshot.SettingsRevision))
         {
-            if (snapshot.Generation == 0 && HasValidCacheLocked(snapshot.SettingsRevision))
-            {
-                // 尚未首刷且现有缓存有效（同 schema、同 settingsRevision）：保留。
-                return;
-            }
-            string json = ContractsJson.Encode(snapshot);
-            if (json == _lastWritten)
-            {
-                return;
-            }
-            string path = DataPath;
-            string temp = path + ".tmp";
-            if (WriteHookOverride is { } hook)
-            {
-                hook(path, json);
-            }
-            else
-            {
-                File.WriteAllText(temp, json);
-                File.Move(temp, path, overwrite: true);
-            }
-            _lastWritten = json;
+            // 尚未首刷且现有缓存有效（同 schema、同 settingsRevision）：保留。
+            return;
         }
+        string json = ContractsJson.Encode(snapshot);
+        if (json == _lastWritten)
+        {
+            return;
+        }
+        string path = DataPath;
+        string temp = path + ".tmp";
+        if (WriteHookOverride is { } hook)
+        {
+            hook(path, json);
+        }
+        else
+        {
+            File.WriteAllText(temp, json);
+            File.Move(temp, path, overwrite: true);
+        }
+        _lastWritten = json;
     }
 
-    /// <summary>首刷保护判断：现有文件可解码、schema 一致且配置版本一致。调用方持有 Gate。</summary>
-    private static bool HasValidCacheLocked(ulong settingsRevision)
+    /// <summary>首刷保护判断：现有文件可解码、schema 一致且配置版本一致。</summary>
+    private static bool HasValidCache(ulong settingsRevision)
     {
         try
         {

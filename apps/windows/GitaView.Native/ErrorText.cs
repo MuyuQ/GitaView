@@ -36,9 +36,21 @@ public static class ErrorText
             Relation.LocalAhead => $"本地领先 {row.Ahead} 个提交",
             Relation.RemoteAhead => $"远端领先 {row.Behind} 个提交",
             Relation.Diverged => $"已分叉（本地 +{row.Ahead} / 远端 +{row.Behind}）",
-            Relation.NoRemote => "无远端比较",
+            Relation.NoRemote => NoComparisonLabel(row) + "：" + NoComparisonHint(row),
             _ => "未知",
         },
+    };
+
+    public static string NoComparisonLabel(RepoStatusView row) =>
+        row.HasOrigin == false ? "无远端" : "未比较";
+
+    public static string NoComparisonHint(RepoStatusView row) => row switch
+    {
+        { HasOrigin: false } => "未配置 origin 远端",
+        { HasCommit: false } => "当前分支尚无提交",
+        { Branch: "HEAD" } => "当前处于分离 HEAD 状态",
+        { HasOrigin: true } => "没有可比较的 origin 分支",
+        _ => "没有可用的远端比较结果",
     };
 
     public static string RefreshStateText(AppSnapshotView snapshot) => snapshot.RefreshState switch
@@ -61,9 +73,16 @@ public record RepoStatusView(
     uint? Behind,
     string? ErrorCode)
 {
+    public bool? HasOrigin { get; init; }
+    public bool? HasCommit { get; init; }
+
     public static RepoStatusView From(RepoStatus row) => new(
         row.Id, row.Name, row.Branch ?? "", row.ReadState, row.Relation,
-        row.Ahead, row.Behind, row.Error?.Code);
+        row.Ahead, row.Behind, row.Error?.Code)
+    {
+        HasOrigin = row.HasOrigin,
+        HasCommit = row.HasCommit,
+    };
 }
 
 public record AppSnapshotView(

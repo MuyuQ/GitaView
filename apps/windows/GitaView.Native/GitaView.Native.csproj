@@ -8,6 +8,8 @@
     <ApplicationIcon Condition="Exists('Assets\AppIcon.ico')">Assets\AppIcon.ico</ApplicationIcon>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
+    <!-- Required for clean-checkout MSIX builds; ignored local publish profiles are optional. -->
+    <SelfContained>true</SelfContained>
     <PublishProfile Condition="Exists('Properties\PublishProfiles\win-$(Platform).pubxml')">win-$(Platform).pubxml</PublishProfile>
     <UseWinUI>true</UseWinUI>
     <!-- 自定义 Main：单实例重定向在 WinUI / XAML 初始化之前完成
@@ -23,6 +25,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Include="Assets\GitaView.svg" />
+    <Content Include="Assets\GitaView.png" />
     <Content Include="Assets\SplashScreen.scale-200.png" />
     <Content Include="Assets\LockScreenLogo.scale-200.png" />
     <Content Include="Assets\Square150x150Logo.scale-200.png" />

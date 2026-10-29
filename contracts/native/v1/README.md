@@ -4,6 +4,8 @@
 
 三方共同消费本目录：Rust（gitaview-core 序列化）、Swift（macOS Shared 模型）、C#（Windows Contracts）。fixture 是跨语言解码测试的共享样例，不是各自手写的三份副本。
 
+Schema 验证：安装 `scripts/native/requirements-test.txt` 后运行 `python scripts/native/test-contract-schema.py`，原生 CI 的 Windows/macOS 两个任务均执行该检查。顶层 `anyOf` 允许多个调用入口具有相同形状；验证指定入口时选用对应的 `definitions`。Envelope 内部的互斥成功/失败分支仍使用 `oneOf`。draft-07 中的可空引用用 `anyOf` 显式包含 null 分支，不使用会被忽略的 `$ref` 同级类型约束。
+
 ## 基础规则
 
 - JSON 键 camelCase；枚举小写 snake_case；文本 UTF-8。

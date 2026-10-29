@@ -146,7 +146,7 @@ public sealed record WidgetRepo
     public string? ErrorCode { get; init; }
 }
 
-public sealed record WidgetSnapshot : ISchemaVersioned
+public sealed record WidgetSnapshot : ISchemaVersioned, IJsonOnDeserialized
 {
     public required ulong SchemaVersion { get; init; }
     public required string SessionId { get; init; }
@@ -161,6 +161,13 @@ public sealed record WidgetSnapshot : ISchemaVersioned
     public required WidgetCounts Counts { get; init; }
     public required CompactCounts Compact { get; init; }
     public required IReadOnlyList<WidgetRepo> Attention { get; init; }
+
+    void IJsonOnDeserialized.OnDeserialized()
+    {
+        // Nullable annotations do not validate collection element nullability.
+        if (Attention is null || Attention.Any(row => row is null))
+            throw new System.Text.Json.JsonException("attention must contain non-null widget repositories");
+    }
 }
 
 public sealed record RepoSettings

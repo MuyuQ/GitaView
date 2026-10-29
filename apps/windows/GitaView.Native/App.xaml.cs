@@ -26,6 +26,7 @@ public partial class App : Application
     private bool _exitRequested;
     private AppInstance? _primaryInstance;
     private DispatcherQueue? _uiQueue;
+    private readonly ProtocolNavigation _protocolNavigation = new();
 
     /// <summary>供 FolderPicker 等需要窗口句柄的 API 使用。</summary>
     public static MainWindow? MainWindow { get; private set; }
@@ -116,13 +117,14 @@ public partial class App : Application
         if (!TrayWindow.TryCreate(
                 "GitaView 仓库状态",
                 onOpen: ShowMainWindow,
+                onToggleFlyout: ToggleTrayFlyout,
                 onRefresh: () => _ = RefreshFromTrayAsync(),
                 onExit: RequestExit,
                 onSystemResume: OnSystemResume,
                 out _tray))
         {
-            // 托盘不可用（罕见）：主窗口仍可用，记录后继续。
-            LogStartupFailure("tray icon registration failed"); // 静默继续：主窗口仍可用
+            // 托盘不可用时保留主窗口，关闭按钮改走完整退出流程。
+            LogStartupFailure("tray icon registration failed");
         }
 
         // —— 快照消费循环 ——
@@ -134,6 +136,9 @@ public partial class App : Application
         WidgetDataWriter.Log = HostLog;
         WidgetDataWriter.Start();
         SnapshotLoopTask = Task.Run(() => RunSnapshotLoopAsync(engine));
+        _protocolNavigation.SetReady(
+            id => engine.SettingsGet().Repos.Any(repo => repo.Id == id),
+            route => _ = NavigateFromProtocolAsync(route));
     }
 
     /// <summary>快照消费循环任务；退出流程等待其结束后才销毁引擎。</summary>
@@ -232,6 +237,7 @@ public partial class App : Application
 
     private void HandleRedirectedActivation(AppActivationArguments args)
     {
+        if (_exitRequested) return;
         if (args.Kind == ExtendedActivationKind.Protocol
             && args.Data is IProtocolActivatedEventArgs protocol)
         {
@@ -240,15 +246,28 @@ public partial class App : Application
         ShowMainWindow();
     }
 
-    private static void HandleProtocol(IProtocolActivatedEventArgs protocol)
+    private void HandleProtocol(IProtocolActivatedEventArgs protocol)
     {
-        // 仅导航：open → 总列表；repo/<id> → 原型阶段同样回总列表（选中态在 N15）；
-        // 未知路由与已删仓库一律忽略参数，不执行 Git 操作（§5）。
-        System.Diagnostics.Debug.WriteLine($"protocol activated: {protocol.Uri}");
+        if (!_exitRequested) _protocolNavigation.Request(protocol.Uri.OriginalString);
+    }
+
+    private async Task NavigateFromProtocolAsync(ProtocolRoute route)
+    {
+        if (_window is null || _exitRequested) return;
+        try
+        {
+            await _window.NavigateFromProtocolAsync(route);
+            HostLog?.Log("INFO", "protocol.navigation", route.RepoId is null ? "all" : "repository");
+        }
+        catch (Exception exception)
+        {
+            HostLog?.Log("ERROR", "protocol.navigation.failed", exception.Message);
+        }
     }
 
     private void ShowMainWindow()
     {
+        _flyout?.Dismiss();
         if (_window is null)
         {
             return;
@@ -256,6 +275,39 @@ public partial class App : Application
         _window.AppWindow.Show();
         _window.Activate();
     }
+
+    private TrayFlyoutWindow? _flyout;
+
+    /// <summary>托盘左键：动效浮窗开关（Magpie 式；收缩窗口模式已按用户决策移除）。
+    /// 可见状态由浮窗自己维护（失焦自关后 App 侧标记不会失效）。</summary>
+    private void ToggleTrayFlyout()
+    {
+        if (_flyout is { } flyout && flyout.IsFlyoutVisible)
+        {
+            flyout.Dismiss();
+            return;
+        }
+        _flyout ??= new TrayFlyoutWindow();
+        var trayRect = default(Windows.Graphics.RectInt32);
+        if (_tray is { } tray)
+        {
+            tray.TryGetIconRect(out trayRect);
+        }
+        _flyout.ShowNearTray(trayRect);
+    }
+
+    /// <summary>浮窗"退出"入口（与托盘菜单同一退出流）。</summary>
+    internal void TriggerExit() => RequestExit();
+
+#if DEBUG
+    internal void PreviewTrayFlyout()
+    {
+        _flyout ??= new TrayFlyoutWindow();
+        // The independent debug preview must be discoverable by native UI tools.
+        _flyout.AppWindow.IsShownInSwitchers = true;
+        ToggleTrayFlyout();
+    }
+#endif
 
     private async Task RefreshFromTrayAsync()
     {
@@ -402,8 +454,10 @@ public partial class App : Application
         Environment.Exit(0);
     }
 
-    /// <summary>主窗口关闭请求：驻留 = 取消关闭并隐藏；退出流程中放行。</summary>
-    internal bool ShouldStayResident() => !_exitRequested;
+    /// <summary>托盘可用时关闭驻留；否则请求完整退出，等待期间保留主窗口。</summary>
+    internal void HandleMainWindowClose() => MainWindowClosePolicy.Handle(
+        _exitRequested, _tray?.IsAvailable == true,
+        () => _window?.AppWindow.Hide(), RequestExit);
 
     private static void LogStartupFailure(string message)
     {

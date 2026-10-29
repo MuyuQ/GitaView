@@ -6,12 +6,20 @@
 use std::io::{self, Read};
 use std::process::{Child, Command};
 
+#[cfg(all(test, target_os = "windows"))]
+type AfterSpawnHook = Box<dyn FnOnce(&mut Child, bool)>;
+#[cfg(all(test, target_os = "windows"))]
+thread_local! {
+    static AFTER_SPAWN: std::cell::RefCell<Option<AfterSpawnHook>> = const { std::cell::RefCell::new(None) };
+}
+
 /// 子进程生成模式（N14 排障结论，见 process.rs Windows 分支注释）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SpawnMode {
     /// 挂起入 Job：网络操作安全路径（Windows 上每次生成一次全系统线程快照）。
     Suspended,
-    /// 直接生成入 Job：读操作低开销路径。
+    /// 读操作低开销路径：只捕获新进程的线程，不遍历全系统线程。
+    /// 与 Suspended 一样，执行用户代码之前必须先完成 Job 入组。
     Direct,
 }
 
@@ -66,6 +74,7 @@ impl ProcessTree {
             },
         };
         let job = unsafe { CreateJobObjectW(None, None) }.map_err(io::Error::other)?;
+        let tree = Self(unsafe { OwnedHandle::from_raw_handle(job.0) });
         // 宿主意外退出时由内核终止整棵 Git 子进程树：不能留下孤儿 fetch/pull
         // 继续写用户工作区。
         let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
@@ -79,22 +88,20 @@ impl ProcessTree {
             )
         }
         .map_err(io::Error::other)?;
-        let tree = Self(unsafe { OwnedHandle::from_raw_handle(job.0) });
-        let suspended = matches!(mode, SpawnMode::Suspended);
-        let flags = if suspended {
-            CREATE_NO_WINDOW.0 | CREATE_SUSPENDED.0
-        } else {
-            CREATE_NO_WINDOW.0
-        };
+        // Both modes must join the job before user code can exit or spawn descendants.
+        let flags = CREATE_NO_WINDOW.0 | CREATE_SUSPENDED.0;
         let mut child = command.creation_flags(flags).spawn()?;
+        #[cfg(test)]
+        AFTER_SPAWN.with(|slot| {
+            if let Some(hook) = slot.borrow_mut().take() {
+                hook(&mut child, true);
+            }
+        });
         let attached = unsafe { AssignProcessToJobObject(job, HANDLE(child.as_raw_handle())) }
             .map_err(io::Error::other)
-            .and_then(|()| {
-                if suspended {
-                    resume_initial_thread(child.id())
-                } else {
-                    Ok(())
-                }
+            .and_then(|()| match mode {
+                SpawnMode::Direct => resume_scoped_initial_thread(&child),
+                SpawnMode::Suspended => resume_initial_thread(child.id()),
             });
         if let Err(error) = attached {
             tree.terminate();
@@ -109,6 +116,139 @@ impl ProcessTree {
         use std::os::windows::io::AsRawHandle;
         use windows::Win32::{Foundation::HANDLE, System::JobObjects::TerminateJobObject};
         let _ = unsafe { TerminateJobObject(HANDLE(self.0.as_raw_handle()), 1) };
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn resume_scoped_initial_thread(child: &Child) -> io::Result<()> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows::Win32::{
+        Foundation::{ERROR_NO_MORE_ITEMS, HANDLE},
+        System::{
+            Diagnostics::ProcessSnapshotting::{
+                PssCaptureSnapshot, PssFreeSnapshot, PssWalkMarkerCreate, PssWalkMarkerFree,
+                PssWalkSnapshot, HPSS, HPSSWALK, PSS_CAPTURE_THREADS, PSS_THREAD_ENTRY,
+                PSS_WALK_THREADS,
+            },
+            Threading::{GetCurrentProcess, OpenThread, ResumeThread, THREAD_SUSPEND_RESUME},
+        },
+    };
+    fn check(code: u32) -> io::Result<()> {
+        if code == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::from_raw_os_error(code as i32))
+        }
+    }
+    struct Snapshot(HPSS);
+    impl Drop for Snapshot {
+        fn drop(&mut self) {
+            unsafe {
+                PssFreeSnapshot(GetCurrentProcess(), self.0);
+            }
+        }
+    }
+    struct Marker(HPSSWALK);
+    impl Drop for Marker {
+        fn drop(&mut self) {
+            unsafe {
+                PssWalkMarkerFree(self.0);
+            }
+        }
+    }
+    fn next(snapshot: HPSS, marker: HPSSWALK, entry: &mut PSS_THREAD_ENTRY) -> u32 {
+        // entry is properly aligned and alive for the complete native call.
+        let bytes = unsafe {
+            std::slice::from_raw_parts_mut(
+                (entry as *mut PSS_THREAD_ENTRY).cast::<u8>(),
+                std::mem::size_of::<PSS_THREAD_ENTRY>(),
+            )
+        };
+        unsafe { PssWalkSnapshot(snapshot, PSS_WALK_THREADS, marker, Some(bytes)) }
+    }
+    let mut snapshot = HPSS::default();
+    check(unsafe {
+        PssCaptureSnapshot(
+            HANDLE(child.as_raw_handle()),
+            PSS_CAPTURE_THREADS,
+            None,
+            &mut snapshot,
+        )
+    })?;
+    let snapshot = Snapshot(snapshot);
+    let mut marker = HPSSWALK::default();
+    check(unsafe { PssWalkMarkerCreate(None, &mut marker) })?;
+    let marker = Marker(marker);
+    let mut entry = PSS_THREAD_ENTRY::default();
+    check(next(snapshot.0, marker.0, &mut entry))?;
+    let tid = entry.ThreadId;
+    // A freshly created suspended process has one initial thread. Fail closed
+    // rather than resuming an arbitrary thread if external instrumentation changed it.
+    let end = next(snapshot.0, marker.0, &mut entry);
+    if end != ERROR_NO_MORE_ITEMS.0 {
+        check(end)?;
+        return Err(io::Error::other("suspended process has multiple threads"));
+    }
+    let thread =
+        unsafe { OpenThread(THREAD_SUSPEND_RESUME, false, tid) }.map_err(io::Error::other)?;
+    let _thread = unsafe { OwnedHandle::from_raw_handle(thread.0) };
+    if unsafe { ResumeThread(thread) } == u32::MAX {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::*;
+    use std::process::Stdio;
+
+    #[test]
+    fn fast_read_cannot_exit_before_job_assignment() {
+        AFTER_SPAWN.with(|slot| {
+            *slot.borrow_mut() = Some(Box::new(|child, suspended| {
+                if !suspended {
+                    // Force the problematic scheduling order instead of relying on a sleep.
+                    child.wait().unwrap();
+                } else {
+                    assert!(child.try_wait().unwrap().is_none());
+                }
+            }));
+        });
+        let mut command = Command::new("git");
+        command
+            .arg("--version")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let (child, _tree) = ProcessTree::spawn_with_mode(&mut command, SpawnMode::Direct)
+            .expect("a successful fast Git command must not become a spawn failure");
+        let output = child.wait_with_output().unwrap();
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).starts_with("git version"));
+    }
+
+    #[test]
+    #[ignore = "manual Windows spawn latency measurement"]
+    fn scoped_and_toolhelp_spawn_latency() {
+        for (label, mode) in [
+            ("process-scoped", SpawnMode::Direct),
+            ("system-toolhelp", SpawnMode::Suspended),
+        ] {
+            let started = std::time::Instant::now();
+            for _ in 0..20 {
+                let mut command = Command::new("git");
+                command
+                    .arg("--version")
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null());
+                let (mut child, _tree) = ProcessTree::spawn_with_mode(&mut command, mode).unwrap();
+                assert!(child.wait().unwrap().success());
+            }
+            println!(
+                "{label}: {:.1} ms/spawn (20 iterations)",
+                started.elapsed().as_secs_f64() * 50.0
+            );
+        }
     }
 }
 

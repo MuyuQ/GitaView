@@ -45,6 +45,7 @@ impl Default for ExecPolicy {
 
 const GIT_TIMEOUT_SENTINEL: &str = "git command timed out";
 const SPAWN_FAILED_PREFIX: &str = "failed to spawn command";
+const PROGRAM_NOT_FOUND_PREFIX: &str = "command executable not found";
 
 static RESOLVED_GIT: OnceLock<PathBuf> = OnceLock::new();
 
@@ -124,9 +125,9 @@ fn run_command_with_timeout(
     mode: SpawnMode,
 ) -> Result<Output, String> {
     let start = Instant::now();
-    let (mut child, tree) =
-        ProcessTree::spawn_with_mode(command.stdout(Stdio::piped()).stderr(Stdio::piped()), mode)
-            .map_err(|err| format!("{SPAWN_FAILED_PREFIX}: {err}"))?;
+    let spawned =
+        ProcessTree::spawn_with_mode(command.stdout(Stdio::piped()).stderr(Stdio::piped()), mode);
+    let (mut child, tree) = spawned.map_err(|error| spawn_failure_message(&command, &error))?;
     let result = (|| {
         let mut stdout = child.stdout.take().ok_or("failed to capture stdout")?;
         let mut stderr = child.stderr.take().ok_or("failed to capture stderr")?;
@@ -167,6 +168,26 @@ fn run_command_with_timeout(
         let _ = child.wait();
     }
     result
+}
+
+fn spawn_failure_message(command: &Command, error: &std::io::Error) -> String {
+    let missing_working_dir = command.get_current_dir().is_some_and(|dir| !dir.is_dir());
+    let prefix = if error.kind() == std::io::ErrorKind::NotFound && !missing_working_dir {
+        PROGRAM_NOT_FOUND_PREFIX
+    } else {
+        SPAWN_FAILED_PREFIX
+    };
+    format!("{prefix}: {error}")
+}
+
+fn classify_command_error(error: String) -> GitCommandError {
+    if error == GIT_TIMEOUT_SENTINEL {
+        GitCommandError::Timeout
+    } else if error.starts_with(PROGRAM_NOT_FOUND_PREFIX) {
+        GitCommandError::NotFound
+    } else {
+        GitCommandError::Failed(error)
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -211,7 +232,7 @@ pub fn run_git_monitored(
     run_git_with_timeout(repo_path, args, timeout, stop, SpawnMode::Suspended)
 }
 
-/// 状态读取入口：Direct 生成（无挂起 / 无全系统快照）。
+/// 状态读取入口：Direct 低开销路径（挂起入 Job 后仅捕获该进程的线程）。
 pub fn run_git_status(
     repo_path: &Path,
     args: &[&str],
@@ -244,13 +265,7 @@ fn run_git_with_timeout(
     let output = match output {
         Ok(output) => output,
         Err(err) => {
-            let kind = if err == GIT_TIMEOUT_SENTINEL {
-                GitCommandError::Timeout
-            } else if err.starts_with(SPAWN_FAILED_PREFIX) {
-                GitCommandError::NotFound
-            } else {
-                GitCommandError::Failed(err)
-            };
+            let kind = classify_command_error(err);
             crate::diagnostics::log_duration(
                 "git.command.error",
                 duration,
@@ -305,7 +320,7 @@ fn kind_code(kind: &GitCommandError) -> &'static str {
 }
 
 /// 比较分支解析：属于本地状态读取链，经调用方传入的 `git` 闭包执行
-///（branch_state_monitored 的 Direct 生成路径），不单独走 Suspended。
+///（branch_state_monitored 的进程限定线程快照路径），不单独走全系统线程快照。
 fn comparison_ref(
     git: &dyn Fn(&[&str]) -> Result<String, GitCommandError>,
     branch: &str,
@@ -353,7 +368,7 @@ pub fn branch_state_monitored(
     policy: &ExecPolicy,
     stop: &StopFlag,
 ) -> Result<GitBranchState, GitCommandError> {
-    // 分支状态读取全部是本地读命令：Direct 生成（无挂起 / 无全系统快照）。
+    // 分支状态读取全部是本地读命令：Direct 路径不遍历全系统线程。
     let git = |args: &[&str]| run_git_status(repo_path, args, policy.status_timeout, stop);
     let inside = git(&["rev-parse", "--is-inside-work-tree"])?;
     if inside != "true" {
@@ -683,6 +698,44 @@ pub fn probe_repository(path: &str) -> ProbeResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn permission_or_job_failure_is_not_missing_git() {
+        let command = Command::new("git");
+        let error = spawn_failure_message(
+            &command,
+            &std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+        );
+        assert!(matches!(
+            classify_command_error(error),
+            GitCommandError::Failed(_)
+        ));
+    }
+
+    #[test]
+    fn missing_working_directory_is_not_missing_git() {
+        let mut command = Command::new("git");
+        command.current_dir(unique_temp_dir("gitaview_missing_cwd"));
+        let error = spawn_failure_message(
+            &command,
+            &std::io::Error::from(std::io::ErrorKind::NotFound),
+        );
+        assert!(matches!(
+            classify_command_error(error),
+            GitCommandError::Failed(_)
+        ));
+    }
+
+    #[test]
+    fn missing_executable_still_maps_to_git_not_found() {
+        let command = Command::new(format!(
+            "gitaview-missing-executable-{}",
+            std::process::id()
+        ));
+        let error = run_command_with_timeout(command, Duration::from_secs(2), SpawnMode::Direct)
+            .unwrap_err();
+        assert_eq!(classify_command_error(error), GitCommandError::NotFound);
+    }
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -846,7 +899,7 @@ mod tests {
 
     #[test]
     fn direct_spawn_timeout_kills_process_via_job() {
-        // Direct 路径（读操作）：无挂起，但 Job 超时终止语义不变。
+        // Direct 路径（读操作）仍需保留整棵 Job 的超时终止语义。
         #[cfg(target_os = "windows")]
         let mut command = {
             let mut command = Command::new("cmd");

@@ -35,6 +35,7 @@ public sealed class GroupRowVm
 
 public sealed partial class SettingsPage : Page
 {
+    public TitleBar ActiveTitleBar => PageTitleBar;
     private SettingsData _settings = new()
     {
         SchemaVersion = 1,
@@ -45,18 +46,20 @@ public sealed partial class SettingsPage : Page
         Refresh = new RefreshPolicy { Enabled = true, IntervalMinutes = 5 },
     };
     private List<(string? Id, string Display)> _groupBoxes = [];
-    private ulong _loadedRevision;
     private bool _suppressGroupEvents;
 
     public SettingsPage()
     {
         InitializeComponent();
+        ActualThemeChanged += (_, _) => DispatcherQueue.TryEnqueue(() =>
+            SelectSection(RepoSection.Visibility == Visibility.Visible));
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
         LoadFromEngine();
+        SelectSection(repo: RepoSection.Visibility == Visibility.Visible);
     }
 
     private GitaViewEngine? Engine => App.Engine;
@@ -69,7 +72,6 @@ public sealed partial class SettingsPage : Page
             return;
         }
         _settings = engine.SettingsGet();
-        _loadedRevision = _settings.Revision;
         ConflictBar.IsOpen = false;
         RefreshSavedText.Visibility = Visibility.Collapsed;
 
@@ -86,10 +88,7 @@ public sealed partial class SettingsPage : Page
             .Select(repo =>
             {
                 // 选项序 0=未分组；归属指向已删分组（异常数据）→ 未分组。
-                var selected = repo.GroupId is { } groupId
-                    ? Math.Max(0, groupOptions.IndexOf(_settings.Groups
-                        .FirstOrDefault(group => group.Id == groupId)?.Name ?? ""))
-                    : 0;
+                var selected = SettingsGroupPresentation.SelectedIndex(_settings.Groups, repo.GroupId);
                 return new ManagedRepoVm
                 {
                     RepoId = repo.Id,
@@ -103,7 +102,6 @@ public sealed partial class SettingsPage : Page
         NoManagedReposText.Visibility = _settings.Repos.Count == 0
             ? Visibility.Visible
             : Visibility.Collapsed;
-        _suppressGroupEvents = false;
 
         // —— 默认分组 ——
         _groupBoxes = [new(null, SettingsPageTag.AllGroups)];
@@ -127,12 +125,22 @@ public sealed partial class SettingsPage : Page
             StartupWarningsBar.IsOpen = true;
         }
 
+        AppearanceBox.SelectedIndex = App.MainWindow?.Appearance switch
+        {
+            ElementTheme.Light => 1,
+            ElementTheme.Dark => 2,
+            _ => 0,
+        };
+        _suppressGroupEvents = false;
         _ = RefreshStartupStateAsync();
     }
 
     // —— 导航 ——
 
     private void OnBackClick(object sender, RoutedEventArgs e) =>
+        App.MainWindow?.NavigateBackToStatus();
+
+    private void OnTitleBarBackRequested(TitleBar sender, object args) =>
         App.MainWindow?.NavigateBackToStatus();
 
     private void OnNavRepoClick(object sender, RoutedEventArgs e) => SelectSection(repo: true);
@@ -168,6 +176,7 @@ public sealed partial class SettingsPage : Page
             return;
         }
         AddRepoBusy.IsActive = true;
+        AddRepoBusy.Visibility = Visibility.Visible;
         try
         {
             var engine = Engine!;
@@ -182,6 +191,7 @@ public sealed partial class SettingsPage : Page
         finally
         {
             AddRepoBusy.IsActive = false;
+            AddRepoBusy.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -197,6 +207,7 @@ public sealed partial class SettingsPage : Page
             return;
         }
         ScanBusy.IsActive = true;
+        ScanBusy.Visibility = Visibility.Visible;
         ScanCandidatesPanel.Children.Clear();
         _scanCandidates.Clear();
         ScanActionsPanel.Visibility = Visibility.Collapsed;
@@ -232,6 +243,7 @@ public sealed partial class SettingsPage : Page
         finally
         {
             ScanBusy.IsActive = false;
+            ScanBusy.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -254,6 +266,7 @@ public sealed partial class SettingsPage : Page
             return;
         }
         ScanBusy.IsActive = true;
+        ScanBusy.Visibility = Visibility.Visible;
         var added = 0;
         var failures = new List<string>();
         try
@@ -281,6 +294,7 @@ public sealed partial class SettingsPage : Page
         finally
         {
             ScanBusy.IsActive = false;
+            ScanBusy.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -304,27 +318,13 @@ public sealed partial class SettingsPage : Page
             groupId = _settings.Groups
                 .FirstOrDefault(group => group.Name == row.GroupOptions[comboBox.SelectedIndex])?.Id;
         }
+        if (_settings.Repos.FirstOrDefault(repo => repo.Id == row.RepoId)?.GroupId == groupId) return;
         var engine = Engine;
-        if (engine is null)
-        {
-            return;
-        }
+        if (engine is null) return;
+        var input = SettingsEditRequest.ForRepoGroup(_settings, row.RepoId, groupId);
         try
         {
-            await Task.Run(() => engine.SettingsSave(new SettingsSaveInput
-            {
-                ExpectedRevision = _loadedRevision,
-                Settings = new SettingsEditable
-                {
-                    Groups = [.. _settings.Groups],
-                    DefaultGroupId = _settings.DefaultGroupId,
-                    Refresh = _settings.Refresh,
-                    RepoGroups =
-                    [
-                        new RepoGroupAssignment { RepoId = row.RepoId, GroupId = groupId },
-                    ],
-                },
-            }));
+            await Task.Run(() => engine.SettingsSave(input));
             LoadFromEngine();
         }
         catch (GvException exception) when (exception.Code == "SETTINGS_CONFLICT")
@@ -410,20 +410,11 @@ public sealed partial class SettingsPage : Page
         {
             return;
         }
+        var input = SettingsEditRequest.ForGroups(_settings, groups);
         try
         {
             // 删除分组时核心对全部仓库清悬挂归属（空 repoGroups 路径）。
-            await Task.Run(() => engine.SettingsSave(new SettingsSaveInput
-            {
-                ExpectedRevision = _loadedRevision,
-                Settings = new SettingsEditable
-                {
-                    Groups = groups,
-                    DefaultGroupId = _settings.DefaultGroupId,
-                    Refresh = _settings.Refresh,
-                    RepoGroups = [],
-                },
-            }));
+            await Task.Run(() => engine.SettingsSave(input));
             LoadFromEngine();
         }
         catch (GvException exception) when (exception.Code == "SETTINGS_CONFLICT")
@@ -460,26 +451,27 @@ public sealed partial class SettingsPage : Page
         {
             return;
         }
-        var interval = (uint)Math.Clamp((int)RefreshInterval.Value, 1, 60);
+        var input = new SettingsSaveInput
+        {
+            ExpectedRevision = _settings.Revision,
+            Settings = new SettingsEditable
+            {
+                Groups = [.. _settings.Groups],
+                DefaultGroupId = _settings.DefaultGroupId,
+                Refresh = new RefreshPolicy
+                {
+                    Enabled = RefreshEnabled.IsOn,
+                    IntervalMinutes = (uint)Math.Clamp(double.IsNaN(RefreshInterval.Value) ? 5 : RefreshInterval.Value, 1, 60),
+                },
+                RepoGroups = [],
+            },
+        };
+        if (sender is Button button) button.IsEnabled = false;
         try
         {
-            await Task.Run(() => engine.SettingsSave(new SettingsSaveInput
-            {
-                ExpectedRevision = _loadedRevision,
-                Settings = new SettingsEditable
-                {
-                    Groups = [.. _settings.Groups],
-                    DefaultGroupId = _settings.DefaultGroupId,
-                    Refresh = new RefreshPolicy
-                    {
-                        Enabled = RefreshEnabled.IsOn,
-                        IntervalMinutes = interval,
-                    },
-                    RepoGroups = [],
-                },
-            }));
-            RefreshSavedText.Visibility = Visibility.Visible;
+            await Task.Run(() => engine.SettingsSave(input));
             LoadFromEngine();
+            RefreshSavedText.Visibility = Visibility.Visible;
         }
         catch (GvException exception) when (exception.Code == "SETTINGS_CONFLICT")
         {
@@ -488,6 +480,10 @@ public sealed partial class SettingsPage : Page
         catch (Exception exception)
         {
             ShowMessage("保存刷新设置失败", MessageOf(exception), isError: true);
+        }
+        finally
+        {
+            if (sender is Button savedButton) savedButton.IsEnabled = true;
         }
     }
 
@@ -509,19 +505,10 @@ public sealed partial class SettingsPage : Page
         {
             return;
         }
+        var input = SettingsEditRequest.ForDefaultGroup(_settings, selectedDefault);
         try
         {
-            await Task.Run(() => engine.SettingsSave(new SettingsSaveInput
-            {
-                ExpectedRevision = _loadedRevision,
-                Settings = new SettingsEditable
-                {
-                    Groups = [.. _settings.Groups],
-                    DefaultGroupId = selectedDefault,
-                    Refresh = _settings.Refresh,
-                    RepoGroups = [],
-                },
-            }));
+            await Task.Run(() => engine.SettingsSave(input));
             LoadFromEngine();
         }
         catch (GvException exception) when (exception.Code == "SETTINGS_CONFLICT")
@@ -536,13 +523,33 @@ public sealed partial class SettingsPage : Page
 
     private void OnReloadClick(object sender, RoutedEventArgs e) => LoadFromEngine();
 
+    private void OnAppearanceChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressGroupEvents || AppearanceBox.SelectedIndex < 0) return;
+        App.MainWindow?.SetAppearance(AppearanceBox.SelectedIndex switch
+        {
+            1 => ElementTheme.Light,
+            2 => ElementTheme.Dark,
+            _ => ElementTheme.Default,
+        });
+    }
+
     // —— 开机启动（平台能力；显示系统实际状态）——
+
+    private int _startupReadGeneration;
 
     private async Task RefreshStartupStateAsync()
     {
+        int generation = ++_startupReadGeneration;
+        StartupStateText.Text = "正在读取系统状态…";
+        StartupEnableButton.IsEnabled = false;
+        StartupDisableButton.IsEnabled = false;
         try
         {
-            var task = await Windows.ApplicationModel.StartupTask.GetAsync("GitaViewStartup");
+            var task = await Windows.ApplicationModel.StartupTask.GetAsync("GitaViewStartup")
+                .AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+            if (generation != _startupReadGeneration) return;
+            if (task is null) throw new InvalidOperationException("Startup task was not found");
             StartupStateText.Text = task.State switch
             {
                 Windows.ApplicationModel.StartupTaskState.Enabled => "已启用（系统）",
@@ -555,11 +562,13 @@ public sealed partial class SettingsPage : Page
             StartupEnableButton.IsEnabled = task.State == Windows.ApplicationModel.StartupTaskState.Disabled;
             StartupDisableButton.IsEnabled = task.State == Windows.ApplicationModel.StartupTaskState.Enabled;
         }
-        catch (InvalidOperationException)
+        catch (Exception exception)
         {
-            StartupStateText.Text = "当前构建未包含开机启动声明";
+            if (generation != _startupReadGeneration) return;
+            StartupStateText.Text = "无法读取开机启动状态，返回此页后重试。";
             StartupEnableButton.IsEnabled = false;
             StartupDisableButton.IsEnabled = false;
+            App.HostLog?.Log("WARN", "ui.startup_state.unavailable", exception.Message);
         }
     }
 
@@ -608,10 +617,4 @@ public sealed partial class SettingsPage : Page
     private static string MessageOf(Exception exception) => exception is GvException gv
         ? ErrorText.For(gv.Code)
         : ErrorText.For(null) + "：" + exception.Message;
-}
-
-internal static class SettingsPageTag
-{
-    public const string Ungrouped = "（未分组）";
-    public const string AllGroups = "全部分组";
 }

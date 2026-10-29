@@ -195,17 +195,18 @@ public class RepoWorkflowFacts
         Assert.Equal(2ul, added.SettingsRevision);
 
         // 刷新请求返回 requestId；完成与否看 completedRequestId。
+        var initial = engine.SnapshotGet();
         var request = engine.RefreshRequest();
         Assert.Equal(engine.SessionId, request.SessionId);
 
         // 等待读取完成：以 stateRevision 等待，而不是轮询猜。
-        var initial = engine.SnapshotGet();
         var waited = engine.SnapshotWait(initial.StateRevision, 10_000);
         Assert.Equal(SnapshotWaitKind.Ready, waited.Kind);
 
         var ready = TestEnvironment.PollUntil(
             engine.SnapshotGet,
-            snapshot => snapshot.Repos.Count == 1 && snapshot.Repos[0].ReadState == ReadState.Ok,
+            snapshot => snapshot.Refresh.CompletedRequestId >= request.RequestId
+                && snapshot.Repos.Count == 1 && snapshot.Repos[0].ReadState == ReadState.Ok,
             "repo read completes");
         var row = ready.Repos[0];
         Assert.Equal(ReadState.Ok, row.ReadState);

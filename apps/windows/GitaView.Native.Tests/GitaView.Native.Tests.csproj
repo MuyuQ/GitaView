@@ -18,6 +18,15 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="..\GitaView.Native\ErrorText.cs" Link="ErrorText.cs" />
+    <Compile Include="..\GitaView.Native\TrayFlyoutPresentation.cs" Link="TrayFlyoutPresentation.cs" />
+    <Compile Include="..\GitaView.Native\RepositoryFilterPresentation.cs" Link="RepositoryFilterPresentation.cs" />
+    <Compile Include="..\GitaView.Native\SettingsGroupPresentation.cs" Link="SettingsGroupPresentation.cs" />
+    <Compile Include="..\GitaView.Native\SettingsEditRequest.cs" Link="SettingsEditRequest.cs" />
+    <Compile Include="..\GitaView.Native\SnapshotVersionGate.cs" Link="SnapshotVersionGate.cs" />
+    <Compile Include="..\GitaView.Native\NativeWindowFrame.cs" Link="NativeWindowFrame.cs" />
+    <Compile Include="..\GitaView.Native\MainWindowClosePolicy.cs" Link="MainWindowClosePolicy.cs" />
+    <Compile Include="..\GitaView.Native\ProtocolNavigation.cs" Link="ProtocolNavigation.cs" />
   </ItemGroup>
 
   <ItemGroup>

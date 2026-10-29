@@ -7,6 +7,8 @@ on:
   push:
     branches: ["**"]
     paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
       - "crates/**"
       - "apps/windows/**"
       - "contracts/**"
@@ -14,6 +16,8 @@ on:
       - ".github/workflows/native-ci.yml"
   pull_request:
     paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
       - "crates/**"
       - "apps/windows/**"
       - "contracts/**"
@@ -30,6 +34,13 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Validate native JSON Schema
+        run: |
+          python -m pip install -r scripts/native/requirements-test.txt
+          python scripts/native/test-contract-schema.py
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -44,6 +55,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Rust tests
         run: cargo test --workspace --locked
+      - name: Package layout regression checks
+        run: powershell -NoProfile -File scripts\native\test-package-layout.ps1
       - name: C# tests (real FFI)
         run: dotnet test apps\windows\GitaView.Native.Tests\GitaView.Native.Tests.csproj
       - name: Build (unsigned package layout)
@@ -64,6 +77,13 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Validate native JSON Schema
+        run: |
+          python -m pip install -r scripts/native/requirements-test.txt
+          python scripts/native/test-contract-schema.py
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:

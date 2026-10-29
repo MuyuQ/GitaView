@@ -98,6 +98,8 @@ public static class ContractsJson
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             // 未知字段必须拒绝（schema additionalProperties: false）。
             UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+            // A required key may still contain null; reject it for non-null DTO members.
+            RespectNullableAnnotations = true,
         };
         // 枚举以契约字符串（snake_case）往返；成员映射由 [JsonPropertyName] 提供。
         options.Converters.Add(new ContractEnumConverterFactory());

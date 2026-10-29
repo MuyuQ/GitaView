@@ -11,7 +11,7 @@ use gitaview_core::refresh::RepoCollector;
 use gitaview_core::settings::{RepoSettings, SettingsSaveInput, SettingsService};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -308,9 +308,9 @@ fn discarded_scan_keeps_request_pending_until_next_completes() {
     let engine = test_engine(&temp, Arc::clone(&collector), FakeClock::new());
 
     // 扫描 A（旧配置）运行期间：先添加、再删除仓库，revision 变化两次。
+    wait_for_calls(&collector, 1);
     engine.repo_add(&repo, None).unwrap();
     engine.repo_remove("repo").unwrap();
-    wait_for_calls(&collector, 1);
 
     release_a.send(()).unwrap();
     // A 按旧 revision 丢弃：不发布、不推进 completed；下一轮覆盖请求并发布。
@@ -430,6 +430,88 @@ fn config_commit_reprojects_immediately_and_wakes_subscribers() {
     });
     stop_engine(&engine);
     remove_dir_retry(&temp);
+}
+
+fn assert_config_change_preserves_failed_refresh(change: &str) {
+    let temp = unique_temp_dir("gitaview_failed_config");
+    seed_repos(&temp, &["repo", "keep"]);
+    let (collector, release) = ScriptedCollector::new()
+        .push_ok()
+        .push_fail()
+        .push_blocked();
+    let clock = FakeClock::new();
+    let engine = test_engine(&temp, Arc::clone(&collector), Arc::clone(&clock));
+    let ready = wait_for_snapshot(&engine, "initial success", |s| {
+        s.refresh_state == RefreshState::Ready
+    });
+    clock.set_wall_ms(ready.last_success_at_ms.unwrap() + 1_000);
+    let (_, request) = engine.refresh_request().unwrap();
+    let failed = wait_for_snapshot(&engine, "global failure", |s| {
+        s.refresh.completed_request_id >= request
+    });
+    assert_eq!(failed.refresh_state, RefreshState::Failed);
+    assert!(failed.refresh_error.is_some());
+    let expected_rows = match change {
+        "save" => {
+            let settings = engine.get_settings();
+            engine
+                .save_settings(SettingsSaveInput {
+                    expected_revision: settings.revision,
+                    settings: gitaview_core::settings::SettingsEditable {
+                        groups: settings.groups,
+                        default_group_id: settings.default_group_id,
+                        refresh: settings.refresh,
+                        repo_groups: vec![],
+                    },
+                })
+                .unwrap();
+            2
+        }
+        "add" => {
+            engine.repo_add(&fake_repo(&temp, "new"), None).unwrap();
+            3
+        }
+        "remove" => {
+            engine.repo_remove("repo").unwrap();
+            1
+        }
+        _ => unreachable!(),
+    };
+    wait_for_calls(&collector, 3);
+    let intermediate = engine.snapshot_get();
+    let widget = gitaview_core::widget::project_widget(&intermediate);
+    let serialized = serde_json::to_value(&intermediate).unwrap();
+    release.send(()).unwrap();
+    let recovered = wait_for_snapshot(&engine, "recovery after config", |s| {
+        s.generation > failed.generation && s.refresh_state == RefreshState::Ready
+    });
+    stop_engine(&engine);
+    remove_dir_retry(&temp);
+
+    assert_eq!(intermediate.repos.len(), expected_rows);
+    assert_eq!(intermediate.refresh_state, RefreshState::Failed);
+    assert_eq!(intermediate.refresh_error, failed.refresh_error);
+    assert_eq!(intermediate.generation, failed.generation);
+    assert_eq!(intermediate.attempted_at_ms, failed.attempted_at_ms);
+    assert_eq!(intermediate.last_success_at_ms, ready.last_success_at_ms);
+    assert_eq!(serialized["refreshError"]["code"], "GIT_FAILED");
+    assert_eq!(widget.refresh_error_code.as_deref(), Some("GIT_FAILED"));
+    assert_eq!(recovered.refresh_error, None);
+}
+
+#[test]
+fn saving_settings_preserves_failed_refresh_until_recovery() {
+    assert_config_change_preserves_failed_refresh("save");
+}
+
+#[test]
+fn adding_repo_preserves_failed_refresh_until_recovery() {
+    assert_config_change_preserves_failed_refresh("add");
+}
+
+#[test]
+fn removing_repo_preserves_failed_refresh_until_recovery() {
+    assert_config_change_preserves_failed_refresh("remove");
 }
 
 #[test]
@@ -974,48 +1056,55 @@ fn concurrent_config_commits_keep_mirror_monotonic() {
 
     const THREADS: usize = 8;
     const ROUNDS: usize = 12;
-    let observed = Arc::new(AtomicU64::new(0));
-    let regressions = Arc::new(AtomicUsize::new(0));
+    // Observe in one thread: a writer can be preempted after committing, so
+    // processing return values in different threads cannot establish commit order.
+    let done = Arc::new(AtomicBool::new(false));
+    let observer_engine = engine.clone();
+    let observer_done = done.clone();
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let observer = std::thread::spawn(move || {
+        let mut previous = observer_engine.snapshot_get().settings_revision;
+        let mut regressions = 0;
+        ready_tx.send(()).unwrap();
+        loop {
+            let current = observer_engine.snapshot_get().settings_revision;
+            if current < previous {
+                regressions += 1;
+            }
+            previous = current;
+            if observer_done.load(Ordering::SeqCst) {
+                return regressions;
+            }
+            std::thread::yield_now();
+        }
+    });
+    ready_rx.recv().unwrap();
     let barrier = Arc::new(std::sync::Barrier::new(THREADS));
     let mut handles = Vec::new();
     for t in 0..THREADS {
         let engine = engine.clone();
         let barrier = Arc::clone(&barrier);
-        let observed = Arc::clone(&observed);
-        let regressions = Arc::clone(&regressions);
         let temp = temp.clone();
         handles.push(std::thread::spawn(move || {
+            let mut failures = 0;
             for r in 0..ROUNDS {
                 barrier.wait();
                 let repo = fake_repo(&temp, &format!("t{t}_r{r}"));
-                match engine.repo_add(&repo, None) {
-                    Ok((_, saved)) => {
-                        let previous = observed.fetch_max(saved.revision, Ordering::SeqCst);
-                        if saved.revision < previous {
-                            regressions.fetch_add(1, Ordering::SeqCst);
-                        }
-                        let snapshot = engine.snapshot_get();
-                        let previous =
-                            observed.fetch_max(snapshot.settings_revision, Ordering::SeqCst);
-                        if snapshot.settings_revision < previous {
-                            regressions.fetch_add(1, Ordering::SeqCst);
-                        }
-                    }
-                    Err(_) => {
-                        regressions.fetch_add(1, Ordering::SeqCst);
-                    }
+                if engine.repo_add(&repo, None).is_err() {
+                    failures += 1;
                 }
             }
+            failures
         }));
     }
+    let mut failures = 0;
     for handle in handles {
-        handle.join().unwrap();
+        failures += handle.join().unwrap();
     }
-    assert_eq!(
-        regressions.load(Ordering::SeqCst),
-        0,
-        "mirror revision must never regress"
-    );
+    done.store(true, Ordering::SeqCst);
+    let regressions = observer.join().unwrap();
+    assert_eq!(failures, 0, "all concurrent adds must succeed");
+    assert_eq!(regressions, 0, "mirror revision must never regress");
     let settings = engine.get_settings();
     assert_eq!(settings.repos.len(), THREADS * ROUNDS, "no lost adds");
     assert_eq!(
@@ -1047,6 +1136,9 @@ fn removed_repo_state_is_not_reused_for_same_name_new_repo() {
     let engine = test_engine(&temp, collector, FakeClock::new());
 
     // 首采（空配置）完成后添加 A → 触发的采集被阻塞。
+    wait_for_snapshot(&engine, "empty initial scan completes", |s| {
+        s.generation >= 1 && !s.refresh.is_refreshing
+    });
     let (record_a, _) = engine.repo_add(&repo_a, None).unwrap();
     wait_for_calls(&calls, 2);
 

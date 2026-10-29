@@ -1,5 +1,5 @@
 // 状态明细页（统一设计，升级自旧版 WidgetExpanded / RepoTable / RepoActions）：
-// - 紧凑摘要 + 分组 / 状态筛选条 + 对齐表格 + 选中行下方展开操作（不常驻按钮）；
+// - 分组 / 状态筛选、对齐表格与选中行操作；紧凑摘要由托盘浮窗承载；
 // - 筛选、搜索、排序与协调由核心 view_query 统一计算（组筛选 + 状态筛选两次查询）；
 // - 行操作走 FFI（Fetch 无确认，Pull / Push 两段式确认），单仓库独立忙态与结果；
 // - 刷新失败保留历史行，只出琥珀横幅；状态不依赖颜色（点 + 文字 + 计数并出）。
@@ -11,18 +11,20 @@ using GitaView.Native.Interop;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Windows.System;
 
 namespace GitaView_Native;
 
-/// <summary>表格行视图模型：静态字段构造时定型；交互状态走 INPC。</summary>
+/// <summary>按仓库身份保留的行视图模型，投影更新不会丢失操作状态。</summary>
 public sealed class RepoRowVm : INotifyPropertyChanged
 {
-    // —— 静态投影（重建时定型）——
+    // —— 仓库身份与可更新投影 ——
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";
+    public string Path { get; set; } = "";
     public string GroupDisplay { get; set; } = "";
     public string Branch { get; set; } = "";
     public string StatusLabel { get; set; } = "";
@@ -33,9 +35,12 @@ public sealed class RepoRowVm : INotifyPropertyChanged
     public Brush RelationBrush { get; set; } = ThemeBrush("GvInkBrush");
     public bool CanOpenDirectory { get; set; }
     public bool CanOpenRemote { get; set; }
-    public bool CanFetch { get; set; }
-    public bool CanPull { get; set; }
-    public bool CanPush { get; set; }
+    private bool _canFetch;
+    public bool CanFetch { get => _canFetch && !IsBusy; set => _canFetch = value; }
+    private bool _canPull;
+    public bool CanPull { get => _canPull && !IsBusy; set => _canPull = value; }
+    private bool _canPush;
+    public bool CanPush { get => _canPush && !IsBusy; set => _canPush = value; }
 
     private Brush _rowBackground = ThemeBrush("GvSurfaceBrush");
     public Brush RowBackground
@@ -69,22 +74,31 @@ public sealed class RepoRowVm : INotifyPropertyChanged
     public bool IsFetchBusy
     {
         get => _isFetchBusy;
-        set { _isFetchBusy = value; Raise(nameof(IsFetchBusy)); }
+        set { _isFetchBusy = value; RaiseBusyState(); }
     }
 
     private bool _isPullBusy;
     public bool IsPullBusy
     {
         get => _isPullBusy;
-        set { _isPullBusy = value; Raise(nameof(IsPullBusy)); }
+        set { _isPullBusy = value; RaiseBusyState(); }
     }
 
     private bool _isPushBusy;
     public bool IsPushBusy
     {
         get => _isPushBusy;
-        set { _isPushBusy = value; Raise(nameof(IsPushBusy)); }
+        set { _isPushBusy = value; RaiseBusyState(); }
     }
+
+    public bool IsBusy => IsFetchBusy || IsPullBusy || IsPushBusy;
+    public Visibility BusyVisible => IsBusy ? Visibility.Visible : Visibility.Collapsed;
+    private void RaiseBusyState()
+    {
+        Raise(nameof(IsBusy)); Raise(nameof(BusyVisible));
+        Raise(nameof(CanFetch)); Raise(nameof(CanPull)); Raise(nameof(CanPush));
+    }
+    public void ProjectionChanged() => Raise("");
 
     private bool _confirmPull;
     public bool ConfirmPull
@@ -120,9 +134,9 @@ public sealed class RepoRowVm : INotifyPropertyChanged
 
     public string PullLabel => ConfirmPull ? "确认 Pull" : "Pull";
     public string PushLabel => ConfirmPush ? "确认 Push" : "Push";
-    public Brush PullBackground => ConfirmPull ? ThemeBrush("GvAmberBrush") : ThemeBrush("GvSurfaceBrush");
+    public Brush PullBackground => ConfirmPull ? ThemeBrush("GvAmberTextBrush") : ThemeBrush("GvSurfaceBrush");
     public Brush PullForeground => ConfirmPull ? ThemeBrush("GvSurfaceBrush") : ThemeBrush("GvAmberTextBrush");
-    public Brush PushBackground => ConfirmPush ? ThemeBrush("GvAmberBrush") : ThemeBrush("GvSurfaceBrush");
+    public Brush PushBackground => ConfirmPush ? ThemeBrush("GvAmberTextBrush") : ThemeBrush("GvSurfaceBrush");
     public Brush PushForeground => ConfirmPush ? ThemeBrush("GvSurfaceBrush") : ThemeBrush("GvAmberTextBrush");
     public string ConfirmText => ConfirmPull
         ? "Pull 会修改当前仓库工作区，是否继续？"
@@ -134,7 +148,7 @@ public sealed class RepoRowVm : INotifyPropertyChanged
     public string ResultText
     {
         get => _resultText;
-        set { _resultText = value; Raise(nameof(ResultText)); Raise(nameof(ResultBrush)); }
+        set { _resultText = value; Raise(nameof(ResultText)); Raise(nameof(ResultBrush)); Raise(nameof(ResultVisible)); }
     }
 
     private bool _resultIsError;
@@ -144,6 +158,7 @@ public sealed class RepoRowVm : INotifyPropertyChanged
         set { _resultIsError = value; Raise(nameof(ResultIsError)); Raise(nameof(ResultBrush)); }
     }
 
+    public Visibility ResultVisible => string.IsNullOrEmpty(ResultText) ? Visibility.Collapsed : Visibility.Visible;
     public Brush ResultBrush => _resultIsError ? ThemeBrush("GvRedBrush") : ThemeBrush("GvGreenBrush");
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -151,40 +166,53 @@ public sealed class RepoRowVm : INotifyPropertyChanged
     private void Raise(string name) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 
-    internal static Brush ThemeBrush(string key) =>
-        (Application.Current.Resources[key] as Brush)!;
+    internal static Brush ThemeBrush(string key)
+    {
+        var theme = App.MainWindow?.ContentTheme
+            ?? (Application.Current.RequestedTheme == ApplicationTheme.Dark ? ElementTheme.Dark : ElementTheme.Light);
+        var name = new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast
+            ? "HighContrast" : theme == ElementTheme.Dark ? "Dark" : "Light";
+        var themeResources = Application.Current.Resources.MergedDictionaries.Last();
+        return (Brush)((ResourceDictionary)themeResources.ThemeDictionaries[name])[key];
+    }
 }
 
 public sealed partial class MainPage : Page
 {
+    public TitleBar ActiveTitleBar => PageTitleBar;
     public ObservableCollection<RepoRowVm> Rows { get; } = [];
 
-    /// <summary>状态筛选条顺序与文案（与旧版 StatusFilters 一致；0 计数不显示）。</summary>
-    private static readonly (string Label, RelationFilter Filter)[] StatusChipOrder =
-    [
-        ("读取失败", RelationFilter.Error),
-        ("分叉", RelationFilter.Diverged),
-        ("远端领先", RelationFilter.RemoteAhead),
-        ("本地领先", RelationFilter.LocalAhead),
-        ("同步", RelationFilter.Synced),
-        ("无远端", RelationFilter.NoRemote),
-    ];
-
+    private bool _initialized;
+    private readonly Dictionary<string, RepoRowVm> _rowCache = new();
+    private GridLength[]? _columnWidths;
     private string? _selectedGroupId; // null = 全部分组
     private RelationFilter _selectedRelation = RelationFilter.All;
     private string? _selectedRepoId;
     private bool _refreshBusy;
-    private string _lastGroupSignature = "";
+    private bool _suppressQueryChanges;
+    private int _protocolNavigationVersion;
+    private ProtocolRoute? _pendingProtocolReveal;
     private readonly Dictionary<string, string> _groupNames = new();
 
     public MainPage()
     {
         InitializeComponent();
+        StartupRecoveryBar.IsOpen = App.StartupWarnings.Contains("SETTINGS_RECOVERED");
+        Loaded += (_, _) => QueueProtocolReveal();
+        ActualThemeChanged += (_, _) => DispatcherQueue.TryEnqueue(() =>
+        {
+            _ = RequeryAsync();
+        });
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        if (!_initialized && App.Engine is { } engine)
+        {
+            _selectedGroupId = engine.SettingsGet().DefaultGroupId;
+            _initialized = true;
+        }
         App.SnapshotArrived += OnSnapshotArrived;
         _ = RequeryAsync();
     }
@@ -192,7 +220,62 @@ public sealed partial class MainPage : Page
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
+        CancelProtocolReveal();
         App.SnapshotArrived -= OnSnapshotArrived;
+    }
+
+    internal async Task NavigateFromProtocolAsync(ProtocolRoute route)
+    {
+        int version = ++_protocolNavigationVersion;
+        _pendingProtocolReveal = null;
+        CancelPendingConfirmations();
+        _selectedGroupId = null;
+        _selectedRelation = RelationFilter.All;
+        _selectedRepoId = route.RepoId;
+        _suppressQueryChanges = true;
+        try { QueryBox.Text = ""; }
+        finally { _suppressQueryChanges = false; }
+        await RequeryAsync();
+        if (version != _protocolNavigationVersion) return;
+        // A repository can be removed after activation resolved its ID.
+        if (_selectedRepoId is { } id && Rows.All(row => row.Id != id)) _selectedRepoId = null;
+        _pendingProtocolReveal = new(_selectedRepoId);
+        QueueProtocolReveal();
+    }
+
+    private void CancelProtocolReveal()
+    {
+        _protocolNavigationVersion++;
+        _pendingProtocolReveal = null;
+    }
+
+    private void QueueProtocolReveal()
+    {
+        if (!IsLoaded || _pendingProtocolReveal is null) return;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!IsLoaded || !ReferenceEquals(Frame?.Content, this) || _pendingProtocolReveal is not { } route) return;
+            _pendingProtocolReveal = null;
+            try
+            {
+                var row = route.RepoId is { } id ? Rows.FirstOrDefault(item => item.Id == id) : null;
+                if (row is null)
+                {
+                    _selectedRepoId = null;
+                    TableScroll.ChangeView(0, 0, null, disableAnimation: true);
+                    return;
+                }
+                TableScroll.ChangeView(0, null, null, disableAnimation: true);
+                RepoList.ScrollIntoView(row, ScrollIntoViewAlignment.Leading);
+                RepoList.UpdateLayout();
+                if (RepoList.ContainerFromItem(row) is FrameworkElement container)
+                    container.StartBringIntoView();
+            }
+            catch (Exception exception)
+            {
+                App.HostLog?.Log("WARN", "protocol.reveal.failed", exception.Message);
+            }
+        });
     }
 
     private void OnSnapshotArrived(AppSnapshot snapshot)
@@ -209,7 +292,7 @@ public sealed partial class MainPage : Page
         {
             return;
         }
-        // 两次轻量查询（亚毫秒）：组 + 全部状态 → 筛选条计数与协调；
+        // 两次查询：组 + 全部状态 → 筛选条计数与协调；
         // 组 + 当前状态 → 行。
         var chips = engine.ViewQuery(new ViewQuery
         {
@@ -228,7 +311,6 @@ public sealed partial class MainPage : Page
         if (chips.Effective.GroupId != _selectedGroupId)
         {
             _selectedGroupId = chips.Effective.GroupId;
-            _lastGroupSignature = ""; // 强制重建组筛选条以更新选中态
         }
         _selectedRelation = filtered.Effective.RelationFilter;
 
@@ -247,12 +329,20 @@ public sealed partial class MainPage : Page
             RefreshWarningText.Visibility = Visibility.Collapsed;
         }
 
-        // 紧凑摘要（共享组件语义）：总数 · 待同步 · 需关注 · 无远端（全部仓库口径）。
+        // 底部状态栏承载紧凑摘要语义（收缩窗口模式已移除，浮窗另用同一投影）：
+        // 总数 · 待同步 · 需关注 · 无远端（全部仓库口径），筛选时加 N/M 前缀。
         var summary = chips.SummaryCounts;
         var syncable = summary.LocalAhead + summary.RemoteAhead;
         var attention = summary.Diverged + summary.Error;
-        SummaryText.Text = $"GitaView · {summary.Total} 个仓库 · 待同步 {syncable}"
-            + $" · 需关注 {attention} · 无远端 {summary.NoRemote}";
+        var summaryText = summary.Total > 0 && filtered.Rows.Count != summary.Total
+            ? $"{filtered.Rows.Count} / {summary.Total} · " : "";
+        summaryText += $"{summary.Total} 个仓库 · 待同步 {syncable}"
+            + $" · 需关注 {attention} · 未比较 {summary.NoRemote}";
+        if (summary.Pending > 0) summaryText += $" · 待读 {summary.Pending}";
+        if (snapshot.RefreshState == RefreshState.Failed) summaryText += " · 刷新失败";
+        ResultCountText.Text = summaryText;
+        ResultCountText.Foreground = RepoRowVm.ThemeBrush(
+            snapshot.RefreshState == RefreshState.Failed ? "GvAmberTextBrush" : "GvMutedBrush");
 
         BuildGroupChips(chips);
         BuildStatusChips(chips.StatusCounts);
@@ -262,138 +352,195 @@ public sealed partial class MainPage : Page
 
     private void BuildGroupChips(ViewResult result)
     {
-        // 选项集合只在组集合变化时重建（计数变化也要重建，旧版如此）。
-        var signature = string.Join("|",
-            result.Groups.Select(group => $"{group.Id}:{group.Name}:{group.Count}"));
-        if (signature == _lastGroupSignature)
-        {
-            return;
-        }
-        _lastGroupSignature = signature;
-        GroupChipsPanel.Children.Clear();
-        GroupChipsPanel.Children.Add(MakeChip(
-            $"全部分组 {result.SummaryCounts.Total}",
-            _selectedGroupId is null,
-            () => SelectGroup(null)));
-        foreach (var group in result.Groups)
-        {
-            GroupChipsPanel.Children.Add(MakeChip(
-                $"{group.Name} {group.Count}",
-                _selectedGroupId == group.Id,
-                () => SelectGroup(group.Id)));
-        }
+        UpdateChips(GroupChipsPanel,
+            RepositoryFilterPresentation.Groups(result.SummaryCounts.Total, result.Groups, _selectedGroupId),
+            SelectGroup, group: true);
     }
 
     private void BuildStatusChips(WidgetCounts counts)
     {
-        StatusChipsPanel.Children.Clear();
-        StatusChipsPanel.Children.Add(MakeChip(
-            $"全部 {counts.Total}",
-            _selectedRelation == RelationFilter.All,
-            () => SelectRelation(RelationFilter.All)));
-        foreach (var (label, filter) in StatusChipOrder)
+        UpdateChips(StatusChipsPanel,
+            RepositoryFilterPresentation.Statuses(counts, _selectedRelation), SelectRelation, group: false);
+    }
+
+    private void UpdateChips<T>(StackPanel panel, IReadOnlyList<FilterChip<T>> choices, Action<T> select, bool group)
+    {
+        var existing = panel.Children.OfType<Button>().ToArray();
+        var desired = new List<Button>();
+        foreach (var choice in choices)
         {
-            var count = CountOf(counts, filter);
-            if (count == 0)
+            var button = existing.FirstOrDefault(candidate =>
+                candidate.Tag is FilterChip<T> previous
+                && EqualityComparer<T>.Default.Equals(previous.Value, choice.Value));
+            if (button is null)
             {
-                continue;
+                button = new Button { Style = (Style)Application.Current.Resources["GvChipStyle"] };
+                button.Click += (_, _) => select(choice.Value);
             }
-            StatusChipsPanel.Children.Add(MakeChip(
-                $"{label} {count}",
-                _selectedRelation == filter,
-                () => SelectRelation(filter)));
+            button.Tag = choice;
+            button.Content = choice.Label;
+            ApplyChipSelection(button, choice.Selected, group);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(
+                button, choice.Selected ? "已选择" : "未选择");
+            desired.Add(button);
+        }
+        // 更新现有按钮，刷新与选中态切换不移除仍然有效的键盘焦点目标。
+        foreach (var old in existing.Where(button => !desired.Contains(button)))
+        {
+            panel.Children.Remove(old);
+        }
+        for (var i = 0; i < desired.Count; i++)
+        {
+            int index = panel.Children.IndexOf(desired[i]);
+            if (index == i) continue;
+            if (index >= 0) panel.Children.RemoveAt(index);
+            panel.Children.Insert(i, desired[i]);
         }
     }
 
-    private static uint CountOf(WidgetCounts counts, RelationFilter filter) => filter switch
+    private static void ApplyChipSelection(Button button, bool selected, bool group)
     {
-        RelationFilter.Error => counts.Error,
-        RelationFilter.Synced => counts.Synced,
-        RelationFilter.LocalAhead => counts.LocalAhead,
-        RelationFilter.RemoteAhead => counts.RemoteAhead,
-        RelationFilter.Diverged => counts.Diverged,
-        RelationFilter.NoRemote => counts.NoRemote,
-        _ => counts.Total,
-    };
-
-    private Button MakeChip(string text, bool selected, Action onClick)
-    {
-        var button = new Button
-        {
-            Content = text,
-            Style = (Style)Resources["GvChipStyle"],
-        };
-        if (selected)
-        {
-            // 选中态：ink 底 + 白字（旧版 .filter-btn.active）。
-            button.Background = RepoRowVm.ThemeBrush("GvSelectionBrush");
-            button.Foreground = RepoRowVm.ThemeBrush("GvSurfaceBrush");
-            button.BorderBrush = RepoRowVm.ThemeBrush("GvSelectionBrush");
-        }
-        button.Click += (_, _) => onClick();
-        return button;
+        button.FontWeight = group ? Microsoft.UI.Text.FontWeights.Medium : Microsoft.UI.Text.FontWeights.Normal;
+        button.Background = selected ? RepoRowVm.ThemeBrush(group ? "GvSurfaceBrush" : "GvSelectionBrush")
+            : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        button.Foreground = RepoRowVm.ThemeBrush(selected
+            ? group ? "GvInkBrush" : "GvOnSelectionBrush" : "GvMutedBrush");
+        // 为分组按钮预留相同边框厚度，选中态变化不改变按钮宽度。
+        button.BorderThickness = new Thickness(group ? 1 : 0);
+        button.BorderBrush = selected && group
+            ? RepoRowVm.ThemeBrush("GvLineBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
     }
 
     private void SelectGroup(string? groupId)
     {
+        CancelProtocolReveal();
+        CancelPendingConfirmations();
         _selectedGroupId = groupId;
-        _lastGroupSignature = "";
         _ = RequeryAsync();
     }
 
     private void SelectRelation(RelationFilter filter)
     {
+        CancelProtocolReveal();
+        CancelPendingConfirmations();
         _selectedRelation = filter;
         _ = RequeryAsync();
     }
 
-    private async Task BuildRowsAsync(ViewResult result)
+    private Task BuildRowsAsync(ViewResult result)
     {
-        var engine = App.Engine;
-        if (engine is null)
-        {
-            return;
-        }
+        if (App.Engine is not { } engine) return Task.CompletedTask;
         var settings = engine.SettingsGet();
         _groupNames.Clear();
-        foreach (var group in settings.Groups)
-        {
-            _groupNames[group.Id] = group.Name;
-        }
-
-        Rows.Clear();
+        foreach (var group in settings.Groups) _groupNames[group.Id] = group.Name;
+        // Keep interaction state across scans and filters, but never across a different path.
+        var identities = settings.Repos.ToDictionary(repo => repo.Id, repo => repo.Path);
+        foreach (var id in _rowCache.Keys.ToArray())
+            if (!identities.TryGetValue(id, out var path) || _rowCache[id].Path != path)
+                _rowCache.Remove(id);
+        var desired = new List<RepoRowVm>();
         foreach (var row in result.Rows)
         {
-            var view = RepoStatusView.From(row);
-            var groupName = row.GroupId is { } groupId
-                && _groupNames.TryGetValue(groupId, out var name) ? name : "";
-            var vm = new RepoRowVm
+            if (!_rowCache.TryGetValue(row.Id, out var vm))
             {
-                Id = row.Id,
-                Name = row.Name,
-                GroupDisplay = groupName,
-                Branch = view.Branch is { Length: > 0 } branch ? branch : "—",
-                StatusLabel = StatusLabelOf(view),
-                RelationLabel = RelationLabelOf(view),
-                ChangesLabel = ChangesLabelOf(view),
-                Hint = HintOf(view),
-                Dot = DotOf(view),
-                RelationBrush = RelationBrushOf(view),
-                RowBackground = row.Id == _selectedRepoId
-                    ? RepoRowVm.ThemeBrush("GvRowSelectedBrush")
-                    : RepoRowVm.ThemeBrush("GvSurfaceBrush"),
-                CanOpenDirectory = row.Actions.CanOpenDirectory,
-                CanOpenRemote = row.Actions.CanOpenRemote,
-                CanFetch = row.Actions.CanFetch,
-                CanPull = row.Actions.CanPull,
-                CanPush = row.Actions.CanPush,
-            };
-            if (row.Id == _selectedRepoId)
-            {
-                vm.IsExpanded = true;
+                vm = new RepoRowVm { Id = row.Id, Path = row.Path };
+                _rowCache.Add(row.Id, vm);
             }
-            Rows.Add(vm);
+            var view = RepoStatusView.From(row);
+            vm.Name = row.Name;
+            vm.GroupDisplay = row.GroupId is { } groupId && _groupNames.TryGetValue(groupId, out var name) ? name : "—";
+            vm.Branch = view.Branch is { Length: > 0 } branch ? branch : "—";
+            vm.StatusLabel = StatusLabelOf(view);
+            vm.RelationLabel = RelationLabelOf(view);
+            vm.ChangesLabel = ChangesLabelOf(view);
+            vm.Hint = HintOf(view);
+            vm.Dot = DotOf(view);
+            vm.RelationBrush = RelationBrushOf(view);
+            vm.RowBackground = RepoRowVm.ThemeBrush(row.Id == _selectedRepoId ? "GvRowSelectedBrush" : "GvSurfaceBrush");
+            vm.CanOpenDirectory = row.Actions.CanOpenDirectory;
+            vm.CanOpenRemote = row.Actions.CanOpenRemote;
+            vm.CanFetch = row.Actions.CanFetch;
+            vm.CanPull = row.Actions.CanPull;
+            vm.CanPush = row.Actions.CanPush;
+            vm.IsExpanded = row.Id == _selectedRepoId;
+            vm.ProjectionChanged();
+            desired.Add(vm);
         }
+        // Reconcile instead of clearing the collection: keep focus and realized rows stable.
+        for (var i = 0; i < desired.Count; i++)
+        {
+            if (i < Rows.Count && ReferenceEquals(Rows[i], desired[i])) continue;
+            var previous = Rows.IndexOf(desired[i]);
+            if (previous >= 0) Rows.Move(previous, i);
+            else Rows.Insert(i, desired[i]);
+        }
+        while (Rows.Count > desired.Count) Rows.RemoveAt(Rows.Count - 1);
+        return Task.CompletedTask;
+    }
+
+    private void OnColumnDrag(object sender, DragDeltaEventArgs e)
+    {
+        if (sender is not Thumb thumb || !int.TryParse(thumb.Tag?.ToString(), out var index)) return;
+        ResizeColumn(index, e.HorizontalChange);
+    }
+
+    private void OnColumnKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (sender is not Thumb thumb || !int.TryParse(thumb.Tag?.ToString(), out var index)) return;
+        if (e.Key is not (Windows.System.VirtualKey.Left or Windows.System.VirtualKey.Right)) return;
+        ResizeColumn(index, e.Key == Windows.System.VirtualKey.Left ? -16 : 16);
+        e.Handled = true;
+    }
+
+    private void ResizeColumn(int index, double delta)
+    {
+        _columnWidths ??= TableHeader.ColumnDefinitions.Select(column => new GridLength(column.ActualWidth)).ToArray();
+        var minimum = index switch { 1 => 140, 3 => 90, _ => 30 };
+        _columnWidths[index] = new GridLength(Math.Max(minimum, _columnWidths[index].Value + delta));
+        UpdateTableWidth();
+        ApplyColumns(TableHeader);
+        ApplyColumnsToChildren(RepoList);
+    }
+
+    private void OnTableSizeChanged(object sender, SizeChangedEventArgs e) => UpdateTableWidth();
+    private void UpdateTableWidth()
+    {
+        if (TableContent is null) return;
+        TableContent.Width = Math.Max(TableScroll.ActualWidth,
+            _columnWidths is null ? 624 : _columnWidths.Sum(column => column.Value) + 48);
+    }
+
+    private void ApplyColumnsToChildren(DependencyObject parent)
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is Grid { Name: "RepoDataGrid" } grid) ApplyColumns(grid);
+            ApplyColumnsToChildren(child);
+        }
+    }
+
+    private void ApplyColumns(Grid grid)
+    {
+        if (_columnWidths is null) return;
+        for (var i = 0; i < _columnWidths.Length; i++) grid.ColumnDefinitions[i].Width = _columnWidths[i];
+    }
+
+    private void OnDataGridLoaded(object sender, RoutedEventArgs e) => ApplyColumns((Grid)sender);
+    private void OnRowPointerEntered(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is RepoRowVm row && row.Id != _selectedRepoId)
+            row.RowBackground = RepoRowVm.ThemeBrush("GvHoverBrush");
+    }
+    private void OnRowPointerExited(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is RepoRowVm row && row.Id != _selectedRepoId)
+            row.RowBackground = RepoRowVm.ThemeBrush("GvSurfaceBrush");
+    }
+    private void OnCancelConfirmClick(object sender, RoutedEventArgs e)
+    {
+        if (RowOf(sender) is not { } row) return;
+        row.ConfirmPull = row.ConfirmPush = false;
     }
 
     private void UpdateEmptyStates(uint totalRepos)
@@ -415,7 +562,7 @@ public sealed partial class MainPage : Page
             Relation.LocalAhead => "领先",
             Relation.RemoteAhead => "落后",
             Relation.Diverged => "分叉",
-            Relation.NoRemote => "无远端",
+            Relation.NoRemote => ErrorText.NoComparisonLabel(row),
             _ => "",
         },
     };
@@ -430,7 +577,7 @@ public sealed partial class MainPage : Page
             Relation.LocalAhead => "本地领先",
             Relation.RemoteAhead => "远程领先",
             Relation.Diverged => "分叉",
-            Relation.NoRemote => "无远端",
+            Relation.NoRemote => ErrorText.NoComparisonLabel(row),
             _ => "",
         },
     };
@@ -448,6 +595,7 @@ public sealed partial class MainPage : Page
     {
         ReadState.Pending => "等待首次读取",
         ReadState.Error => ErrorText.For(row.ErrorCode),
+        ReadState.Ok when row.Relation == Relation.NoRemote => ErrorText.NoComparisonHint(row),
         _ => "",
     };
 
@@ -457,11 +605,11 @@ public sealed partial class MainPage : Page
         ReadState.Error => RepoRowVm.ThemeBrush("GvRedBrush"),
         _ => row.Relation switch
         {
-            Relation.Synced => RepoRowVm.ThemeBrush("GvDotSyncedBrush"),
-            Relation.LocalAhead => RepoRowVm.ThemeBrush("GvDotSyncableBrush"),
-            Relation.RemoteAhead => RepoRowVm.ThemeBrush("GvDotSyncableBrush"),
-            Relation.Diverged => RepoRowVm.ThemeBrush("GvDotAttentionBrush"),
-            Relation.NoRemote => RepoRowVm.ThemeBrush("GvDotNoRemoteBrush"),
+            Relation.Synced => RepoRowVm.ThemeBrush("GvGreenBrush"),
+            Relation.LocalAhead => RepoRowVm.ThemeBrush("GvAmberTextBrush"),
+            Relation.RemoteAhead => RepoRowVm.ThemeBrush("GvAmberTextBrush"),
+            Relation.Diverged => RepoRowVm.ThemeBrush("GvRedBrush"),
+            Relation.NoRemote => RepoRowVm.ThemeBrush("GvSlateBrush"),
             _ => RepoRowVm.ThemeBrush("GvSlateBrush"),
         },
     };
@@ -487,7 +635,18 @@ public sealed partial class MainPage : Page
 
     // —— 交互 ——
 
-    private void OnQueryChanged(object sender, TextChangedEventArgs e) => _ = RequeryAsync();
+    private void CancelPendingConfirmations()
+    {
+        foreach (var row in _rowCache.Values) row.ConfirmPull = row.ConfirmPush = false;
+    }
+
+    private void OnQueryChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressQueryChanges) return;
+        CancelProtocolReveal();
+        CancelPendingConfirmations();
+        _ = RequeryAsync();
+    }
 
     private void OnRepoItemClick(object sender, ItemClickEventArgs e)
     {
@@ -495,11 +654,13 @@ public sealed partial class MainPage : Page
         {
             return;
         }
+        CancelProtocolReveal();
         // 点击行为与旧版一致：再点同一行收起。
         _selectedRepoId = _selectedRepoId == clicked.Id ? null : clicked.Id;
         foreach (var row in Rows)
         {
             row.IsExpanded = row.Id == _selectedRepoId;
+            if (!row.IsExpanded) row.ConfirmPull = row.ConfirmPush = false;
             row.RowBackground = row.Id == _selectedRepoId
                 ? RepoRowVm.ThemeBrush("GvRowSelectedBrush")
                 : RepoRowVm.ThemeBrush("GvSurfaceBrush");
@@ -591,12 +752,14 @@ public sealed partial class MainPage : Page
 
     private async void OnFetchClick(object sender, RoutedEventArgs e)
     {
-        if (RowOf(sender) is not { } row || row.IsFetchBusy)
+        if (RowOf(sender) is not { } row || row.IsBusy)
         {
             return;
         }
         row.IsFetchBusy = true;
-        row.ResultText = "";
+        row.ConfirmPull = row.ConfirmPush = false;
+        row.ResultIsError = false;
+        row.ResultText = "Fetch 执行中…";
         try
         {
             var engine = App.Engine!;
@@ -617,7 +780,7 @@ public sealed partial class MainPage : Page
 
     private async void OnPullClick(object sender, RoutedEventArgs e)
     {
-        if (RowOf(sender) is not { } row || row.IsPullBusy)
+        if (RowOf(sender) is not { } row || row.IsBusy)
         {
             return;
         }
@@ -629,7 +792,9 @@ public sealed partial class MainPage : Page
         }
         row.ConfirmPull = false;
         row.IsPullBusy = true;
-        row.ResultText = "";
+        row.ConfirmPull = row.ConfirmPush = false;
+        row.ResultIsError = false;
+        row.ResultText = "Pull 执行中…";
         try
         {
             var engine = App.Engine!;
@@ -650,7 +815,7 @@ public sealed partial class MainPage : Page
 
     private async void OnPushClick(object sender, RoutedEventArgs e)
     {
-        if (RowOf(sender) is not { } row || row.IsPushBusy)
+        if (RowOf(sender) is not { } row || row.IsBusy)
         {
             return;
         }
@@ -662,7 +827,9 @@ public sealed partial class MainPage : Page
         }
         row.ConfirmPush = false;
         row.IsPushBusy = true;
-        row.ResultText = "";
+        row.ConfirmPull = row.ConfirmPush = false;
+        row.ResultIsError = false;
+        row.ResultText = "Push 执行中…";
         try
         {
             var engine = App.Engine!;

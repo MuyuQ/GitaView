@@ -2,7 +2,7 @@
 //
 // 生命周期（实施说明 §12 / 官方 implement-widget-provider-cs 模式）：
 // - CoRegisterClassObject 注册 COM 类对象（REGCLS_MULTIPLEUSE：一个进程服务全部组件）；
-// - 全部组件 Delete 后退出（emptyWidgetListEvent）；Provider 被系统回收后无需常驻；
+// - 全部组件 Delete 后经空闲确认退出；停止接收新请求后才撤销 COM 工厂；
 // - 不创建引擎、不写仓库设置、不访问网络；只读主应用写入的 widget-data.json。
 
 using System.Runtime.CompilerServices;
@@ -35,18 +35,23 @@ internal sealed class WidgetProviderFactory : IClassFactory
         {
             return ClassENoAggregation;
         }
-        // IWidgetProvider 的接口 GUID 取自 WinRT 投影元数据，不手写。
-        var providerGuid = typeof(Microsoft.Windows.Widgets.Providers.IWidgetProvider).GUID;
-        if (riid == providerGuid || riid == new Guid("00000000-0000-0000-C000-000000000046"))
+        try
         {
-            ppvObject = WinRT.MarshalInspectable<Microsoft.Windows.Widgets.Providers.IWidgetProvider>
-                .FromManaged(new GitaViewWidgetProvider());
-            return 0;
+            using var callback = GitaViewWidgetProvider.Lifetime.EnterCallback();
+            // IWidgetProvider 的接口 GUID 取自 WinRT 投影元数据，不手写。
+            var providerGuid = typeof(Microsoft.Windows.Widgets.Providers.IWidgetProvider).GUID;
+            if (riid == providerGuid || riid == new Guid("00000000-0000-0000-C000-000000000046"))
+            {
+                ppvObject = WinRT.MarshalInspectable<Microsoft.Windows.Widgets.Providers.IWidgetProvider>
+                    .FromManaged(new GitaViewWidgetProvider());
+                return 0;
+            }
+            return ENoInterface;
         }
-        return ENoInterface;
+        catch (Exception exception) { return Marshal.GetHRForException(exception); }
     }
 
-    public int LockServer(bool fLock) => 0;
+    public int LockServer(bool fLock) => GitaViewWidgetProvider.Lifetime.LockServer(fLock);
 }
 
 internal static class Program
@@ -64,8 +69,15 @@ internal static class Program
     [DllImport("ole32.dll")]
     private static extern int CoRevokeClassObject(uint dwRegister);
 
+    [DllImport("ole32.dll")]
+    private static extern int CoSuspendClassObjects();
+
+    [DllImport("ole32.dll")]
+    private static extern int CoResumeClassObjects();
+
     private const uint ClsctxLocalServer = 0x4;
     private const uint RegclsMultipleuse = 0x2;
+    private const uint RegclsSuspended = 0x4;
 
     [STAThread]
     private static void Main()
@@ -75,25 +87,33 @@ internal static class Program
             Guid.Parse(ProviderClsid),
             new WidgetProviderFactory(),
             ClsctxLocalServer,
-            RegclsMultipleuse,
+            RegclsMultipleuse | RegclsSuspended,
             out cookie);
         if (hr != 0)
         {
             return; // 注册失败：宿主下次激活会重新拉起进程。
         }
 
-        // 全部组件被 Delete（或恢复为空且空闲确认期满）→ 退出。
-        // 退出事件置位后做最终确认（review R12）：确认期间新组件到达则
-        // Reset 事件继续服务，撤销退出。
-        while (true)
+        bool registered = true;
+        try
         {
-            GitaViewWidgetProvider.EmptyWidgetListEvent.WaitOne();
-            if (GitaViewWidgetProvider.ConfirmIdleExit())
+            Marshal.ThrowExceptionForHR(CoResumeClassObjects());
+            while (true)
             {
-                break;
+                GitaViewWidgetProvider.Lifetime.ExitRequested.WaitOne();
+                if (GitaViewWidgetProvider.Lifetime.TryShutdown(
+                    () => Marshal.ThrowExceptionForHR(CoSuspendClassObjects()),
+                    () => Marshal.ThrowExceptionForHR(CoResumeClassObjects()),
+                    () =>
+                    {
+                        Marshal.ThrowExceptionForHR(CoRevokeClassObject(cookie));
+                        registered = false;
+                    })) break;
             }
-            GitaViewWidgetProvider.EmptyWidgetListEvent.Reset();
         }
-        CoRevokeClassObject(cookie);
+        finally
+        {
+            if (registered) CoRevokeClassObject(cookie);
+        }
     }
 }

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    托盘浮窗（借鉴 Magpie 的托盘弹出交互）：点击托盘图标动效弹出，
+    点击外部 / Esc 关闭。头部（品牌 + 时间 + 摘要）与底部操作区以 1px
+    细分隔线分区；窗口高度跟随内容（列表超过 300px 才滚动），底部按钮
+    右对齐安静样式。收缩窗口模式已按用户决策移除，由本浮窗承载摘要。
+-->
+<Window
+    x:Class="GitaView_Native.TrayFlyoutWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:media="using:Microsoft.UI.Xaml.Media"
+    mc:Ignorable="d">
+    <Window.SystemBackdrop>
+        <media:DesktopAcrylicBackdrop />
+    </Window.SystemBackdrop>
+    <!-- VerticalAlignment=Top：内容自适应高度（Grid 默认拉伸会让
+         ActualHeight 永远等于窗口高度，SizeChanged 无法驱动窗口收缩） -->
+    <Grid x:Name="Root" Background="{ThemeResource GvFlyoutTintBrush}" VerticalAlignment="Top"
+          Language="zh-CN" UseLayoutRounding="True" KeyboardAcceleratorPlacementMode="Hidden">
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Key="Escape" Invoked="OnDismissAccelerator" />
+        </Grid.KeyboardAccelerators>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 头部：品牌 + 最近成功读取时间 + 紧凑摘要（同一分区，下缘分隔线） -->
+        <Border Grid.Row="0" BorderBrush="{ThemeResource GvLineBrush}" BorderThickness="0,0,0,1"
+                Padding="20,16,20,12">
+            <StackPanel Spacing="8">
+                <Grid ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Image Grid.Column="0" Width="28" Height="28" VerticalAlignment="Center">
+                        <Image.Source><SvgImageSource UriSource="ms-appx:///Assets/GitaView.svg"/></Image.Source>
+                    </Image>
+                    <TextBlock Grid.Column="1" Text="GitaView" Style="{StaticResource GvBrandTitle}"
+                               Foreground="{ThemeResource GvInkBrush}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="FlyoutRefreshTime" Grid.Column="2" Text="" FontSize="12" FontFamily="{StaticResource GvUiFontFamily}"
+                               Foreground="{ThemeResource GvMutedBrush}" VerticalAlignment="Center" />
+                </Grid>
+                <TextBlock x:Name="FlyoutSummary" FontSize="13" TextWrapping="Wrap" FontFamily="{StaticResource GvUiFontFamily}"
+                           Foreground="{ThemeResource GvMutedBrush}" LineHeight="20" />
+            </StackPanel>
+        </Border>
+
+        <!-- 需注意仓库列表 / 空态（窗口高度跟随内容；超出 300px 滚动） -->
+        <ScrollViewer Grid.Row="1" Margin="12,10,12,10" VerticalScrollMode="Enabled"
+                      VerticalScrollBarVisibility="Auto" MaxHeight="300">
+            <StackPanel>
+                <TextBlock x:Name="FlyoutEmptyText" Margin="10,8,10,8" FontSize="13" LineHeight="21" FontFamily="{StaticResource GvUiFontFamily}"
+                           TextWrapping="Wrap" Foreground="{ThemeResource GvMutedBrush}" />
+                <ItemsControl x:Name="AttentionList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="9,0,9,4" Padding="12,10" CornerRadius="8"
+                                  Background="{ThemeResource GvRowSelectedBrush}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                         Fill="{Binding Dot}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Name}" FontSize="14" FontFamily="{StaticResource GvUiFontFamily}"
+                                           Margin="12,0,8,0" TextTrimming="CharacterEllipsis"
+                                           ToolTipService.ToolTip="{Binding Name}"
+                                           VerticalAlignment="Center"
+                                           Foreground="{ThemeResource GvInkBrush}" />
+                                <TextBlock Grid.Column="2" Text="{Binding StatusText}" FontSize="13" FontFamily="{StaticResource GvUiFontFamily}"
+                                           VerticalAlignment="Center"
+                                           Foreground="{Binding StatusBrush}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- 底部操作区：右对齐安静按钮（Magpie 式），上缘分隔线 -->
+        <Border Grid.Row="2" BorderBrush="{ThemeResource GvLineBrush}" BorderThickness="0,1,0,0"
+                Padding="14,10,14,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="4">
+                <Button x:Name="FlyoutOpenButton" Content="打开 GitaView" Style="{StaticResource GvQuietButton}"
+                        Padding="14,7" Click="OnOpenClick" />
+                <Button x:Name="FlyoutRefreshButton" Content="刷新" Style="{StaticResource GvQuietButton}"
+                        Padding="14,7" Click="OnFlyoutRefreshClick" />
+                <Button Content="退出" Style="{StaticResource GvQuietButton}"
+                        Padding="14,7" Click="OnExitClick" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

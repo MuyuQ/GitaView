@@ -25,6 +25,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. "$PSScriptRoot\package-layout.ps1"
 Set-Location $RepoRoot
 
 if (-not $SkipBuild) {
@@ -32,14 +33,12 @@ if (-not $SkipBuild) {
     if ($LASTEXITCODE -ne 0) { Write-Error "build failed"; exit 1 }
 }
 
-$layout = "$RepoRoot\apps\windows\GitaView.Native\pkg\build"
-$manifest = Join-Path $layout "AppxManifest.xml"
-if (-not (Test-Path $manifest)) { Write-Error "layout missing AppxManifest.xml (run build-windows.ps1)"; exit 1 }
+$validatedLayout = Assert-NativePackageLayout $RepoRoot $Configuration $Architecture
+$layout = $validatedLayout.LayoutPath
 
 # 版本号来自清单（发布迭代必须递增，同版本 Remove+Add 会复用旧部署文件）。
-[xml]$manifestXml = Get-Content $manifest
-$version = $manifestXml.Package.Identity.Version
-$identityName = $manifestXml.Package.Identity.Name
+$version = $validatedLayout.Version
+$identityName = $validatedLayout.IdentityName
 $outMsix = "$RepoRoot\apps\windows\GitaView.Native\GitaView.Native_${version}_${Architecture}.msix"
 
 $makeappx = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "makeappx.exe" |
@@ -50,13 +49,9 @@ $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse 
     Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
 if (-not $makeappx -or -not $signtool) { Write-Error "Windows SDK tools (makeappx/signtool) not found"; exit 1 }
 
-# 记录实际 Rust profile 与 DLL 来源（review R11）：Release 包必须带 release DLL。
-$rustDir = if ($Configuration -eq "Release") { "release" } else { "debug" }
-$ffiDll = "$RepoRoot\target\$rustDir\gitaview_ffi.dll"
-if (-not (Test-Path $ffiDll)) {
-    Write-Error "gitaview_ffi.dll not found for profile '$rustDir' (run build-windows.ps1 -Configuration $Configuration)"; exit 1
-}
-Write-Host "rust profile: $rustDir; gitaview_ffi.dll sha256: $((Get-FileHash $ffiDll -Algorithm SHA256).Hash)"
+# Log the payload actually passed to makeappx, after validating its profile.
+Write-Host "layout: $layout"
+Write-Host "rust profile: $($validatedLayout.RustProfile); layout gitaview_ffi.dll sha256: $($validatedLayout.FfiHash)"
 
 Write-Host "== makeappx pack =="
 & $makeappx pack /h SHA256 /o /d $layout /p $outMsix

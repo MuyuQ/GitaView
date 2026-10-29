@@ -171,10 +171,10 @@ impl SettingsService {
         let mut warnings = Vec::new();
         let settings = match store::load_json(&path)? {
             store::LoadOutcome::Missing => SettingsData::default(),
-            store::LoadOutcome::Present(text) => {
+            store::LoadOutcome::Present(bytes) => {
                 // 解码成功 ≠ 合法：未知 schema、非法刷新范围、重复 ID、失效引用
                 // 都按损坏隔离后恢复默认值，不解析旧字段、不写 migration marker。
-                match serde_json::from_str::<SettingsData>(&text)
+                match serde_json::from_slice::<SettingsData>(&bytes)
                     .ok()
                     .filter(|settings| validate_settings_data(settings).is_ok())
                 {

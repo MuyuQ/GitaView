@@ -34,20 +34,24 @@ internal sealed class TrayWindow : IDisposable
     private const uint WmClose = 0x0010;
 
     private static uint _taskbarCreatedMessage;
-    private bool _iconAdded;
+    private volatile bool _iconAdded;
     private nint _hwnd;
     private readonly string _tooltip;
     private readonly Action _onOpen;
+    private readonly Action _onToggleFlyout;
     private readonly Action _onRefresh;
     private readonly Action _onExit;
     private readonly Action _onSystemResume;
 
     public nint Hwnd => _hwnd;
+    public bool IsAvailable => _hwnd != 0 && _iconAdded;
 
-    public TrayWindow(string tooltip, Action onOpen, Action onRefresh, Action onExit, Action onSystemResume)
+    public TrayWindow(string tooltip, Action onOpen, Action onToggleFlyout, Action onRefresh,
+        Action onExit, Action onSystemResume)
     {
         _tooltip = tooltip;
         _onOpen = onOpen;
+        _onToggleFlyout = onToggleFlyout;
         _onRefresh = onRefresh;
         _onExit = onExit;
         _onSystemResume = onSystemResume;
@@ -137,6 +141,56 @@ internal sealed class TrayWindow : IDisposable
     private System.Threading.Timer? _reRegisterTimer;
     private int _reRegisterAttempts;
 
+    /// <summary>托盘图标当前屏幕矩形（浮窗锚定；失败返回 null）。</summary>
+    public bool TryGetIconRect(out Windows.Graphics.RectInt32 rect)
+    {
+        rect = default;
+        if (_hwnd == 0)
+        {
+            return false;
+        }
+        var identifier = new NOTIFYICONIDENTIFIER
+        {
+            cbSize = (uint)Marshal.SizeOf<NOTIFYICONIDENTIFIER>(),
+            hWnd = _hwnd,
+            uID = 1,
+        };
+        if (Shell_NotifyIconGetRect(ref identifier, out var win32Rect) == 0
+            && win32Rect.Right > win32Rect.Left)
+        {
+            rect = new Windows.Graphics.RectInt32
+            {
+                X = win32Rect.Left,
+                Y = win32Rect.Top,
+                Width = win32Rect.Right - win32Rect.Left,
+                Height = win32Rect.Bottom - win32Rect.Top,
+            };
+            return true;
+        }
+        return false;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NOTIFYICONIDENTIFIER
+    {
+        public uint cbSize;
+        public nint hWnd;
+        public uint uID;
+        public Guid guidItem;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TRAYRECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("shell32.dll")]
+    private static extern int Shell_NotifyIconGetRect(ref NOTIFYICONIDENTIFIER identifier, out TRAYRECT iconLocation);
+
     private NOTIFYICONDATAW CreateNotifyIconData()
     {
         return new NOTIFYICONDATAW
@@ -208,7 +262,8 @@ internal sealed class TrayWindow : IDisposable
             uint mouse = (uint)(lParam & 0xFFFF);
             if (mouse == WmLbuttonUp)
             {
-                instance._onOpen();
+                // 左键 = 托盘浮窗（Magpie 式交互）；打开主窗口走右键菜单。
+                instance._onToggleFlyout();
             }
             else if (mouse == WmRbuttonUp)
             {
@@ -314,10 +369,11 @@ internal sealed class TrayWindow : IDisposable
 
     private static TrayWindow? Current;
 
-    public static bool TryCreate(string tooltip, Action onOpen, Action onRefresh, Action onExit, Action onSystemResume, out TrayWindow tray)
+    public static bool TryCreate(string tooltip, Action onOpen, Action onToggleFlyout,
+        Action onRefresh, Action onExit, Action onSystemResume, out TrayWindow tray)
     {
         Current = null;
-        tray = new TrayWindow(tooltip, onOpen, onRefresh, onExit, onSystemResume);
+        tray = new TrayWindow(tooltip, onOpen, onToggleFlyout, onRefresh, onExit, onSystemResume);
         if (tray._hwnd == 0 || !tray._iconAdded)
         {
             return false;
