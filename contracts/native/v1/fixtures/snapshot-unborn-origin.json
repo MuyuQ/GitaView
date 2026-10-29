@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fx-session-005",
+  "generation": 1,
+  "stateRevision": 4,
+  "settingsRevision": 1,
+  "attemptedAtMs": 1792800000000,
+  "lastSuccessAtMs": 1792800000000,
+  "refreshState": "ready",
+  "refreshPolicy": { "enabled": true, "intervalMinutes": 5 },
+  "refresh": { "isRefreshing": false, "requestedRequestId": 3, "completedRequestId": 3 },
+  "repos": [
+    {
+      "id": "repo-seed",
+      "name": "seed-repo",
+      "path": "/sample/projects/seed-repo",
+      "readState": "ok",
+      "relation": "no_remote",
+      "branch": "main",
+      "hasCommit": false,
+      "hasOrigin": true,
+      "comparisonBranch": null,
+      "ahead": null,
+      "behind": null,
+      "remoteUrl": "https://github.com/example/seed-repo",
+      "actions": { "canOpenDirectory": true, "canOpenRemote": true, "canFetch": true, "canPull": false, "canPush": false }
+    }
+  ]
+}

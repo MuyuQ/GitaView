@@ -20,8 +20,8 @@ describe("native tray setup contract", () => {
   });
 
   it("reserves tray generations before repository status collection begins", () => {
-    const commands = readProjectFileCompact("src-tauri/src/app_commands.rs");
+    const service = readProjectFileCompact("src-tauri/src/status_refresh.rs");
 
-    expect(commands).toMatch(/begin_tray_menu_update\(\)[\s\S]*spawn_blocking[\s\S]*set_status_menu_if_current/);
+    expect(service).toMatch(/begin_tray_menu_update\(\)[\s\S]*collect_repo_statuses[\s\S]*publish\(&app, &snapshot, tray_generation\)/);
   });
 });

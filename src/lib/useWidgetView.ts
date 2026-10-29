@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { createSnapshotReceiver, type StatusSnapshot } from "./statusSnapshots";
 import { flushSync } from "react-dom";
 import { createRefreshQueue } from "./refreshQueue";
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
-import { listRepoStatuses, getSettings, exitApp, saveWindowState, syncDesktopWidgetFrame } from "./commands";
+import { getRepoSnapshot, getSettings, exitApp, saveWindowState, syncDesktopWidgetFrame } from "./commands";
 import { subscribeToSettingsUpdates } from "./settingsEvents";
 import { subscribeToOpenRepoRequests } from "./deepLink";
 import { hasTauriRuntime } from "./runtime";
@@ -67,7 +69,6 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
   const [initialError, setInitialError] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [lastRefreshAt, setLastRefreshAt] = useState<Date | null>(null);
-  const [refreshSettings, setRefreshSettings] = useState<AppSettings["refresh"] | null>(null);
   const [allowWidgetDrag, setAllowWidgetDrag] = useState(true);
   const [emptySettingsDismissed, setEmptySettingsDismissed] = useState(false);
   const hasLoadedOnce = useRef(false);
@@ -77,7 +78,6 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
   const initialRefreshPending = useRef(false);
 
   const applySettings = useCallback((settings: AppSettings) => {
-    setRefreshSettings(settings.refresh);
     setAllowWidgetDrag(settings.appearance.allowWidgetDrag);
   }, []);
 
@@ -191,6 +191,24 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
     });
   }, []);
 
+  const snapshotReceiver = useRef<ReturnType<typeof createSnapshotReceiver> | null>(null);
+  if (!snapshotReceiver.current) {
+    snapshotReceiver.current = createSnapshotReceiver((snapshot) => {
+      if (snapshot.error) {
+        if (hasLoadedOnce.current) setRefreshError(snapshot.error);
+        else setInitialError(snapshot.error);
+      } else {
+        setRepos(snapshot.repos);
+        if (snapshot.repos.length > 0) setEmptySettingsDismissed(false);
+        setLastRefreshAt(new Date(snapshot.completedAt));
+        setInitialError(null);
+        setRefreshError(null);
+        hasLoadedOnce.current = true;
+      }
+      setInitialLoading(false);
+    });
+  }
+
   const runRefresh = useCallback(() => {
     const opts = { initial: initialRefreshPending.current };
     initialRefreshPending.current = false;
@@ -200,16 +218,8 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
     }
     setRefreshing(true);
     setRefreshError(null);
-    return listRepoStatuses()
-      .then((data) => {
-        if (!resolveRefreshCompletion(requestGeneration, latestRefreshGeneration.current)) return;
-        setRepos(data);
-        if (data.length > 0) {
-          setEmptySettingsDismissed(false);
-        }
-        setLastRefreshAt(new Date());
-        setInitialError(null);
-      })
+    return getRepoSnapshot(!opts.initial)
+      .then((snapshot) => snapshotReceiver.current!(snapshot))
       .catch((err) => {
         if (!resolveRefreshCompletion(requestGeneration, latestRefreshGeneration.current)) return;
         const message = String(err);
@@ -223,7 +233,6 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
         if (!resolveRefreshCompletion(requestGeneration, latestRefreshGeneration.current)) return;
         setInitialLoading(false);
         setRefreshing(false);
-        hasLoadedOnce.current = true;
       });
   }, []);
 
@@ -254,7 +263,23 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
   }, [refreshRepos, showView, reloadSettings]);
 
   useEffect(() => {
-    refreshRepos({ initial: true });
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const subscribe = hasTauriRuntime()
+      ? listen<StatusSnapshot>("repo-status-snapshot", ({ payload }) => {
+        if (!disposed) snapshotReceiver.current!(payload);
+      })
+      : Promise.resolve(() => {});
+    subscribe.then((dispose) => {
+      if (disposed) { dispose(); return; }
+      unlisten = dispose;
+      refreshRepos({ initial: true });
+    }).catch((error) => {
+      if (disposed) return;
+      console.error("订阅仓库状态失败", error);
+      refreshRepos({ initial: true });
+    });
+    return () => { disposed = true; unlisten?.(); };
   }, [refreshRepos]);
 
   useEffect(() => {
@@ -312,13 +337,6 @@ export function useWidgetView(): WidgetViewState & WidgetViewActions {
     document.body.classList.toggle("gv-collapsed-view", transparent);
     return () => document.body.classList.remove("gv-collapsed-view");
   }, [view, windowView, repos.length, initialError, emptySettingsDismissed]);
-
-  useEffect(() => {
-    if (!refreshSettings?.lightweightRefreshEnabled) return;
-    const intervalMinutes = Math.min(Math.max(refreshSettings.intervalMinutes, 1), 60);
-    const id = window.setInterval(() => refreshRepos({ initial: false }), intervalMinutes * 60_000);
-    return () => window.clearInterval(id);
-  }, [refreshSettings, refreshRepos]);
 
   // Deep link 聚焦仓库：gitaview://open/repo/<id> → 展开视图并选中
   const [focusRepoId, setFocusRepoId] = useState<string | null>(null);

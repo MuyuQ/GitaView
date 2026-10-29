@@ -1,0 +1,102 @@
+# GitaView 原生应用独立 CI（N17）。
+# 与旧 Tauri 流程（ci.yml / release.yml）完全独立：旧 v* 标签发布保持原状，
+# 本 workflow 不监听标签、不产出发布安装包（仅无签名开发产物）。
+name: native-ci
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "apps/windows/**"
+      - "contracts/**"
+      - "scripts/native/**"
+      - ".github/workflows/native-ci.yml"
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "apps/windows/**"
+      - "contracts/**"
+      - "scripts/native/**"
+      - ".github/workflows/native-ci.yml"
+
+jobs:
+  windows:
+    # Windows 全链：Rust workspace + C# 测试 + 构建与无签名打包。
+    # 签名 / 安装验证需要测试证书与 GUI，不在 CI 中执行（区分见 platform-matrix）。
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Validate native JSON Schema
+        run: |
+          python -m pip install -r scripts/native/requirements-test.txt
+          python scripts/native/test-contract-schema.py
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Install .NET (Windows App SDK workload)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Rust format
+        run: cargo fmt --all -- --check
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Rust tests
+        run: cargo test --workspace --locked
+      - name: Package layout regression checks
+        run: powershell -NoProfile -File scripts\native\test-package-layout.ps1
+      - name: C# tests (real FFI)
+        run: dotnet test apps\windows\GitaView.Native.Tests\GitaView.Native.Tests.csproj
+      - name: Build (unsigned package layout)
+        run: powershell -NoProfile -File scripts\native\build-windows.ps1 -Configuration Debug -Architecture x64
+      - name: Package (unsigned dev artifact)
+        run: powershell -NoProfile -File scripts\native\package-windows.ps1 -Configuration Debug -Architecture x64 -SkipBuild
+      - name: Upload dev artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitaview-native-windows-dev
+          path: apps/windows/GitaView.Native/*.msix
+          if-no-files-found: error
+
+  macos-core:
+    # macOS 上验证共享 Rust 核心（跨平台）：gitaview-core / gitaview-ffi 的
+    # 测试与静态检查。原生 macOS 应用与 WidgetKit 构建仍阻塞于签名身份
+    #（见 docs/native-platform-matrix.md），不在此伪装验证。
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Validate native JSON Schema
+        run: |
+          python -m pip install -r scripts/native/requirements-test.txt
+          python scripts/native/test-contract-schema.py
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+          components: rustfmt, clippy
+      - name: Rust format
+        run: cargo fmt --all -- --check
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Rust tests (core on macOS)
+        run: cargo test --workspace --locked
+      - name: Apple targets static check
+        # 共享核心必须同时对两个 Apple 目标编译通过（不替代 Mac 实机测试/链接）。
+        run: |
+          cargo check --workspace --locked --target aarch64-apple-darwin
+          cargo check --workspace --locked --target x86_64-apple-darwin

@@ -24,3 +24,9 @@ src-tauri/widget-bridge/libWidgetReloader.a
 
 *.sync-conflict-*
 .venv/
+# .NET 原生工程构建产物
+apps/windows/**/bin/
+apps/windows/**/obj/
+apps/windows/GitaView.Native/pkg/
+apps/windows/**/*.msix
+apps/windows/**/*.cer

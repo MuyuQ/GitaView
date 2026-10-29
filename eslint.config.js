@@ -4,7 +4,7 @@ import globals from "globals";
 
 export default tseslint.config(
   {
-    ignores: ["dist/", "node_modules/", "src-tauri/target/", "coverage/"],
+    ignores: ["dist/", "node_modules/", "target/", "src-tauri/target/", "coverage/", ".zcode/"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -24,7 +24,7 @@ export default tseslint.config(
   },
   {
     // 脚本与配置文件运行在 Node 环境；.cjs 脚本按 CommonJS 约定使用 require
-    files: ["*.cjs", "scripts/**/*.cjs"],
+    files: ["*.cjs", "scripts/**/*.{cjs,mjs}"],
     languageOptions: {
       globals: { ...globals.node },
     },

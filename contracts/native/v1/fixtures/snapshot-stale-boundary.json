@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fx-session-008",
+  "generation": 6,
+  "stateRevision": 18,
+  "settingsRevision": 4,
+  "attemptedAtMs": 1790000600000,
+  "lastSuccessAtMs": 1790000000000,
+  "refreshState": "ready",
+  "refreshPolicy": { "enabled": true, "intervalMinutes": 10 },
+  "refresh": { "isRefreshing": false, "requestedRequestId": 11, "completedRequestId": 11 },
+  "repos": [
+    {
+      "id": "repo-api",
+      "name": "backend-api",
+      "path": "/sample/projects/api",
+      "readState": "ok",
+      "relation": "synced",
+      "branch": "main",
+      "hasCommit": true,
+      "hasOrigin": true,
+      "comparisonBranch": "main",
+      "ahead": 0,
+      "behind": 0,
+      "remoteUrl": "https://github.com/example/api",
+      "actions": { "canOpenDirectory": true, "canOpenRemote": true, "canFetch": true, "canPull": false, "canPush": false }
+    }
+  ]
+}

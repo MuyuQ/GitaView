@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 打包应用不需要 DeploymentManager；自动初始化失败会 Environment.Exit
+         导致 COM 激活 CO_E_SERVER_EXEC_FAILURE（N14 同款实测结论）。 -->
+    <WindowsAppSdkAutoInitialize>false</WindowsAppSdkAutoInitialize>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <!-- 框架依赖 + RID 的 apphost 不做全局运行时查找；托管宿主场景需要
+         EnableDynamicLoading 才能定位已安装的 .NET 运行时（实测报
+         "You must install or update .NET"）。 -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GitaView.Native.Contracts\GitaView.Native.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

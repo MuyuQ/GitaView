@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>GitaView</title>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="#202733"/>
+  <path d="M46 37V91M82 37V49C82 69 46 61 46 81" fill="none" stroke="#F7F9FC" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="46" cy="34" r="11" fill="#F7F9FC"/>
+  <circle cx="46" cy="94" r="11" fill="#F7F9FC"/>
+  <circle cx="82" cy="34" r="11" fill="#7CE2B6"/>
+</svg>

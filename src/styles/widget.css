@@ -128,6 +128,13 @@
   font-weight: 600;
 }
 
+/* 折叠态刷新失败提示：文字 + 琥珀点，避免过期数据毫无征兆 */
+.summary-item.stale-item {
+  color: var(--gv-amber-text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .status-dot {
   width: 6px;
   height: 6px;
@@ -475,6 +482,33 @@
 
 .col-resize-handle:focus-visible {
   outline: 2px solid var(--gv-accent-soft);
+  outline-offset: 1px;
+}
+
+/* 列头：文字 + 固定占位的调宽把手（不随 hover/focus 移动布局） */
+.col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.col-resize-handle {
+  flex: none;
+  width: 4px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--gv-line);
+  cursor: col-resize;
+}
+
+.col-resize-handle:hover,
+.col-resize-handle:focus-visible {
+  background: rgba(34, 100, 242, 0.55);
+}
+
+.col-resize-handle:focus-visible {
+  outline: 2px solid rgba(34, 100, 242, 0.45);
   outline-offset: 1px;
 }
 

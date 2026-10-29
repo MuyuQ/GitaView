@@ -1,0 +1,11 @@
+<Window x:Class="GitaView_Native.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:media="using:Microsoft.UI.Xaml.Media" Title="GitaView">
+    <Window.SystemBackdrop>
+        <media:DesktopAcrylicBackdrop />
+    </Window.SystemBackdrop>
+    <Grid x:Name="RootShell" Background="Transparent" UseLayoutRounding="True" Language="zh-CN">
+        <Frame x:Name="RootFrame"/>
+    </Grid>
+</Window>

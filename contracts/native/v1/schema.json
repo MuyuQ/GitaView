@@ -1,0 +1,545 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://gitaview.dev/contracts/native/v1/schema.json",
+  "title": "GitaView native contract v1 (frozen at N09)",
+  "description": "原型子集：探针、应用快照、Widget 投影与统一 envelope。N09 冻结前必须补齐 settings / view / 生命周期等全部 DTO（见同目录 README）。计数的和不变式（四桶+pending=total 等）无法用 schema 表达，由三方测试断言。",
+  "definitions": {
+    "uint64": { "type": "integer", "minimum": 0, "maximum": 18446744073709551615 },
+    "uint32": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "unixMs": { "$ref": "#/definitions/uint64" },
+    "errorCode": {
+      "type": "string",
+      "enum": [
+        "INVALID_ARGUMENT",
+        "INVALID_PATH",
+        "GIT_NOT_FOUND",
+        "REPO_NOT_FOUND",
+        "REPO_BUSY",
+        "ORIGIN_REQUIRED",
+        "COMPARISON_REQUIRED",
+        "CONFIRMATION_REQUIRED",
+        "OPERATION_UNAVAILABLE",
+        "SETTINGS_CONFLICT",
+        "SETTINGS_IO",
+        "GIT_FAILED",
+        "GIT_TIMEOUT",
+        "ENGINE_STOPPING"
+      ]
+    },
+    "errorObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code"],
+      "properties": {
+        "code": { "$ref": "#/definitions/errorCode" },
+        "message": { "type": "string", "description": "可选安全描述；不含用户路径、凭据或原始 Git 输出" }
+      }
+    },
+    "relation": {
+      "type": "string",
+      "enum": ["synced", "local_ahead", "remote_ahead", "diverged", "no_remote"],
+      "description": "五种 Git 关系；error 与 pending 不是关系，分别是 readState=error / pending"
+    },
+    "readState": { "type": "string", "enum": ["pending", "ok", "error"] },
+    "refreshState": { "type": "string", "enum": ["pending", "ready", "failed"] },
+    "repoActions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canOpenDirectory", "canOpenRemote", "canFetch", "canPull", "canPush"],
+      "properties": {
+        "canOpenDirectory": { "type": "boolean" },
+        "canOpenRemote": { "type": "boolean" },
+        "canFetch": { "type": "boolean" },
+        "canPull": { "type": "boolean" },
+        "canPush": { "type": "boolean" }
+      }
+    },
+    "repoStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "path", "readState", "actions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "description": "稳定机器标识，不用界面文字" },
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "groupId": { "type": ["string", "null"], "description": "null = 未分组" },
+        "readState": { "$ref": "#/definitions/readState" },
+        "relation": { "type": ["string", "null"], "enum": ["synced", "local_ahead", "remote_ahead", "diverged", "no_remote", null] },
+        "branch": { "type": ["string", "null"] },
+        "hasCommit": { "type": ["boolean", "null"] },
+        "hasOrigin": { "type": ["boolean", "null"] },
+        "comparisonBranch": { "type": ["string", "null"] },
+        "ahead": { "type": ["integer", "null"], "minimum": 0 },
+        "behind": { "type": ["integer", "null"], "minimum": 0 },
+        "remoteUrl": { "type": ["string", "null"], "description": "浏览器可打开的 http(s) URL；不安全的 origin 为 null" },
+        "error": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorObject" }] },
+        "actions": { "$ref": "#/definitions/repoActions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "readState": { "const": "ok" } } },
+          "then": {
+            "required": ["relation", "branch", "hasCommit", "hasOrigin", "ahead", "behind"],
+            "properties": { "relation": { "type": "string" }, "error": { "type": "null" } }
+          }
+        },
+        {
+          "if": { "properties": { "readState": { "const": "error" } } },
+          "then": {
+            "required": ["error"],
+            "properties": {
+              "error": { "$ref": "#/definitions/errorObject" },
+              "relation": { "type": "null" },
+              "branch": { "type": "null" },
+              "hasCommit": { "type": "null" },
+              "hasOrigin": { "type": "null" },
+              "comparisonBranch": { "type": "null" },
+              "ahead": { "type": "null" },
+              "behind": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "readState": { "const": "pending" } } },
+          "then": {
+            "properties": {
+              "relation": { "type": "null" },
+              "branch": { "type": "null" },
+              "hasCommit": { "type": "null" },
+              "hasOrigin": { "type": "null" },
+              "comparisonBranch": { "type": "null" },
+              "ahead": { "type": "null" },
+              "behind": { "type": "null" },
+              "remoteUrl": { "type": "null" },
+              "error": { "type": "null" }
+            }
+          }
+        }
+      ]
+    },
+    "refreshPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "intervalMinutes"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "intervalMinutes": { "type": "integer", "minimum": 1, "maximum": 60 }
+      }
+    },
+    "refreshProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["isRefreshing", "requestedRequestId", "completedRequestId"],
+      "properties": {
+        "isRefreshing": { "type": "boolean" },
+        "requestedRequestId": { "$ref": "#/definitions/uint64" },
+        "completedRequestId": { "$ref": "#/definitions/uint64" }
+      }
+    },
+    "appSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion", "sessionId", "generation", "stateRevision", "settingsRevision",
+        "attemptedAtMs", "lastSuccessAtMs", "refreshState", "refreshPolicy", "refresh", "repos"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "generation": { "$ref": "#/definitions/uint64", "description": "仅计被接受的扫描完成；初始 0 不是全部同步" },
+        "stateRevision": { "$ref": "#/definitions/uint64" },
+        "settingsRevision": { "$ref": "#/definitions/uint64" },
+        "attemptedAtMs": { "type": ["integer", "null"], "minimum": 0 },
+        "lastSuccessAtMs": { "type": ["integer", "null"], "minimum": 0 },
+        "refreshState": { "$ref": "#/definitions/refreshState" },
+        "refreshError": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorObject" }] },
+        "refreshPolicy": { "$ref": "#/definitions/refreshPolicy" },
+        "refresh": { "$ref": "#/definitions/refreshProgress" },
+        "repos": { "type": "array", "items": { "$ref": "#/definitions/repoStatus" } }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "refreshState": { "const": "pending" } } },
+          "then": { "properties": { "attemptedAtMs": { "type": "null" }, "lastSuccessAtMs": { "type": "null" }, "refreshError": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "refreshState": { "const": "ready" } } },
+          "then": { "properties": { "attemptedAtMs": { "$ref": "#/definitions/unixMs" }, "lastSuccessAtMs": { "$ref": "#/definitions/unixMs" }, "refreshError": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "refreshState": { "const": "failed" } } },
+          "then": { "required": ["refreshError"], "properties": { "attemptedAtMs": { "$ref": "#/definitions/unixMs" }, "refreshError": { "$ref": "#/definitions/errorObject" } } }
+        }
+      ]
+    },
+    "widgetCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "synced", "localAhead", "remoteAhead", "diverged", "noRemote", "error", "pending"],
+      "properties": {
+        "total": { "$ref": "#/definitions/uint32" },
+        "synced": { "$ref": "#/definitions/uint32" },
+        "localAhead": { "$ref": "#/definitions/uint32" },
+        "remoteAhead": { "$ref": "#/definitions/uint32" },
+        "diverged": { "$ref": "#/definitions/uint32" },
+        "noRemote": { "$ref": "#/definitions/uint32" },
+        "error": { "$ref": "#/definitions/uint32" },
+        "pending": { "$ref": "#/definitions/uint32" }
+      }
+    },
+    "compactCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["synced", "syncable", "needsAttention", "noRemote"],
+      "properties": {
+        "synced": { "$ref": "#/definitions/uint32" },
+        "syncable": { "$ref": "#/definitions/uint32" },
+        "needsAttention": { "$ref": "#/definitions/uint32" },
+        "noRemote": { "$ref": "#/definitions/uint32" }
+      }
+    },
+    "widgetRepo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "readState"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "readState": { "$ref": "#/definitions/readState" },
+        "relation": { "type": ["string", "null"], "enum": ["diverged", "remote_ahead", "local_ahead", "error", null] },
+        "errorCode": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorCode" }] }
+      }
+    },
+    "widgetSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion", "sessionId", "generation", "stateRevision", "settingsRevision",
+        "attemptedAtMs", "lastSuccessAtMs", "refreshState", "refreshPolicy",
+        "counts", "compact", "attention"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "generation": { "$ref": "#/definitions/uint64" },
+        "stateRevision": { "$ref": "#/definitions/uint64" },
+        "settingsRevision": { "$ref": "#/definitions/uint64" },
+        "attemptedAtMs": { "type": ["integer", "null"], "minimum": 0 },
+        "lastSuccessAtMs": { "type": ["integer", "null"], "minimum": 0 },
+        "refreshState": { "$ref": "#/definitions/refreshState" },
+        "refreshErrorCode": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorCode" }] },
+        "refreshPolicy": { "$ref": "#/definitions/refreshPolicy" },
+        "counts": { "$ref": "#/definitions/widgetCounts" },
+        "compact": { "$ref": "#/definitions/compactCounts" },
+        "attention": { "type": "array", "maxItems": 10, "items": { "$ref": "#/definitions/widgetRepo" } }
+      }
+    },
+    "probeRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": { "path": { "type": "string", "minLength": 1, "description": "绝对路径" } }
+    },
+    "relationFilter": {
+      "type": "string",
+      "enum": ["all", "error", "synced", "local_ahead", "remote_ahead", "diverged", "no_remote"],
+      "description": "pending 不是关系：仅 all 包含 pending 行"
+    },
+    "viewQuery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "groupId": { "type": ["string", "null"], "description": "null = 全部仓库；指向不存在分组时核心切回全部" },
+        "relationFilter": { "$ref": "#/definitions/relationFilter" },
+        "query": { "type": "string", "description": "搜索 name / path / branch / group name，Unicode lowercase 包含" }
+      }
+    },
+    "groupCount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "count"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "count": { "$ref": "#/definitions/uint32" }
+      }
+    },
+    "viewResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sessionId", "stateRevision", "generation", "settingsRevision",
+        "effective", "summaryCounts", "summaryCompact", "groups", "statusCounts", "rows"
+      ],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "stateRevision": { "$ref": "#/definitions/uint64" },
+        "generation": { "$ref": "#/definitions/uint64" },
+        "settingsRevision": { "$ref": "#/definitions/uint64" },
+        "effective": { "$ref": "#/definitions/viewQuery", "description": "协调后的有效筛选；搜索零结果不清空搜索" },
+        "summaryCounts": { "$ref": "#/definitions/widgetCounts", "description": "全部仓库摘要，不受筛选影响" },
+        "summaryCompact": { "$ref": "#/definitions/compactCounts" },
+        "groups": { "type": "array", "items": { "$ref": "#/definitions/groupCount" }, "description": "组计数基于全部仓库" },
+        "statusCounts": { "$ref": "#/definitions/widgetCounts", "description": "只基于所选组，不随状态筛选或搜索缩小" },
+        "rows": { "type": "array", "items": { "$ref": "#/definitions/repoStatus" }, "description": "依次应用分组、状态筛选、搜索后排序" }
+      }
+    },
+    "repoSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "path"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1, "description": "规范化绝对路径" },
+        "groupId": { "type": ["string", "null"] }
+      }
+    },
+    "groupSettings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "settingsData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "revision", "repos", "groups", "refresh"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "revision": { "$ref": "#/definitions/uint64", "minimum": 1 },
+        "repos": { "type": "array", "items": { "$ref": "#/definitions/repoSettings" } },
+        "groups": { "type": "array", "items": { "$ref": "#/definitions/groupSettings" } },
+        "defaultGroupId": { "type": ["string", "null"] },
+        "refresh": { "$ref": "#/definitions/refreshPolicy" }
+      }
+    },
+    "settingsEditable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["groups", "refresh"],
+      "properties": {
+        "groups": { "type": "array", "items": { "$ref": "#/definitions/groupSettings" } },
+        "defaultGroupId": { "type": ["string", "null"] },
+        "refresh": { "$ref": "#/definitions/refreshPolicy" },
+        "repoGroups": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["repoId"],
+            "properties": {
+              "repoId": { "type": "string", "minLength": 1 },
+              "groupId": { "type": ["string", "null"] }
+            }
+          }
+        }
+      }
+    },
+    "settingsSaveInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedRevision", "settings"],
+      "properties": {
+        "expectedRevision": { "$ref": "#/definitions/uint64", "minimum": 1 },
+        "settings": { "$ref": "#/definitions/settingsEditable" }
+      }
+    },
+    "engineCreateInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataDirectory", "logDirectory"],
+      "properties": {
+        "dataDirectory": { "type": "string", "minLength": 1, "description": "绝对私有路径，宿主解析注入；绝不指向旧 Tauri 目录" },
+        "logDirectory": { "type": "string", "minLength": 1 }
+      }
+    },
+    "startupWarningCode": { "type": "string", "enum": ["SETTINGS_RECOVERED"] },
+    "engineCreateData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "abiVersion", "startupWarnings"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "abiVersion": { "const": 1 },
+        "startupWarnings": { "type": "array", "items": { "$ref": "#/definitions/startupWarningCode" } }
+      }
+    },
+    "scanDirectoryInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": { "path": { "type": "string", "minLength": 1, "description": "绝对路径" } }
+    },
+    "scanDirectoryData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths", "truncated"],
+      "properties": {
+        "paths": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "truncated": { "type": "boolean", "description": "预算 / 死线 / 停止中止时 true，不能当已找全" }
+      }
+    },
+    "repoAddInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "groupId": { "type": ["string", "null"] }
+      }
+    },
+    "repoAddData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "settingsRevision"],
+      "properties": {
+        "repo": { "$ref": "#/definitions/repoSettings" },
+        "settingsRevision": { "$ref": "#/definitions/uint64" }
+      }
+    },
+    "repoRemoveData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["settingsRevision"],
+      "properties": { "settingsRevision": { "$ref": "#/definitions/uint64" } }
+    },
+    "repoOperation": { "type": "string", "enum": ["fetch", "pull", "push"] },
+    "repoOperationData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repoId", "operation"],
+      "properties": {
+        "repoId": { "type": "string", "minLength": 1 },
+        "operation": { "$ref": "#/definitions/repoOperation" }
+      }
+    },
+    "refreshRequestData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "requestId"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "requestId": { "$ref": "#/definitions/uint64" }
+      }
+    },
+    "snapshotWaitInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sessionId", "stateRevision"],
+      "properties": {
+        "sessionId": { "type": "string", "minLength": 1 },
+        "stateRevision": { "$ref": "#/definitions/uint64" }
+      }
+    },
+    "repoTargetKind": { "type": "string", "enum": ["directory", "remote"] },
+    "repoTargetInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repoId", "kind"],
+      "properties": {
+        "repoId": { "type": "string", "minLength": 1 },
+        "kind": { "$ref": "#/definitions/repoTargetKind" }
+      }
+    },
+    "repoTargetData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": { "$ref": "#/definitions/repoTargetKind" },
+        "value": { "type": "string", "minLength": 1, "description": "directory：仓库路径；remote：浏览器安全 http(s) URL" }
+      }
+    },
+    "lifecycleValue": { "type": "string", "enum": ["running", "stopping", "stopped"] },
+    "lifecycleData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lifecycle"],
+      "properties": { "lifecycle": { "$ref": "#/definitions/lifecycleValue" } }
+    },
+    "probeResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["readState"],
+      "properties": {
+        "readState": { "$ref": "#/definitions/readState" },
+        "relation": { "type": ["string", "null"], "enum": ["synced", "local_ahead", "remote_ahead", "diverged", "no_remote", null] },
+        "branch": { "type": ["string", "null"] },
+        "hasCommit": { "type": ["boolean", "null"] },
+        "hasOrigin": { "type": ["boolean", "null"] },
+        "comparisonBranch": { "type": ["string", "null"] },
+        "ahead": { "type": ["integer", "null"], "minimum": 0 },
+        "behind": { "type": ["integer", "null"], "minimum": 0 },
+        "remoteUrl": { "type": ["string", "null"] },
+        "error": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorObject" }] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "readState": { "const": "ok" } } },
+          "then": { "required": ["relation", "branch", "hasCommit", "hasOrigin", "ahead", "behind"] }
+        },
+        {
+          "if": { "properties": { "readState": { "const": "error" } } },
+          "then": { "required": ["error"] }
+        }
+      ]
+    },
+    "envelopeOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "ok", "data", "error"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "ok": { "const": true },
+        "data": {},
+        "error": { "type": "null" }
+      }
+    },
+    "envelopeError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "ok", "data", "error"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "ok": { "const": false },
+        "data": { "type": "null" },
+        "error": { "$ref": "#/definitions/errorObject" }
+      }
+    },
+    "envelope": {
+      "oneOf": [
+        { "$ref": "#/definitions/envelopeOk" },
+        { "$ref": "#/definitions/envelopeError" }
+      ]
+    }
+  },
+  "type": "object",
+  "anyOf": [
+    { "$ref": "#/definitions/envelope" },
+    { "$ref": "#/definitions/appSnapshot" },
+    { "$ref": "#/definitions/widgetSnapshot" },
+    { "$ref": "#/definitions/probeRequest" },
+    { "$ref": "#/definitions/probeResult" },
+    { "$ref": "#/definitions/viewQuery" },
+    { "$ref": "#/definitions/viewResult" },
+    { "$ref": "#/definitions/settingsData" },
+    { "$ref": "#/definitions/settingsSaveInput" },
+    { "$ref": "#/definitions/engineCreateInput" },
+    { "$ref": "#/definitions/engineCreateData" },
+    { "$ref": "#/definitions/scanDirectoryInput" },
+    { "$ref": "#/definitions/scanDirectoryData" },
+    { "$ref": "#/definitions/repoAddInput" },
+    { "$ref": "#/definitions/repoAddData" },
+    { "$ref": "#/definitions/repoRemoveData" },
+    { "$ref": "#/definitions/repoOperationData" },
+    { "$ref": "#/definitions/refreshRequestData" },
+    { "$ref": "#/definitions/snapshotWaitInput" },
+    { "$ref": "#/definitions/repoTargetInput" },
+    { "$ref": "#/definitions/repoTargetData" },
+    { "$ref": "#/definitions/lifecycleData" }
+  ]
+}

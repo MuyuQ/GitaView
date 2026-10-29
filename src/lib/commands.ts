@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AppSettings, RepoRecord, RepoStatus } from "../types";
 import { hasTauriRuntime } from "./runtime";
+import type { StatusSnapshot } from "./statusSnapshots";
 
 const previewRepoRoot = "~/projects";
 
@@ -140,6 +141,14 @@ export function removeRepository(repoId: string): Promise<void> {
 export function listRepoStatuses(): Promise<RepoStatus[]> {
   if (!hasTauriRuntime()) return previewResult(previewStatuses);
   return invoke<RepoStatus[]>("list_repo_statuses");
+}
+
+let previewSnapshotGeneration = 0;
+export async function getRepoSnapshot(fresh: boolean): Promise<StatusSnapshot> {
+  if (!hasTauriRuntime()) {
+    return { generation: ++previewSnapshotGeneration, completedAt: Date.now(), repos: await previewResult(previewStatuses), error: null };
+  }
+  return invoke<StatusSnapshot>("get_repo_snapshot", { fresh });
 }
 
 export function fetchRepo(repoId: string): Promise<string> {

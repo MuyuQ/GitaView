@@ -27,13 +27,14 @@ runs the same test suite, then builds signed installers via `tauri-apps/tauri-ac
 | Layer | Key files | Notes |
 |-------|-----------|-------|
 | Tauri commands | `src-tauri/src/app_commands.rs` | All IPC commands exposed to React; fixed arg arrays only |
-| Git execution | `src-tauri/src/git/commands.rs` | Subprocess with fixed args; `run_git`, `run_git_args` |
-| Git worktree | `src-tauri/src/git/worktree.rs` | Preflight: Clean/Dirty/Conflicted/Detached |
+| Git execution | `src-tauri/src/git/{commands,process}.rs` | Fixed args; deadline covers process exit and pipe reads; Windows Job Object / macOS process group |
+| Git preflight | `src-tauri/src/repo_operation.rs` | Remote relation checks; Fetch requires origin but no existing commit |
 | Desktop widget | `src-tauri/src/desktop_widget/{macos,windows,unsupported}.rs` | Platform-conditional via `cfg(target_os)` |
 | Persistence | `src-tauri/src/storage/store.rs` | Atomic JSON writes (temp file + rename) |
-| Tray | `src-tauri/src/tray_status.rs` | Async refresh with generation guard |
+| Status refresh | `src-tauri/src/status_refresh.rs` | One scan at a time, coalesced follow-up, native timer, shared versioned snapshots |
+| Tray | `src-tauri/src/tray_status.rs` | Main-thread menu updates with generation guard; requests scans through status refresh service |
 | Status model | `src/lib/statusModel.ts` | Sorting, filtering, bucketing, action availability |
-| React entry | `src/App.tsx` | Widget modes, refresh lifecycle |
+| React entry | `src/App.tsx`, `src/lib/useWidgetView.ts` | Widget modes; subscribes to snapshots and ignores older generations |
 | Settings UI | `src/components/settings/` | Repo, group, refresh, safety, appearance |
 | Product spec | `DESIGN_AND_BUILD_SPEC.md` | v1 contract |
 
@@ -99,11 +100,12 @@ arbitrary command panels.
 - **Key files:**
   - `src-tauri/widget-extension/` - Widget Extension project
   - `src-tauri/src/widget_data.rs` - Data writer module (macOS only; writes trailing-edge debounced atomic JSON)
+  - `src-tauri/widget-bridge/WidgetReloader.swift` - C ABI bridge to `WidgetCenter.shared.reloadAllTimelines()`; built for Cargo's target in `OUT_DIR`
   - `src-tauri/tauri.conf.json` - Bundle config and deep link setup
 
 ### Windows Widget
 
 - **Status:** Keep current implementation (Progman/WorkerW reparenting)
-- **Reason:** Windows 11 Widgets Board has no public third-party extension API
+- **Reason:** Windows Widgets Board providers target the board, not the desktop surface used by this app
 - **Current implementation:** `src-tauri/src/desktop_widget/windows.rs`
-- **Note:** This is already the best approach for third-party desktop widgets on Windows
+- **Note:** Progman/WorkerW embedding depends on Explorer behavior and requires compatibility testing

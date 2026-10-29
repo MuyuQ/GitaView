@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="GvFilterSurfaceBrush" Color="#99F2F5F9"/>
+            <SolidColorBrush x:Key="GvTableHeaderBrush" Color="#B3E7EDF4"/>
+            <Thickness x:Key="GvInputBorderThickness">0</Thickness>
+            <SolidColorBrush x:Key="GvInkBrush" Color="#202733"/>
+            <SolidColorBrush x:Key="GvMutedBrush" Color="#445164"/>
+            <SolidColorBrush x:Key="GvLineBrush" Color="#D5DDE7"/>
+            <SolidColorBrush x:Key="GvBgBrush" Color="#66F7F9FC"/>
+            <SolidColorBrush x:Key="GvSurfaceBrush" Color="#E6FFFFFF"/>
+            <SolidColorBrush x:Key="GvHoverBrush" Color="#66E7EDF4"/>
+            <SolidColorBrush x:Key="GvGreenBrush" Color="#237B50"/>
+            <SolidColorBrush x:Key="GvAmberTextBrush" Color="#8A5A0A"/>
+            <SolidColorBrush x:Key="GvRedBrush" Color="#B03D30"/>
+            <SolidColorBrush x:Key="GvSlateBrush" Color="#64748B"/>
+            <SolidColorBrush x:Key="GvSelectionBrush" Color="#202733"/>
+            <SolidColorBrush x:Key="GvOnSelectionBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="GvRowSelectedBrush" Color="#73E7EDF4"/>
+            <SolidColorBrush x:Key="GvFlyoutTintBrush" Color="#F2F7F9FC"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="GvFilterSurfaceBrush" Color="#99151A21"/>
+            <SolidColorBrush x:Key="GvTableHeaderBrush" Color="#B3232C38"/>
+            <Thickness x:Key="GvInputBorderThickness">0</Thickness>
+            <SolidColorBrush x:Key="GvInkBrush" Color="#EDF0F5"/>
+            <SolidColorBrush x:Key="GvMutedBrush" Color="#BDC6D4"/>
+            <SolidColorBrush x:Key="GvLineBrush" Color="#3C4757"/>
+            <SolidColorBrush x:Key="GvBgBrush" Color="#590F1318"/>
+            <SolidColorBrush x:Key="GvSurfaceBrush" Color="#D9191E26"/>
+            <SolidColorBrush x:Key="GvHoverBrush" Color="#66252D38"/>
+            <SolidColorBrush x:Key="GvGreenBrush" Color="#75CE9D"/>
+            <SolidColorBrush x:Key="GvAmberTextBrush" Color="#EDC078"/>
+            <SolidColorBrush x:Key="GvRedBrush" Color="#FF9E91"/>
+            <SolidColorBrush x:Key="GvSlateBrush" Color="#BDC6D4"/>
+            <SolidColorBrush x:Key="GvSelectionBrush" Color="#DCE5F2"/>
+            <SolidColorBrush x:Key="GvOnSelectionBrush" Color="#15191F"/>
+            <SolidColorBrush x:Key="GvRowSelectedBrush" Color="#73252D38"/>
+            <SolidColorBrush x:Key="GvFlyoutTintBrush" Color="#E615191F"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="GvFilterSurfaceBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="GvTableHeaderBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <Thickness x:Key="GvInputBorderThickness">1</Thickness>
+            <SolidColorBrush x:Key="GvInkBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="GvMutedBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="GvLineBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="GvBgBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="GvSurfaceBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="GvHoverBrush" Color="{ThemeResource SystemColorHighlightColor}"/>
+            <SolidColorBrush x:Key="GvGreenBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="GvAmberTextBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="GvRedBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="GvSlateBrush" Color="{ThemeResource SystemColorWindowTextColor}"/>
+            <SolidColorBrush x:Key="GvSelectionBrush" Color="{ThemeResource SystemColorHighlightColor}"/>
+            <SolidColorBrush x:Key="GvOnSelectionBrush" Color="{ThemeResource SystemColorHighlightTextColor}"/>
+            <SolidColorBrush x:Key="GvRowSelectedBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+            <SolidColorBrush x:Key="GvFlyoutTintBrush" Color="{ThemeResource SystemColorWindowColor}"/>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+    <x:Double x:Key="GvTitleFontSize">17</x:Double>
+    <x:Double x:Key="GvBodyFontSize">14</x:Double>
+    <x:Double x:Key="GvCaptionFontSize">13</x:Double>
+    <FontFamily x:Key="GvUiFontFamily">Microsoft YaHei UI</FontFamily>
+    <FontFamily x:Key="GvMonoFontFamily">Cascadia Mono</FontFamily>
+    <Style x:Key="GvBrandTitle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource GvUiFontFamily}"/>
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="UseLayoutRounding" Value="True"/>
+    </Style>
+    <Style TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource GvUiFontFamily}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="UseLayoutRounding" Value="True"/>
+    </Style>
+    <Style x:Key="GvButton" TargetType="Button">
+        <Setter Property="FontFamily" Value="{StaticResource GvUiFontFamily}"/>
+        <Setter Property="UseLayoutRounding" Value="True"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="MinHeight" Value="34"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="Padding" Value="12,5"/>
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="Foreground" Value="{ThemeResource GvInkBrush}"/>
+        <Setter Property="Background" Value="{ThemeResource GvSurfaceBrush}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource GvLineBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="UseSystemFocusVisuals" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="ButtonRoot" Background="Transparent">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="HoverLayer.Opacity" Value="0.45"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="HoverLayer.Opacity" Value="0.8"/>
+                                        <Setter Target="ButtonRoot.Opacity" Value="0.8"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="ButtonRoot.Opacity" Value="0.4"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}"/>
+                        <Border x:Name="HoverLayer" Background="{ThemeResource GvHoverBrush}" CornerRadius="{TemplateBinding CornerRadius}" Opacity="0"/>
+                        <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" Padding="{TemplateBinding Padding}" Foreground="{TemplateBinding Foreground}" HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalContentAlignment="Center"/>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="GvQuietButton" TargetType="Button" BasedOn="{StaticResource GvButton}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{ThemeResource GvMutedBrush}"/>
+    </Style>
+    <Style x:Key="GvChipStyle" TargetType="Button" BasedOn="{StaticResource GvQuietButton}">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="MinHeight" Value="30"/>
+        <Setter Property="Padding" Value="10,5"/>
+    </Style>
+    <Style x:Key="GvActionButtonStyle" TargetType="Button" BasedOn="{StaticResource GvButton}"/>
+    <Style x:Key="GvSmallButton" TargetType="Button" BasedOn="{StaticResource GvButton}"/>
+    <Style x:Key="GvInput" TargetType="TextBox">
+        <Setter Property="FontFamily" Value="{StaticResource GvUiFontFamily}"/>
+        <Setter Property="Background" Value="{ThemeResource GvBgBrush}"/>
+        <Setter Property="Foreground" Value="{ThemeResource GvInkBrush}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource GvLineBrush}"/>
+        <Setter Property="BorderThickness" Value="{ThemeResource GvInputBorderThickness}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="MinHeight" Value="34"/>
+        <Setter Property="Padding" Value="9,5"/>
+        <Setter Property="CornerRadius" Value="8"/>
+    </Style>
+    <Style x:Key="GvSectionTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="{ThemeResource GvInkBrush}"/>
+    </Style>
+    <Style x:Key="GvHelpText" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Foreground" Value="{ThemeResource GvMutedBrush}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style x:Key="GvListItem" TargetType="ListViewItem"><Setter Property="UseSystemFocusVisuals" Value="True"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="MinHeight" Value="0"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListViewItem">
+                    <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" HorizontalContentAlignment="Stretch"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

@@ -1316,6 +1316,7 @@ version = "0.3.2"
 dependencies = [
  "dirs",
  "dunce",
+ "libc",
  "objc2",
  "objc2-app-kit",
  "objc2-core-graphics",

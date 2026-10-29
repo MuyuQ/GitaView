@@ -13,7 +13,7 @@ describe("tray status menu contract", () => {
     expect(lib).toContain("TrayIconBuilder::with_id(tray_status::MAIN_TRAY_ID)");
     expect(lib).toContain(".show_menu_on_left_click(false)");
     expect(lib).toContain("tray_status::loading_tray_menu(app)?");
-    expect(lib).toContain("tray_status::refresh_tray_menu_async(app.handle().clone())");
+    expect(lib).toContain("status_refresh::start(app.handle())");
     expect(lib).toContain("tray_status::TRAY_REFRESH_ID");
   });
 
@@ -31,10 +31,15 @@ describe("tray status menu contract", () => {
   it("shares collected statuses with the tray menu after list_repo_statuses", () => {
     const commands = readProjectFileCompact("src-tauri/src/app_commands.rs");
 
-    expect(commands).toContain("crate::repo_status::collect_repo_statuses");
-    expect(commands).toContain(
-      "crate::tray_status::set_status_menu_if_current(&app, tray_generation, &statuses)",
-    );
+    const service = readProjectFileCompact("src-tauri/src/status_refresh.rs");
+    const tray = readProjectFileCompact("src-tauri/src/tray_status.rs");
+    expect(commands).toContain("get_repo_snapshot(app, true).await?");
+    expect(commands).not.toContain("collect_repo_statuses");
+    expect(tray).not.toContain("collect_repo_statuses");
+    expect(tray).toContain("crate::status_refresh::service(&app).request(true)");
+    expect(service).toContain("crate::repo_status::collect_repo_statuses(settings.repos)");
+    expect(service).toContain("set_status_menu_if_current(app, tray_generation, &snapshot.repos)");
+    expect(service).toContain("app.emit(STATUS_EVENT, snapshot)");
   });
 
   it("keeps tray status rendering platform neutral", () => {

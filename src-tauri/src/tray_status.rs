@@ -107,7 +107,7 @@ pub fn set_status_menu_if_current(
     })
 }
 
-fn set_error_menu_if_current(
+pub(crate) fn set_error_menu_if_current(
     app: &AppHandle,
     generation: u64,
     message: &str,
@@ -154,94 +154,7 @@ fn replace_tray_menu(
 }
 
 pub fn refresh_tray_menu_async(app: AppHandle) {
-    let generation = begin_tray_menu_update();
-    crate::diagnostics::log("tray.refresh.schedule", format!("generation={generation}"));
-    if let Err(err) = schedule_menu_update(&app, generation, |app| {
-        replace_tray_menu(app, loading_tray_menu)
-    }) {
-        eprintln!("更新托盘读取状态失败: {err}");
-        crate::diagnostics::log(
-            "tray.refresh.loading_error",
-            format!("error_len={}", err.len()),
-        );
-    }
-
-    tauri::async_runtime::spawn(async move {
-        let started = std::time::Instant::now();
-        crate::diagnostics::log("tray.refresh.start", format!("generation={generation}"));
-        // 设置加载与状态收集同在阻塞线程池执行
-        let app_for_task = app.clone();
-        let result = tauri::async_runtime::spawn_blocking(move || {
-            crate::app_settings::load_app_settings(&app_for_task)
-                .and_then(|settings| crate::repo_status::collect_repo_statuses(settings.repos))
-        })
-        .await
-        .map_err(|err| err.to_string())
-        .and_then(|inner| inner);
-
-        match result {
-            Ok(statuses) => {
-                match set_status_menu_if_current(&app, generation, &statuses) {
-                    Ok(false) => {
-                        crate::diagnostics::log(
-                            "tray.refresh.stale",
-                            format!("generation={generation} statuses={}", statuses.len()),
-                        );
-                        return;
-                    }
-                    Err(err) => {
-                        eprintln!("更新托盘状态菜单失败: {err}");
-                        crate::diagnostics::log(
-                            "tray.refresh.status_error",
-                            format!("error_len={}", err.len()),
-                        );
-                    }
-                    Ok(true) => {}
-                }
-
-                // 异步写入 widget 数据，不阻塞 tray 刷新
-                let statuses_clone = statuses.clone();
-                tauri::async_runtime::spawn_blocking(move || {
-                    if let Err(err) =
-                        crate::widget_data::write_widget_data(&statuses_clone, generation)
-                    {
-                        crate::diagnostics::log("widget_data.write_error", &err);
-                    }
-                });
-
-                crate::diagnostics::log_duration(
-                    "tray.refresh.ok",
-                    started.elapsed(),
-                    format!("generation={generation} statuses={}", statuses.len()),
-                );
-            }
-            Err(err) => {
-                eprintln!("读取托盘仓库状态失败: {err}");
-                match set_error_menu_if_current(&app, generation, &err) {
-                    Ok(false) => {
-                        crate::diagnostics::log(
-                            "tray.refresh.error_stale",
-                            format!("generation={generation} error_len={}", err.len()),
-                        );
-                        return;
-                    }
-                    Err(menu_err) => {
-                        eprintln!("更新托盘错误菜单失败: {menu_err}");
-                        crate::diagnostics::log(
-                            "tray.refresh.error_menu_error",
-                            format!("error_len={}", menu_err.len()),
-                        );
-                    }
-                    Ok(true) => {}
-                }
-                crate::diagnostics::log_duration(
-                    "tray.refresh.error",
-                    started.elapsed(),
-                    format!("generation={generation} error_len={}", err.len()),
-                );
-            }
-        }
-    });
+    crate::status_refresh::service(&app).request(true);
 }
 
 fn next_tray_menu_generation() -> u64 {

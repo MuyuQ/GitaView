@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fx-session-002",
+  "generation": 0,
+  "stateRevision": 1,
+  "settingsRevision": 1,
+  "attemptedAtMs": null,
+  "lastSuccessAtMs": null,
+  "refreshState": "pending",
+  "refreshPolicy": { "enabled": true, "intervalMinutes": 5 },
+  "refresh": { "isRefreshing": false, "requestedRequestId": 1, "completedRequestId": 0 },
+  "repos": []
+}

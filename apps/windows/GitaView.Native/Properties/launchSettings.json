@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "GitaView.Native (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "GitaView.Native (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

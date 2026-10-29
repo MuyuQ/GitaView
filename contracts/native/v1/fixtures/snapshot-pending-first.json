@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "fx-session-003",
+  "generation": 0,
+  "stateRevision": 3,
+  "settingsRevision": 2,
+  "attemptedAtMs": null,
+  "lastSuccessAtMs": null,
+  "refreshState": "pending",
+  "refreshPolicy": { "enabled": true, "intervalMinutes": 5 },
+  "refresh": { "isRefreshing": true, "requestedRequestId": 2, "completedRequestId": 0 },
+  "repos": [
+    {
+      "id": "repo-alpha",
+      "name": "alpha-service",
+      "path": "/sample/projects/alpha-service",
+      "groupId": "group-backend",
+      "readState": "pending",
+      "actions": { "canOpenDirectory": true, "canOpenRemote": false, "canFetch": false, "canPull": false, "canPush": false }
+    },
+    {
+      "id": "repo-beta",
+      "name": "beta-tools",
+      "path": "/sample/projects/beta-tools",
+      "readState": "pending",
+      "actions": { "canOpenDirectory": true, "canOpenRemote": false, "canFetch": false, "canPull": false, "canPush": false }
+    }
+  ]
+}
