@@ -48,6 +48,7 @@ targets. There is no automatic tag-triggered release workflow.
 | Widget Provider | apps/windows/GitaView.Native.WidgetProvider/ | Serialized updates, COM lifetime, no scanning engine |
 | Windows tests | apps/windows/GitaView.Native.Tests/ | Real FFI plus lifecycle, UI presentation and widget contracts |
 | Brand assets | assets/brand/, scripts/native/ | Shared SVG and optional Node/Sharp generation tool |
+| Diagnostics | tools/windows/WidgetCatalogProbe/ | Read-only Widget catalog query, built separately from the application |
 
 The root Cargo workspace has gitaview-core and gitaview-ffi as members and one
 Cargo.lock. There is no root npm project. The package in scripts/native is

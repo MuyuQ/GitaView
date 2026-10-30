@@ -109,8 +109,6 @@ public sealed class RepoRowVm : INotifyPropertyChanged
             _confirmPull = value;
             Raise(nameof(ConfirmPull));
             Raise(nameof(PullLabel));
-            Raise(nameof(PullBackground));
-            Raise(nameof(PullForeground));
             Raise(nameof(ConfirmText));
             Raise(nameof(ConfirmVisible));
         }
@@ -125,8 +123,6 @@ public sealed class RepoRowVm : INotifyPropertyChanged
             _confirmPush = value;
             Raise(nameof(ConfirmPush));
             Raise(nameof(PushLabel));
-            Raise(nameof(PushBackground));
-            Raise(nameof(PushForeground));
             Raise(nameof(ConfirmText));
             Raise(nameof(ConfirmVisible));
         }
@@ -134,10 +130,6 @@ public sealed class RepoRowVm : INotifyPropertyChanged
 
     public string PullLabel => ConfirmPull ? "确认 Pull" : "Pull";
     public string PushLabel => ConfirmPush ? "确认 Push" : "Push";
-    public Brush PullBackground => ConfirmPull ? ThemeBrush("GvAmberTextBrush") : ThemeBrush("GvSurfaceBrush");
-    public Brush PullForeground => ConfirmPull ? ThemeBrush("GvSurfaceBrush") : ThemeBrush("GvAmberTextBrush");
-    public Brush PushBackground => ConfirmPush ? ThemeBrush("GvAmberTextBrush") : ThemeBrush("GvSurfaceBrush");
-    public Brush PushForeground => ConfirmPush ? ThemeBrush("GvSurfaceBrush") : ThemeBrush("GvAmberTextBrush");
     public string ConfirmText => ConfirmPull
         ? "Pull 会修改当前仓库工作区，是否继续？"
         : ConfirmPush ? "Push 会更新远端分支，是否继续？" : "";

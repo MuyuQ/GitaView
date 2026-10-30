@@ -10,6 +10,7 @@ on:
       - "Cargo.lock"
       - "crates/**"
       - "apps/windows/**"
+      - "tools/windows/**"
       - "contracts/**"
       - "scripts/native/**"
       - ".github/workflows/native-ci.yml"
@@ -19,6 +20,7 @@ on:
       - "Cargo.lock"
       - "crates/**"
       - "apps/windows/**"
+      - "tools/windows/**"
       - "contracts/**"
       - "scripts/native/**"
       - ".github/workflows/native-ci.yml"
@@ -58,6 +60,8 @@ jobs:
         run: powershell -NoProfile -File scripts\native\test-package-layout.ps1
       - name: C# tests (real FFI)
         run: dotnet test apps\windows\GitaView.Native.Tests\GitaView.Native.Tests.csproj
+      - name: Build Widget catalog diagnostic tool
+        run: dotnet build tools\windows\WidgetCatalogProbe\WidgetCatalogProbe.csproj -c Release
       - name: Build (unsigned package layout)
         run: powershell -NoProfile -File scripts\native\build-windows.ps1 -Configuration Debug -Architecture x64
       - name: Package (unsigned dev artifact)

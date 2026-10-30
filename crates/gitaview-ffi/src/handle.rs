@@ -4,7 +4,6 @@
 //! 它们正在等待清零的业务调用计数（避免 wait_stopped 等待自己）；destroy 不与
 //! 任何其他调用并发，有在途调用或引擎未 Stopped 时返回 BUSY 且不销毁。
 
-use crate::buffer::GvBuffer;
 use gitaview_core::engine::Engine;
 use std::sync::Mutex;
 
@@ -74,18 +73,3 @@ impl GvEngine {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DestroyBusy;
-
-/// 读取 reply 缓冲区载荷；空缓冲区（TIMEOUT / STOPPING 允许）返回 None。
-///
-/// # Safety
-/// `reply` 指向本库填充、未释放的缓冲区。
-pub unsafe fn take_reply(reply: *mut GvBuffer) -> Option<Vec<u8>> {
-    if reply.is_null() {
-        return None;
-    }
-    let buffer = unsafe { &mut *reply };
-    if buffer.data.is_null() {
-        return None;
-    }
-    Some(unsafe { std::slice::from_raw_parts(buffer.data, buffer.len) }.to_vec())
-}

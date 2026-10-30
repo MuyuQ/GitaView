@@ -27,6 +27,7 @@
     <Compile Include="..\GitaView.Native\NativeWindowFrame.cs" Link="NativeWindowFrame.cs" />
     <Compile Include="..\GitaView.Native\MainWindowClosePolicy.cs" Link="MainWindowClosePolicy.cs" />
     <Compile Include="..\GitaView.Native\ProtocolNavigation.cs" Link="ProtocolNavigation.cs" />
+    <Compile Include="$(RepoRoot)tools\windows\WidgetCatalogProbe\WidgetCatalogReport.cs" Link="WidgetCatalogReport.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -52,14 +52,6 @@ public static class ErrorText
         { HasOrigin: true } => "没有可比较的 origin 分支",
         _ => "没有可用的远端比较结果",
     };
-
-    public static string RefreshStateText(AppSnapshotView snapshot) => snapshot.RefreshState switch
-    {
-        RefreshState.Pending => "首次读取进行中",
-        RefreshState.Ready => "读取完成",
-        RefreshState.Failed => "读取失败：" + For(snapshot.RefreshErrorCode),
-        _ => "",
-    };
 }
 
 // 视图行轻量投影：把契约行转为绑定友好形状（RelationRow 等使用）。
@@ -83,12 +75,4 @@ public record RepoStatusView(
         HasOrigin = row.HasOrigin,
         HasCommit = row.HasCommit,
     };
-}
-
-public record AppSnapshotView(
-    RefreshState RefreshState,
-    string? RefreshErrorCode)
-{
-    public static AppSnapshotView From(AppSnapshot snapshot) => new(
-        snapshot.RefreshState, snapshot.RefreshError?.Code);
 }

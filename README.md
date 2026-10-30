@@ -73,6 +73,7 @@ Node.js / Sharp 仅用于资源生成，不参与原生 UI 或 Git 核心运行�
 - [验收记录](docs/native-platform-acceptance.md)
 - [进度与历史实施记录](docs/native-app-progress.md)
 - [原生契约与测试数据](contracts/native/v1/README.md)
+- [Windows Widget 目录诊断工具](tools/windows/WidgetCatalogProbe/README.md)
 
 ## License
 

@@ -22,3 +22,5 @@ apps/windows/**/obj/
 apps/windows/GitaView.Native/pkg/
 apps/windows/**/*.msix
 apps/windows/**/*.cer
+tools/windows/**/bin/
+tools/windows/**/obj/

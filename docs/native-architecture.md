@@ -16,6 +16,7 @@ apps/windows/GitaView.Native.Contracts/ DTO、缓存验证和写入
 apps/windows/GitaView.Native.WidgetProvider/ Windows 系统小组件
 apps/windows/GitaView.Native.Tests/     C# 契约与真实 FFI 测试
 scripts/native/                        测试、构建、打包与资源生成
+tools/windows/WidgetCatalogProbe/       独立的只读 Widget 目录诊断工具
 assets/brand/gitaview.svg               品牌矢量源
 .github/workflows/native-ci.yml         唯一应用 CI
 ```
@@ -52,6 +53,10 @@ npm run generate --prefix scripts/native
 ```
 
 此目录的 npm 包只包含 Sharp 资源工具。根目录不再有 React / TypeScript / Vite 工程。
+
+## 诊断工具
+
+Widget 扩展目录排障可使用 [WidgetCatalogProbe](../tools/windows/WidgetCatalogProbe/README.md)。它独立编译，不进入应用包；纯结果分类逻辑由 C# 测试覆盖，CI 验证工具可构建。
 
 ## 历史资料
 

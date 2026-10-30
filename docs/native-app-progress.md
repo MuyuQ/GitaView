@@ -2,9 +2,15 @@
 
 > 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
 
-更新日期：2026-10-30（第 57 轮，清理旧客户端；Windows 源码版本 0.1.5.22，本机安装仍为 0.1.5.11；N15 / N16 保持 implemented_unverified）。
+更新日期：2026-10-30（第 58 轮，冗余代码清理；Windows 源码版本 0.1.5.22，本机安装仍为 0.1.5.11；N15 / N16 保持 implemented_unverified）。
 
 ## 当前状态
+
+第 58 轮处理冗余审查的四项 P3：删除无调用的刷新文案方法与专用 DTO、未绑定的 Pull / Push 颜色属性及通知、非 C ABI 的 unused unsafe reply helper。正式 20 个 C ABI 入口与确认行为保持不变。WidgetCatalogProbe 移入 tools/windows，补使用说明；按包族与扩展 ID 区分目录为空、缺少目标、发现目标，缺失不再推断为缓存过期。CI 增加工具路径触发与独立构建，工具不进入应用包。
+
+验证：Rust 148 项、C# 136 项（含 7 项新增目录分类回归）、布局检查 12 项通过；fmt / Clippy / 相对文档链接检查通过；工具独立 Release 构建和原生应用 Release 构建通过。未运行平台目录查询，未安装或启动应用。第 57 轮清理提交 dc09ad5 已在云端 native-ci 的 Windows 与 macOS 任务全部通过。
+
+### 第 57 轮记录
 
 第 57 轮按用户要求只保留原生应用，移除旧客户端源码、React / Vite 根工程、旧桌面 Widget、CI、标签发布与签名脚本，以及仅适用于旧客户端的规格和设计稿。根 workspace 只保留 core / ffi；Dependabot 跟踪根 Cargo 和独立资源工具。图标生成所需 Sharp 位于 scripts/native，其依赖与应用运行、构建分离。README、AGENTS、架构入口及 UI 参考路径改为原生实现。原生改造历史方案和审查证据保留，并注明旧目录和旧保留要求已失效。
 
