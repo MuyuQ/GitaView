@@ -1,0 +1,13 @@
+{
+  "name": "gitaview-native-assets",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Optional SVG-to-PNG/ICO tooling for native application assets",
+  "scripts": {
+    "generate": "node generate-brand-assets.mjs"
+  },
+  "devDependencies": {
+    "sharp": "0.35.5"
+  }
+}

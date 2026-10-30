@@ -1,5 +1,7 @@
 # 原生应用执行方案审查记录
 
+> 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
+
 日期：2026-10-24。对象为 roadmap、implementation、tasks、progress 与 GLM 启动提示词。这里审查的是待实现方案，发现项不代表当前 Tauri 应用已经存在同样缺陷。
 
 结论：保留共享 Rust 核心、SwiftUI / AppKit、WinUI 3 和两端系统小组件的方向。执行材料原先缺少若干状态边界与失败规则，本轮已补入 [实施说明](native-app-implementation.md) 和 [任务清单](native-app-tasks.md)。可以交给 GLM 从 N00 开始；签名、安装后的组件发现与真实跨语言调用仍须由原型验证，文档审查不能代替这些检查。

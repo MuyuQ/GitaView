@@ -75,7 +75,7 @@ pub enum Lifecycle {
     Stopped,
 }
 
-/// 引擎配置：路径由宿主注入（绝不指向旧 Tauri 目录）。
+/// 引擎配置：路径由宿主注入，各宿主使用自己的数据目录。
 pub struct EngineConfig {
     pub data_dir: PathBuf,
     /// 宿主注入的日志目录；engine_create 初始化诊断器（首个引擎生效）。

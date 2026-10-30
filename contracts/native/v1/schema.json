@@ -353,7 +353,7 @@
       "additionalProperties": false,
       "required": ["dataDirectory", "logDirectory"],
       "properties": {
-        "dataDirectory": { "type": "string", "minLength": 1, "description": "绝对私有路径，宿主解析注入；绝不指向旧 Tauri 目录" },
+        "dataDirectory": { "type": "string", "minLength": 1, "description": "绝对私有路径，由宿主解析并注入" },
         "logDirectory": { "type": "string", "minLength": 1 }
       }
     },

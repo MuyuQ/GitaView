@@ -1,6 +1,14 @@
 # GitaView 原生应用验收清单（N18）
 
+> 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
+
 状态：**进行中**。本文是 N18 的验收清单与证据汇总；状态列取值：已验证 / 待验证（执行者或用户操作） / 阻塞 / 不适用。每次验收后更新本文件并在 [进度记录](native-app-progress.md) 留检查记录。
+
+## 2026-10-30 当前基线
+
+仓库只保留原生应用，入口与签名步骤见[原生架构说明](native-architecture.md)。旧客户端及其 macOS Widget 扩展已移除；macOS 主程序和 WidgetKit 工程尚未实现，不能沿用旧扩展的验收状态。
+
+清理前提交 64462c5 的 [native-ci](https://github.com/MuyuQ/GitaView/actions/runs/40995753149) 已全部通过：Windows 的 Rust / C# 测试、布局检查、应用构建、无签名 MSIX 打包与上传；macOS 共享核心测试、Clippy 和 arm64 / x86_64 静态检查。这些证据不替代签名安装、Windows GUI / Board 或 macOS 产品验收。下方有日期的条目保留对应版本的历史事实。
 
 ## 1. 环境与安装
 
@@ -38,7 +46,7 @@
 | 正式 C ABI（20 函数 / 状态码 / buffer / 生命周期） | 已验证 | 13 项 ABI 测试（串行 + 并行）；dumpbin 20 符号与头文件一致 |
 | git 命令生成性能 | 已验证（本轮修复） | spawn_bench：挂起 149ms → 直接 49ms / 普通 22ms；Direct 超时终止测试锁定 |
 | 诊断日志（脱敏 / 轮转 / 三路） | 已验证 | 5 项 diagnostics 测试；0.1.1.7 安装实测三文件产生且内容正确 |
-| macOS 上核心编译与测试 | 部分验证（本轮修复） | 审查发现 Apple 目标 15 个编译错误 → R06 修复后本机 `cargo check --target x86_64-apple-darwin` 通过（2026-10-24 实测）；native-ci.yml macos-core 已加入双 Apple 目标 check（待下次 CI 运行确认）；Mac 实机测试仍阻塞 |
+| macOS 上核心编译与测试 | 部分验证（本轮修复） | 审查发现 Apple 目标 15 个编译错误 → R06 修复后本机 `cargo check --target x86_64-apple-darwin` 通过（2026-10-24 实测）；2026-10-30 native-ci 已通过 macOS 核心测试及双 Apple 目标 check；原生 macOS 宿主和实机验收仍未完成 |
 | 并发配置提交不回退镜像（R03） | 已验证（测试） | 引擎层 8 线程屏障压测 + 镜像 revision 单调断言；审查探针结果（revision 24→23）作为反例保留 |
 | 删除分组归属完整性（R04） | 已验证（测试） | 空 repoGroups 删组 → 全部仓库归属清空，内存 / 磁盘 / 引擎投影一致 |
 | 首刷前 pending 行投影（R08） | 已验证（测试） | 阻塞首扫 + 入组仓库 → 行带组、组计数包含 pending |

@@ -1,7 +1,6 @@
 //! Git 执行、仓库读取与网络操作（N02 探针 + N05 提取）。
 //!
 //! 固定参数调用用户安装的 Git；单条命令 deadline 覆盖进程退出与管道读取。
-//! 整理自 src-tauri/src/git/commands.rs（未提交参考实现），提取时不改变比较规则。
 //! 探针仅供平台原型接线使用；N09 冻结正式 ABI 时移除导出。
 
 use crate::error::{CoreError, ErrorObject};

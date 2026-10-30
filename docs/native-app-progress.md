@@ -1,8 +1,18 @@
 # GitaView 原生改造进度记录
 
-更新日期：2026-10-29（第 56 轮，Windows 源码 / 构建版本 0.1.5.22，本机安装仍为 0.1.5.11；N15 / N16 保持 implemented_unverified）。
+> 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
+
+更新日期：2026-10-30（第 57 轮，清理旧客户端；Windows 源码版本 0.1.5.22，本机安装仍为 0.1.5.11；N15 / N16 保持 implemented_unverified）。
 
 ## 当前状态
+
+第 57 轮按用户要求只保留原生应用，移除旧客户端源码、React / Vite 根工程、旧桌面 Widget、CI、标签发布与签名脚本，以及仅适用于旧客户端的规格和设计稿。根 workspace 只保留 core / ffi；Dependabot 跟踪根 Cargo 和独立资源工具。图标生成所需 Sharp 位于 scripts/native，其依赖与应用运行、构建分离。README、AGENTS、架构入口及 UI 参考路径改为原生实现。原生改造历史方案和审查证据保留，并注明旧目录和旧保留要求已失效。
+
+清理前的 main 提交 64462c5 已在云端 native-ci 完整通过：Windows 测试、构建、无签名 MSIX 与产物上传，macOS 核心测试及两个 Apple 目标静态检查。此前修复的 CI 测试隔离包括规范路径锁、独立日志队列、停止写入后清理和并发临时目录的计数器命名。macOS SwiftUI 主程序 / WidgetKit 扩展仍未实现；清理旧扩展不代表新增原生 macOS 产品。
+
+本轮清理后验证：Rust workspace 148 项通过，C# 129 项通过，打包布局 12 项、Schema 6 项通过；fmt / Clippy / diff 检查通过。Release 构建与无签名 MSIX 打包通过，布局包含 252 个文件；未安装或启动应用。独立资源工具执行成功，生成的全部图标与已有资源逐字节一致；18 份 Markdown 的相对链接检查通过。Cargo 依赖树无旧客户端依赖。云端清理后验证以对应提交的 native-ci 结果为准。
+
+### 第 56 轮及更早记录
 
 第 56 轮修复 2026-10-29 独立全面审查确认的两项 P2。Windows 读命令在创建时挂起，先完成 Job 入组，再用进程限定的线程快照定位并恢复初始线程；Direct 名称保留为内部低开销模式，不再表示先运行后入组。使用 [PssCaptureSnapshot](https://learn.microsoft.com/en-us/windows/win32/api/processsnapshot/nf-processsnapshot-psscapturesnapshot) 的线程捕获，不遍历全系统线程；网络命令仍沿用原有挂起入组路径。所有失败路径保留终止、回收与句柄释放，入组后子孙进程和管道仍受 Job/超时约束。可控生成钩子在旧实现中稳定复现已成功退出的 Git 入组失败（0x80070005），修复后通过；钩子仅在 cfg(test) 中编译。权限/Job 错误和缺失工作目录不再统一映射 GIT_NOT_FOUND，真正缺少可执行文件仍返回该错误码。
 

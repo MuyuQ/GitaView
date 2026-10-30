@@ -4,7 +4,7 @@
 //! - 新 schema：schemaVersion、revision、仓库记录、分组、defaultGroupId、刷新偏好。
 //!   默认仓库 / 分组为空，defaultGroupId=null，定时启用 5 分钟（1–60 校验，不静默夹取）。
 //! - 不存储 Pull / Push 确认开关、allowWidgetDrag、compactMode、alwaysOnTop 等旧字段。
-//! - 路径由宿主注入；绝不查询或导入旧 Tauri 设置目录。
+//! - 路径由宿主注入，不查询或导入其他应用的设置目录。
 //! - 事务顺序：校验候选 → 原子落盘 → 提交内存与 revision。写入失败不改变内存 / revision /
 //!   对外投影；写入串行化，不丢失已完成的写入。
 //! - settings_save 只改分组、归属、默认组与刷新偏好；添加 / 移除走专用入口，

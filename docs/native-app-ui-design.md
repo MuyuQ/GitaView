@@ -19,21 +19,20 @@
 
 “原生”描述实现框架与系统能力，不授权两端各自采用另一套产品设计。不要求字体光栅化或系统窗口装饰逐像素相同，也不能据此更换主要布局或导航结构。
 
-## 2. 以当前旧版实现为设计基线
+## 2. 设计基线与当前实现
 
-先读当前工作区实际组件，不只读历史规格。旧规格与代码存在差异时，视觉与操作结构以当前代码为起点，业务规则以原生实施说明为准。
+共同设计承接旧版的信息层级，并已在 Windows 原生应用中继续调整。旧 React 源码已移除；后续以产品结构、以下原生入口和经过验证的画面为基线，不恢复旧工程。
 
-| 旧版入口 | 保留或升级的内容 |
+| 当前入口 | 设计职责 |
 | --- | --- |
-| `src/App.tsx` | 紧凑摘要、展开明细、设置的层次关系 |
-| `src/components/WidgetCollapsed.tsx`、`src/lib/collapsedSummary.ts` | GitaView 品牌、仓库总数、待同步 / 需关注 / 无远端的安静摘要；刷新失败提示 |
-| `src/components/WidgetExpanded.tsx` | 标题与刷新时间、搜索、刷新 / 设置 / 收起入口；分组筛选在状态筛选之前 |
-| `src/components/GroupFilters.tsx`、`StatusFilters.tsx` | 带计数的轻量筛选项、选中态、状态与组的联动 |
-| `src/components/RepoTable.tsx`、`RepoActions.tsx` | 对齐的仓库表格，选中一行后只在该行下方展开动作，不在每行常驻五个按钮 |
-| `src/components/settings/SettingsShell.tsx` | “仓库设置 / 常规设置”的设置分区及返回路径；仓库、分组与常规偏好各自归位 |
-| `src/styles/tokens.css`、`widget.css`、`settings.css` | 浅石墨色、低噪声表面、细分隔线、紧凑控件、中文可读性及稳定对齐 |
+| `apps/windows/GitaView.Native/MainWindow.xaml`、`MainWindow.xaml.cs` | 沉浸式标题栏、品牌、窗口行为 |
+| `apps/windows/GitaView.Native/MainPage.xaml`、`MainPage.xaml.cs` | 搜索、分组与状态筛选、表格、选中行操作和反馈 |
+| `apps/windows/GitaView.Native/TrayFlyoutWindow.xaml` | 紧凑摘要、刷新时间与托盘入口 |
+| `apps/windows/GitaView.Native/SettingsPage.xaml` | 仓库、分组和常规设置的分区及返回路径 |
+| `apps/windows/GitaView.Native/Theme/GitaViewTheme.xaml` | 字体、颜色、间距与交互状态 |
+| `contracts/native/v1/fixtures/` | 跨平台共有状态和边界测试数据 |
 
-不要继续把当前 Windows 的通用 NavigationView 双页模板当作最终视觉基线。可以保留其生命周期与服务接线，按本共同设计替换内容和导航。也不要将未来 macOS 工程独立设计成另一种侧栏应用。
+macOS 宿主尚未实现。后续 SwiftUI / AppKit 实现沿用共同信息架构与语义样式，不另做一套产品布局。
 
 ## 3. 共同页面结构
 

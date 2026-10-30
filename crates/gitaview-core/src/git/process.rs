@@ -1,5 +1,4 @@
 //! 子进程树处理：deadline 同时覆盖进程退出和管道读取。
-//! 整理自 src-tauri/src/git/process.rs（未提交参考实现），行为保持一致：
 //! Windows 用 Job Object 保证子孙进程一起终止、CREATE_NO_WINDOW 防闪控制台；
 //! Unix 用进程组；管道按块读取，连续输出不会饿死 deadline。
 

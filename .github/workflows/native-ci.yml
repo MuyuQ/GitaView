@@ -1,6 +1,5 @@
-# GitaView 原生应用独立 CI（N17）。
-# 与旧 Tauri 流程（ci.yml / release.yml）完全独立：旧 v* 标签发布保持原状，
-# 本 workflow 不监听标签、不产出发布安装包（仅无签名开发产物）。
+# GitaView 原生应用 CI：验证共享核心与 Windows 应用，并上传无签名开发包。
+# 不监听发布标签，不发布正式安装包。
 name: native-ci
 
 on:

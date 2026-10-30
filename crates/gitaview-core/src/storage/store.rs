@@ -1,5 +1,4 @@
 //! JSON 文件存取：原子替换写 + 损坏隔离。
-//! 整理自 src-tauri/src/storage/store.rs（未提交参考实现），写 / 隔离语义一致：
 //! 临时文件 + MoveFileEx(REPLACE_EXISTING|WRITE_THROUGH)（Windows）/ rename（Unix）；
 //! 损坏文件 rename 到 `.corrupt-<时间戳>` 留档，隔离失败保留现场并报错。
 

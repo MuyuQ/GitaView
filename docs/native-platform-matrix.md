@@ -1,5 +1,7 @@
 # 原生应用平台与工具链矩阵
 
+> 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
+
 维护规则：本文件由 N00 首次填写，每次工具链或身份变化时更新。状态字段：
 
 - 已验证：本机实际命令输出确认，附检查日期。
@@ -16,14 +18,14 @@
 | Cargo | 1.95.0 (f2d3ce0bd 2026-03-21) | 已验证 | 2026-10-24 `cargo --version` |
 | Host triple | x86_64-pc-windows-msvc | 已验证 | `rustup show` |
 | 已装 targets | i686-pc-windows-msvc、x86_64-pc-windows-msvc、x86_64-apple-darwin | 已验证 | `rustup show`；apple-darwin 仅能 `cargo check`，无法链接 / 测试 |
-| workspace | 根 `Cargo.toml`（members: crates/gitaview-core、crates/gitaview-ffi；exclude src-tauri；resolver 2；锁文件根 Cargo.lock 已生成） | 已验证 | 2026-10-24 `cargo test/check/clippy/fmt --workspace` 通过；`cargo tree` 仅 serde / serde_json / windows / libc，无 Tauri |
+| workspace | 根 `Cargo.toml`（members: crates/gitaview-core、crates/gitaview-ffi；resolver 2；锁文件根 Cargo.lock 已生成） | 已验证 | 2026-10-24 `cargo test/check/clippy/fmt --workspace` 通过；`cargo tree` 仅 serde / serde_json / windows / libc，无 Tauri |
 | ABI / schema | abiVersion=1、schemaVersion=1 | 待验证 | N02 冻结原型子集，N09 冻结全集 |
 | 协议 | `gitaview-native://open`、`gitaview-native://repo/<percent-encoded-repo-id>` | 待验证 | N11 / N14 实测 |
 | 契约目录 | `contracts/native/v1/`（README、schema.json、fixtures、expectations.json，N02 建立，原型子集） | 已验证 | Rust 测试以 expectations.json 为唯一期望来源断言（core tests 5 项通过） |
 | FFI 产物 | `target/debug/gitaview_ffi.dll` 导出 `gv_abi_version` / `gv_probe_repository` / `gv_buffer_free`（dumpbin /exports 实测）；staticlib `gitaview_ffi.lib` 已生成，符号清单待 N09 在两端工具链正式验证 | 已验证（DLL 导出）；待验证（staticlib / Swift 链接） | 2026-10-24 dumpbin |
 | Git | 调用用户安装的 git.exe，固定参数 | 已验证（参考实现） | 旧 crate 96 测试通过；核心提取后重验 |
 
-共享 crate 不依赖 Tauri / AppKit / WinUI；`src-tauri` 保留独立锁文件与构建。
+共享 crate 不依赖 UI 框架。当前只有根 workspace 和 Cargo.lock；原生宿主独立调用 FFI。
 
 ## 2. Windows（N01.Windows）
 

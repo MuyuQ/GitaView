@@ -1,5 +1,7 @@
 # GitaView 原生应用实施说明（GLM 执行版）
 
+> 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
+
 日期：2026-10-24。本文定义后续实现要求；文中的目录、接口和脚本除明确标为现有内容者外，均为待实现目标。
 
 ## 1. 如何使用这套材料
@@ -16,7 +18,7 @@
 
 [执行方案审查记录](native-app-review.md)记录本轮补充及回归场景。它帮助检查遗漏，不替代本文的最终接口约定。
 
-原项目 `DESIGN_AND_BUILD_SPEC.md`、`NATIVE_WIDGET_IMPLEMENTATION_PLAN.md`、`docs/native-desktop-widget-layer-plan.md` 和旧签名说明只供识别现有行为。它们中的 Tauri 技术栈、桌面贴附、旧版本兼容和旧发布步骤，不是原生版本要求。
+当前目录、命令及签名步骤见[原生架构说明](native-architecture.md)。旧客户端规格和签名说明已移除，不能据历史规划恢复旧技术栈或发布步骤。
 
 本文最初用于编写交接方案，当前已有部分实现；实际状态以进度记录和验证证据为准。不能把文档、伪代码、模板或 mock 画面报告为已实现产品。
 
@@ -43,27 +45,22 @@
 
 ## 3. 仓库现实与工作方式
 
-当前代码有大量未提交变更，包括 `git/process.rs`、`status_refresh.rs` 和相关测试。开始执行时重新运行 `git status --short` 和针对目标文件的 diff；不要按旧提交覆盖工作区，不做 reset / clean / stash，不删除已有未跟踪文件。
+开始执行时运行 `git status --short` 并查看目标文件的 diff，保留已有工作。旧客户端已清理；当前入口如下：
 
-现有代码的重点入口：
-
-| 读取位置 | 要提取或核对的内容 |
+| 当前读取位置 | 职责 |
 | --- | --- |
-| `src-tauri/src/git/commands.rs` | Git 定位、状态计算、origin 参数、30 秒本地 / 600 秒网络命令超时 |
-| `src-tauri/src/git/process.rs` | Windows Job Object、无控制台启动、macOS 进程组、管道读取与超时 |
-| `src-tauri/src/git/discovery.rs` | `.git` 文件 / 目录、扫描边界、跳过目录、符号链接和路径处理 |
-| `src-tauri/src/git/remote.rs`、`operation_lock.rs` | URL 安全转换；同仓库网络操作立即拒绝重复请求 |
-| `repo_operation.rs`、`app_commands.rs` | 前置条件、强制确认、执行时重新读取状态、配置读改写 |
-| `repo_status.rs`、`status_refresh.rs` | 8 个状态 worker、一次扫描、后续请求合并、版本化快照 |
-| `app_settings.rs`、`storage/store.rs` | 设置冲突、原子写入、损坏隔离；剥离 Tauri 路径 |
-| `diagnostics.rs` | 日志脱敏和轮转；含 `log_window`，不能整个复制进 core |
-| `src/lib/statusModel.ts` 及测试 | 排序、分组计数、搜索、动作可用性和筛选协调 |
-| `src-tauri/widget-extension/` | SwiftUI 视图、Provider、模型、fixture 与测试经验 |
-| `.github/workflows/` | 现有架构矩阵、签名检查经验；不能直接视为原生构建流程 |
+| `crates/gitaview-core/src/git/commands.rs` | Git 定位、状态计算、origin 参数、30 秒本地 / 600 秒网络命令超时 |
+| `crates/gitaview-core/src/git/process.rs` | Windows Job Object、macOS 进程组、管道读取与超时 |
+| `crates/gitaview-core/src/git/discovery.rs` | 扫描边界、跳过目录、符号链接和路径处理 |
+| `crates/gitaview-core/src/git/remote.rs`、`operation_lock.rs` | 浏览器安全 URL；仓库网络操作互斥 |
+| `crates/gitaview-core/src/engine.rs`、`refresh.rs` | 前置校验、生命周期、扫描合并、版本化快照与配置重投影 |
+| `crates/gitaview-core/src/settings.rs`、`src/storage/` | 设置事务、revision 冲突、原子写入与损坏隔离 |
+| `crates/gitaview-core/src/view.rs`、`widget.rs` | 排序、计数、筛选、Widget 投影与可用动作 |
+| `crates/gitaview-ffi/include/gitaview.h` | 正式 ABI、状态码和生命周期 |
+| `apps/windows/` | 原生宿主、Interop、Contracts、Widget Provider 与 C# 测试 |
+| `.github/workflows/native-ci.yml` | Windows 完整构建验证、macOS 核心测试及双 Apple 目标检查 |
 
-先以复制并整理模块的方式提取新核心，保留旧参考实现；新应用只有一份生产用 Rust 核心。不要为了消除参考代码的重复而顺便重构旧客户端。
-
-每轮完成一个可验证的任务或任务子项。实现前列明目标文件；实现后运行相关检查，再更新进度。不要一次铺开两端全部 UI 后再补核心与测试。
+复用现有 core / ffi 和 Windows 实现。后续 macOS 宿主直接接入同一份核心，不重新提取旧源码。每轮完成可验证的任务，再更新进度与平台证据；实现状态以代码、测试和实际验收为准。
 
 ## 4. 目标结构与构建隔离
 
@@ -119,11 +116,10 @@ docs/native-platform-acceptance.md
 [workspace]
 members = ["crates/gitaview-core", "crates/gitaview-ffi"]
 default-members = ["crates/gitaview-core", "crates/gitaview-ffi"]
-exclude = ["src-tauri"]
 resolver = "2"
 ```
 
-两个新 crate 的 edition 首先使用 2021，减少与现有模块无关的改动。根 workspace 记录 release profile 和 Rust 工具链版本。`src-tauri/Cargo.lock` 保持独立，不把 Tauri 隐式并入新 workspace。Workspace 共用根锁文件和输出目录，需显式处理成员与 exclude。[Cargo：Workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html)
+两个新 crate 的 edition 首先使用 2021，减少与现有模块无关的改动。根 workspace 记录 release profile 和 Rust 工具链版本。Workspace 共用根锁文件和输出目录，当前只包含 core / ffi 两个成员。[Cargo：Workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html)
 
 `gitaview-core` 与 `gitaview-ffi` 不依赖 Tauri、AppKit、WidgetKit 或 WinUI。core 允许用于 Git 子进程和文件替换的 OS API。旧 `build.rs` 会编译 Swift Widget bridge，不能复制到新 crate；原生 Swift 宿主直接调用 WidgetCenter。
 
@@ -505,7 +501,7 @@ powershell -NoProfile -File scripts/native/package-windows.ps1 -Architecture x64
 
 文件系统测试使用唯一临时目录并清理，Git 测试设置局部作者身份，不改用户全局 Git 配置。假 Git / 故障注入接口仅供测试，不作为生产任意程序执行配置。
 
-新原生 CI 使用独立 workflow 与路径过滤；旧发布 workflow 保持原状，避免随意推 `v*` 标签触发旧 Tauri 发布。此方案授权生成代码、脚本与本地可审查安装产物，不授权向外发布、上传证书、推送发布标签或发送其他聊天消息。
+原生 CI 使用 native-ci.yml 与路径过滤；旧构建和发布 workflow 已移除，当前没有标签触发的正式发布。此方案授权生成代码、脚本与本地可审查安装产物，不授权向外发布、上传证书、推送发布标签或发送其他聊天消息。
 
 ## 14. 阶段、环境受限与完成定义
 

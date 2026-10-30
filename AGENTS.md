@@ -1,111 +1,84 @@
 # GitaView
 
-Tauri 2 + Rust + React + TypeScript desktop Git status widget. Manages its own
-repo list; no dependency on `gita` CLI.
+Native desktop Git status application. Windows uses C# / WinUI 3 with a Win32
+tray and Windows Widget Provider. Rust implements the shared core and C ABI.
+The macOS SwiftUI / AppKit host and WidgetKit extension are planned; only the
+shared Rust core currently runs in macOS CI.
+
+This checkout contains only the native application. Do not restore a web UI,
+Tauri client, WorkerW / Progman embedding, or an old release pipeline. Earlier
+planning and review documents contain historical paths; use README.md and
+docs/native-architecture.md for current entry points.
 
 ## Commands
 
-```bash
-npm ci                                  # install deps
-npm run tauri dev                       # dev mode (Vite + Tauri window)
-npm test                                # Vitest (frontend)
-npm run build                           # tsc --noEmit + vite build (this IS the typecheck)
-cargo test --manifest-path src-tauri/Cargo.toml
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+```powershell
+cargo test --workspace --locked
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+powershell -NoProfile -File scripts/native/test-windows.ps1
+powershell -NoProfile -File scripts/native/build-windows.ps1 -Configuration Release
+powershell -NoProfile -File scripts/native/package-windows.ps1 -Configuration Release -SkipBuild
+python -m pip install -r scripts/native/requirements-test.txt
+python scripts/native/test-contract-schema.py
 ```
 
-CI validation order (ci.yml): `npm test` → `cargo test` → `cargo fmt --check`
-→ `cargo check --target <triple>` → `cargo clippy`. No Linux targets—macOS
-(aarch64 + x86_64) and Windows only.
+Windows build/package scripts support x64. Package signing uses
+GITAVIEW_SIGN_THUMBPRINT and the -Sign switch. -Install removes the existing
+package and its LocalState, installs the signed package and restarts widget
+hosts; use it only when installation is part of the user's request.
 
-Release: push a `v*` tag. `release.yml` validates version + signing secrets,
-runs the same test suite, then builds signed installers via `tauri-apps/tauri-action`.
+The only app CI is .github/workflows/native-ci.yml. Windows runs Rust format,
+Clippy, tests, layout checks, C# tests, build and unsigned MSIX packaging.
+macOS runs Rust format, Clippy, tests and checks both Apple targets. No Linux
+targets. There is no automatic tag-triggered release workflow.
 
 ## Architecture
 
-| Layer | Key files | Notes |
-|-------|-----------|-------|
-| Tauri commands | `src-tauri/src/app_commands.rs` | All IPC commands exposed to React; fixed arg arrays only |
-| Git execution | `src-tauri/src/git/{commands,process}.rs` | Fixed args; deadline covers process exit and pipe reads; Windows Job Object / macOS process group |
-| Git preflight | `src-tauri/src/repo_operation.rs` | Remote relation checks; Fetch requires origin but no existing commit |
-| Desktop widget | `src-tauri/src/desktop_widget/{macos,windows,unsupported}.rs` | Platform-conditional via `cfg(target_os)` |
-| Persistence | `src-tauri/src/storage/store.rs` | Atomic JSON writes (temp file + rename) |
-| Status refresh | `src-tauri/src/status_refresh.rs` | One scan at a time, coalesced follow-up, native timer, shared versioned snapshots |
-| Tray | `src-tauri/src/tray_status.rs` | Main-thread menu updates with generation guard; requests scans through status refresh service |
-| Status model | `src/lib/statusModel.ts` | Sorting, filtering, bucketing, action availability |
-| React entry | `src/App.tsx`, `src/lib/useWidgetView.ts` | Widget modes; subscribes to snapshots and ignores older generations |
-| Settings UI | `src/components/settings/` | Repo, group, refresh, safety, appearance |
-| Product spec | `DESIGN_AND_BUILD_SPEC.md` | v1 contract |
+| Layer | Location | Contract |
+| --- | --- | --- |
+| Core / engine | crates/gitaview-core/src/engine.rs | Lifecycle, admission, versioned snapshots, configuration reprojection |
+| Git execution | crates/gitaview-core/src/git/ | Fixed arguments, deadlines, Windows Job Object / macOS process group |
+| Settings / storage | crates/gitaview-core/src/settings.rs, src/storage/ | Revision checks, atomic writes, corrupt-data isolation |
+| FFI | crates/gitaview-ffi/, include/gitaview.h | Owned buffers, owner leases, explicit shutdown |
+| Native contracts | contracts/native/v1/ | JSON Schema, fixtures and cross-language expectations |
+| Windows host | apps/windows/GitaView.Native/ | Main window, settings, tray and flyout |
+| C# interop | apps/windows/GitaView.Native.Interop/ | Native library binding and handle lifetime |
+| DTO / cache | apps/windows/GitaView.Native.Contracts/ | Shared JSON validation and atomic widget cache |
+| Widget Provider | apps/windows/GitaView.Native.WidgetProvider/ | Serialized updates, COM lifetime, no scanning engine |
+| Windows tests | apps/windows/GitaView.Native.Tests/ | Real FFI plus lifecycle, UI presentation and widget contracts |
+| Brand assets | assets/brand/, scripts/native/ | Shared SVG and optional Node/Sharp generation tool |
 
-Rust crate name is `gitaview_lib` (see `src-tauri/Cargo.toml` `[lib]`).
-Frontend package name in package.json is `gitaview`.
+The root Cargo workspace has gitaview-core and gitaview-ffi as members and one
+Cargo.lock. There is no root npm project. The package in scripts/native is
+optional asset tooling; ordinary builds use committed PNG/ICO/SVG files.
 
-## Tests
+## Tests and evidence
 
-- Frontend: Vitest, colocated `src/**/*.test.{ts,tsx}`. Many are boundary
-  contract tests verifying Tauri command shapes stay stable.
-- Backend: Rust `#[cfg(test)]` modules in most source files. Tests that touch
-  the filesystem use `unique_temp_dir()` for isolation—clean up after yourself.
-- Add regression tests before behavior fixes.
+- Add regression tests before behavior fixes. Filesystem tests use distinct
+  temporary directories, including a counter when a timestamp may collide.
+- Await owned background work before deleting its files. A global log flush
+  does not stop later producers; tests must not delete a live global sink.
+- Run checks appropriate to the touched layer. Do not report compilation,
+  mocked UI, or unsigned packaging as signed installation or GUI acceptance.
+- Keep platform limitations and pending device checks visible in
+  docs/native-platform-acceptance.md. Shared-core macOS CI is not a macOS app.
 
-## Styles
+## Product and safety boundaries
 
-- Plain CSS or CSS Modules only. No emoji icons—use SVG.
-- Status must not rely on color alone: include text labels and counts.
-- Hover/focus must not move layout or content.
-
-## v1 Boundaries
-
-### Forbidden
-
-Electron, embedded Python, arbitrary shell execution, `gita` CLI dependency,
-arbitrary command panels.
-
-### Git Operations
-
-- Fixed argument arrays only. v1 manages `origin` remote URL only.
-- Fetch: allowed when `origin` exists.
-- Pull: always requires explicit confirmation (modifies working tree).
-- Push: requires confirmation; available only for `local_ahead` or `diverged`.
-- Remote URL button disabled when no browser-safe origin URL exists.
-
-### Status Model
-
-| Relation | Color | Meaning |
-|----------|-------|---------|
-| `synced` | green | Local and upstream match |
-| `local_ahead` | yellow | Local has commits to push |
-| `remote_ahead` | yellow | Upstream has commits to pull |
-| `diverged` | red | Both sides have unique commits |
-| `no_remote` | gray | No supported origin comparison |
-
-`error` is an app read-failure state, not a sixth relation.
-`no_remote` must remain last in compact summaries, filters, and expanded lists.
-
-## Native Desktop Widgets
-
-**Status:** macOS WidgetKit widget implemented (v0.3.2); Windows keeps the desktop-layer implementation. Loading the widget extension on a real device requires Apple Developer signing.
-
-**Detailed plan:** See `NATIVE_WIDGET_IMPLEMENTATION_PLAN.md`
-
-### macOS WidgetKit Widget
-
-- **Feasibility:** ✅ Feasible with Tauri + Xcode hybrid build
-- **Approach:** Swift/SwiftUI Widget Extension embedded in Tauri app bundle
-- **Data sharing:** Shared JSON file at `~/Library/Application Support/GitaView/widget-data.json`
-- **Deep linking:** `gitaview://` URL scheme to open app from widget
-- **Minimum system:** macOS 11.0 (Big Sur)
-- **Build:** `xcodebuild` via `beforeBundleCommand` in `tauri.conf.json`
-- **Key files:**
-  - `src-tauri/widget-extension/` - Widget Extension project
-  - `src-tauri/src/widget_data.rs` - Data writer module (macOS only; writes trailing-edge debounced atomic JSON)
-  - `src-tauri/widget-bridge/WidgetReloader.swift` - C ABI bridge to `WidgetCenter.shared.reloadAllTimelines()`; built for Cargo's target in `OUT_DIR`
-  - `src-tauri/tauri.conf.json` - Bundle config and deep link setup
-
-### Windows Widget
-
-- **Status:** Keep current implementation (Progman/WorkerW reparenting)
-- **Reason:** Windows Widgets Board providers target the board, not the desktop surface used by this app
-- **Current implementation:** `src-tauri/src/desktop_widget/windows.rs`
-- **Note:** Progman/WorkerW embedding depends on Explorer behavior and requires compatibility testing
+- No Electron, embedded Python, arbitrary shell panels, gita CLI dependency,
+  old-version data migration, or web-rendered application UI.
+- Use fixed Git argument arrays and the origin remote only. Automatic scans
+  never Fetch. Fetch requires origin but does not require a first commit.
+- Pull always requires explicit confirmation. Push requires confirmation and
+  is offered only for local_ahead / diverged. The core revalidates operations.
+- Disable remote opening when there is no browser-safe origin URL.
+- Status relations are synced, local_ahead, remote_ahead, diverged and
+  no_remote. Read failures are errors, not a sixth Git relation. Pending rows
+  have no invented Git fields. Keep no_remote last in summaries and filters.
+- Both platforms share product layout and semantic styles. Respect native
+  font rendering, window chrome, pickers, tray/menu bar and widget hosting.
+- Use SVG icons, text labels and counts; do not rely on color alone. Hover
+  and focus must not move content.
+- One main-app engine owns scanning. Explicit exit stops it; widgets retain
+  the last valid cache and never start an independent scanner.

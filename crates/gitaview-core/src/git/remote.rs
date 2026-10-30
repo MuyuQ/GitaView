@@ -1,5 +1,4 @@
 //! origin URL 安全转换：仅 http/https 与 GitHub SSH 形式可转换为浏览器可打开的 URL。
-//! 整理自 src-tauri/src/git/remote.rs，行为一致。
 
 pub fn normalize_remote_url(raw: &str) -> Option<String> {
     let value = raw.trim();

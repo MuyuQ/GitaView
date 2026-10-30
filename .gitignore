@@ -1,8 +1,6 @@
 node_modules/
 dist/
 target/
-src-tauri/gen/
-src-tauri/target/
 *.log
 .DS_Store
 Thumbs.db
@@ -15,12 +13,6 @@ Thumbs.db
 .impeccable/
 __pycache__/
 *.pyc
-
-# Widget Extension build artifacts
-src-tauri/widget-extension/build/
-src-tauri/widget-extension/GitaViewWidget.xcodeproj/
-src-tauri/widget-bridge/WidgetReloader.o
-src-tauri/widget-bridge/libWidgetReloader.a
 
 *.sync-conflict-*
 .venv/

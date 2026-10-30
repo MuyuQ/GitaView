@@ -1,87 +1,79 @@
 # GitaView
 
-跨平台桌面 Git 仓库状态总览 widget。
+原生桌面 Git 仓库状态总览。应用自管理仓库列表、分组和刷新策略，使用用户安装的 Git，不依赖 `gita` CLI。
 
-灵感来自 `gita`，但 v1 不依赖 gita CLI 配置，应用自管理仓库列表、分组、设置和 UI。
+## 当前平台状态
 
-## 功能
+| 平台 | 实现与验证范围 |
+| --- | --- |
+| Windows | C# / WinUI 3 主程序、Win32 托盘、Windows Widget Provider，首发架构 x64。CI 覆盖测试、构建和无签名 MSIX 打包；部分 GUI / Widgets Board 验收仍待完成。 |
+| macOS | 共享 Rust 核心已在 macOS CI 通过测试，并对 arm64 / x86_64 编译检查。SwiftUI / AppKit 主程序及 WidgetKit 扩展尚未实现，当前没有 macOS 应用安装包。 |
 
-- **状态总览**：一目了然查看多个 Git 仓库的同步状态
-- **分组管理**：按项目分组整理仓库
-- **快捷操作**：Fetch、Pull，以及带二次确认的 Push
-- **桌面 Widget**：小巧窗口，常驻桌面，随时可见；macOS 支持原生 WidgetKit 小组件，点击可唤起主应用
-- **仓库扫描**：递归扫描目录，自动发现 Git 仓库
-- **深浅主题**：界面跟随系统自动切换浅色/深色，状态配色均满足 WCAG AA 对比度
-- **统一刷新**：后端定时读取本地 Git 状态，窗口、托盘和 macOS Widget 共用扫描结果；自动刷新不会执行 Fetch
+仓库只保留原生应用。旧 Tauri / React 工程、桌面贴附实现及其构建和发布流程已移除；历史代码可从 Git 历史查看。
 
-## 状态分类
+## 功能与边界
 
-| 状态 | 颜色 | 含义 |
-|------|------|------|
-| synced | 绿色 | 本地与远端一致 |
-| local_ahead | 黄色 | 本地有新提交 |
-| remote_ahead | 黄色 | 远端有新提交 |
-| diverged | 红色 | 本地与远端分叉 |
-| no_remote | 灰色 | 无可用的 origin 分支比较，如未配置远端或尚无提交 |
+- 管理多个仓库，支持分组、搜索、关系筛选、目录扫描和候选添加。
+- 显示分支、提交差异、同步关系及读取错误；状态同时使用文字、数字和颜色。
+- Fetch 需要配置 origin；Pull / Push 始终要求确认，核心在执行前再次校验。
+- 定时刷新只读取本地 Git 状态，不执行自动 Fetch。
+- Windows 主窗口、托盘浮窗和系统小组件使用同一引擎快照；显式退出后停止扫描，小组件保留最近一次数据。
+- 仅管理 origin，不提供任意 shell 面板，不读取或迁移旧版设置。
 
-> `error` 是应用层状态，用于表示仓库状态读取失败；它不属于 Git 关系分类中的五种状态。
+macOS 与 Windows 使用统一的产品布局与状态语义，窗口装饰、菜单栏 / 托盘和系统小组件遵循各平台原生行为。
 
-## 安装与开发
+## 开发依赖
 
-```bash
-# 安装依赖
-npm install
+共享核心需要 Rust 1.95 或以上、Cargo 和 Git。Windows 主程序需要 Windows 11（项目最低版本 10.0.22000.0）、.NET SDK 10、Windows SDK 10.0.26100 工具及 Windows App SDK 构建支持；实际 NuGet 版本见项目文件。Windows SDK 提供 `makeappx` 和 `signtool`。
 
-# 开发模式（启动前端开发服务器 + Tauri 窗口）
-npm run tauri dev
+```powershell
+# 共享 Rust 核心与 C ABI
+cargo test --workspace --locked
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
 
-# 仅构建前端（含类型检查）
-npm run build
+# Windows：打包布局检查、Rust 测试、真实 FFI 的 C# 测试
+powershell -NoProfile -File scripts/native/test-windows.ps1
 
-# 前端代码检查
-npm run lint
+# Windows：构建 Release 自包含应用与打包布局
+powershell -NoProfile -File scripts/native/build-windows.ps1 -Configuration Release
 
-# 构建生产版本
-npm run tauri build
+# Windows：生成无签名 MSIX 开发产物，不安装
+powershell -NoProfile -File scripts/native/package-windows.ps1 -Configuration Release -SkipBuild
 ```
 
-## 技术栈
+Windows 解决方案为 `apps/windows/GitaView.Native.slnx`。构建布局位于 `apps/windows/GitaView.Native/pkg/build/x64/<Configuration>/`，MSIX 位于主应用目录。无签名产物供检查，安装需要有效签名；签名与安装说明见[原生构建说明](docs/native-architecture.md#签名与安装)。
 
-- **后端**：Tauri 2 + Rust
-- **前端**：React + TypeScript + Vite
-- **样式**：Plain CSS / CSS Modules
-- **测试**：Vitest（前端）、Rust 内联测试（后端）
+## 契约验证
 
-## 测试
-
-```bash
-# 前端测试
-npm test
-
-# Rust 测试
-cargo test --manifest-path src-tauri/Cargo.toml
-
-# 完整验收流程
-cargo test --manifest-path src-tauri/Cargo.toml && npm test && npm run build && npm run tauri dev
+```powershell
+python -m pip install -r scripts/native/requirements-test.txt
+python scripts/native/test-contract-schema.py
 ```
 
-## 目标平台
+`.github/workflows/native-ci.yml` 是应用的唯一构建验证流程，覆盖 Windows 全链和 macOS 共享核心，上传 `gitaview-native-windows-dev`。当前没有自动正式发布流程，推送 `v*` 标签不会构建或发布安装包。
 
-- **macOS**：菜单栏 + 桌面 widget
-- **Windows**：系统托盘 + 桌面 widget
+## 品牌资源
 
-## 设计约束 (v1)
+应用图标由 `assets/brand/gitaview.svg` 生成，PNG / ICO 已随源码提交，正常构建不需要 Node.js。修改图标时才需要安装独立的资源工具：
 
-- 不依赖 `gita` CLI 配置
-- Push 仅在本地领先或分叉状态下显示，并始终要求二次确认
-- v1 仅管理名为 `origin` 的远端 URL；其他远端拓扑暂不支持
-- 不执行任意 shell 命令
-- 状态不能仅靠颜色传达，必须含文字标签 + 数字
-- `无远端` 状态始终排在最后
+```powershell
+npm ci --prefix scripts/native
+npm run generate --prefix scripts/native
+```
+
+Node.js / Sharp 仅用于资源生成，不参与原生 UI 或 Git 核心运行。
+
+## 项目资料
+
+- [产品原则](PRODUCT.md)
+- [当前架构、命令与签名说明](docs/native-architecture.md)
+- [双平台统一界面设计](docs/native-app-ui-design.md)
+- [平台工具链与验收范围](docs/native-platform-matrix.md)
+- [验收记录](docs/native-platform-acceptance.md)
+- [进度与历史实施记录](docs/native-app-progress.md)
+- [原生契约与测试数据](contracts/native/v1/README.md)
 
 ## License
 
 MIT
-
----
-*最后更新: 2026-10-22*
