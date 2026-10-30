@@ -12,7 +12,7 @@ internal sealed class TrayWindow : IDisposable
 {
     public const uint WmAppTrayCallback = 0x8000; // WM_APP
     public const uint WmAppCommand = 0x8001;
-    private const uint WmCommand = 0x0111;      // WM_APP + 1（菜单命令）
+    private const uint WmCommand = 0x0111;      // WM_COMMAND（菜单命令）
     private const uint WmPowerBroadcast = 0x0218;
     private const uint PbtApmResumeAutomatic = 0x0012;
 
@@ -21,14 +21,12 @@ internal sealed class TrayWindow : IDisposable
     public const int CmdExit = 3;
 
     private const uint NimAdd = 0x00000000;
-    private const uint NimModify = 0x00000001;
     private const uint NimDelete = 0x00000002;
     private const uint NifMessage = 0x00000001;
     private const uint NifIcon = 0x00000002;
     private const uint NifTip = 0x00000004;
 
     private const uint WmLbuttonUp = 0x0202;
-    private const uint WmRbuttonDown = 0x0204;
     private const uint WmRbuttonUp = 0x0205; // legacy 回调模式：lParam = 鼠标消息
     private const uint WmNull = 0x0000;
     private const uint WmClose = 0x0010;
@@ -43,7 +41,6 @@ internal sealed class TrayWindow : IDisposable
     private readonly Action _onExit;
     private readonly Action _onSystemResume;
 
-    public nint Hwnd => _hwnd;
     public bool IsAvailable => _hwnd != 0 && _iconAdded;
 
     public TrayWindow(string tooltip, Action onOpen, Action onToggleFlyout, Action onRefresh,
@@ -438,7 +435,6 @@ internal sealed class TrayWindow : IDisposable
     private const uint TpmRightalign = 0x0008;
     private const uint TpmBottomalign = 0x0020;
     private const uint TpmRightbutton = 0x0002;
-    private const uint TpmReturncmd = 0x0100;
 
     [DllImport("user32.dll")]
     private static extern nint CreatePopupMenu();

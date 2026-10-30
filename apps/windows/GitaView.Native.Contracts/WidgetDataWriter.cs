@@ -12,8 +12,6 @@
 //   配置变化后正常替换。
 // - 该文件只供 Widget 展示，不回灌核心为成功状态（§8.1）。
 
-using System.Text.Json;
-
 namespace GitaView.Native.Contracts;
 
 public static class WidgetDataWriter
@@ -205,42 +203,11 @@ public static class WidgetDataWriter
     {
         try
         {
-            string path = DataPath;
-            if (!File.Exists(path))
-            {
-                return false;
-            }
-            var cached = ContractsJson.Decode<WidgetSnapshot>(File.ReadAllBytes(path));
-            return cached is not null
-                && cached.SchemaVersion == 1
-                && cached.SettingsRevision == settingsRevision;
+            return WidgetDataReader.TryRead(DataPath)?.SettingsRevision == settingsRevision;
         }
-        catch (Exception exception) when (
-            exception is JsonException or IOException or UnauthorizedAccessException)
+        catch (UnauthorizedAccessException)
         {
-            return false; // 缺失 / 损坏 / 与读取竞争：没有可保留的有效缓存
-        }
-    }
-
-    /// <summary>Provider 读取入口；损坏 / 缺失返回 null（Provider 显示占位状态）。</summary>
-    public static WidgetSnapshot? TryRead()
-    {
-        try
-        {
-            string path = DataPath;
-            if (!File.Exists(path))
-            {
-                return null;
-            }
-            return ContractsJson.Decode<WidgetSnapshot>(File.ReadAllBytes(path));
-        }
-        catch (JsonException)
-        {
-            return null; // 损坏 / 未知 schema：Provider 显示"重新打开应用"占位
-        }
-        catch (IOException)
-        {
-            return null; // 与写入竞争：下次 Activate 会重读
+            return false; // 无读取权限时不把现有文件认作有效缓存。
         }
     }
 }

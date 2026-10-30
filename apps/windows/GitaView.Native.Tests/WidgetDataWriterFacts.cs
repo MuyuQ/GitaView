@@ -51,7 +51,8 @@ public class WidgetDataWriterFacts : IDisposable
         Attention = [],
     };
 
-    private WidgetSnapshot? ReadWritten() => WidgetDataWriter.TryRead();
+    private WidgetSnapshot? ReadWritten() => WidgetDataReader.TryRead(
+        Path.Combine(WidgetDataWriter.DataDirectory!, "widget-data.json"));
 
     [Theory]
     [InlineData(false)]

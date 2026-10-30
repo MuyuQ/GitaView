@@ -266,26 +266,7 @@ public sealed class GitaViewWidgetProvider : IWidgetProvider
             Windows.Storage.ApplicationData.Current.LocalFolder.Path, "widget-data.json");
     }
 
-    private static WidgetSnapshot? ReadLatestSnapshot()
-    {
-        try
-        {
-            string path = DataPath();
-            if (!File.Exists(path))
-            {
-                return null;
-            }
-            return ContractsJson.Decode<WidgetSnapshot>(File.ReadAllBytes(path));
-        }
-        catch (System.Text.Json.JsonException)
-        {
-            return null; // 损坏 / 未知 schema：占位卡片提示重新打开应用
-        }
-        catch (IOException)
-        {
-            return null; // 与原子替换竞争：下一次 Activate / Watcher 重读
-        }
-    }
+    private static WidgetSnapshot? ReadLatestSnapshot() => WidgetDataReader.TryRead(DataPath());
 
     // —— 目录监听（原子替换 = rename，需同时监听 Changed/Renamed/Created）——
 

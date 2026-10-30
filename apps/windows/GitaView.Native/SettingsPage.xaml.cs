@@ -137,9 +137,6 @@ public sealed partial class SettingsPage : Page
 
     // —— 导航 ——
 
-    private void OnBackClick(object sender, RoutedEventArgs e) =>
-        App.MainWindow?.NavigateBackToStatus();
-
     private void OnTitleBarBackRequested(TitleBar sender, object args) =>
         App.MainWindow?.NavigateBackToStatus();
 

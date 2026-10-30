@@ -744,12 +744,6 @@ impl Engine {
         }
     }
 
-    /// 请求序号是否已被完成的扫描覆盖（同会话）。
-    pub fn refresh_completed(&self, session_id: &str, request_id: u64) -> bool {
-        session_id == self.inner.session_id
-            && self.inner.lock_state().completed_request_id >= request_id
-    }
-
     // —— 刷新 ——
 
     /// 手动 / 通用刷新请求：只请求不等待；完成与否看 completedRequestId。
