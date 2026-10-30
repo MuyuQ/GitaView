@@ -84,6 +84,10 @@ pub fn flush(timeout: Duration) -> bool {
     let Some(Some(queue)) = LOG_QUEUE.get() else {
         return true;
     };
+    flush_queue(queue, timeout)
+}
+
+fn flush_queue(queue: &SyncSender<LogMessage>, timeout: Duration) -> bool {
     let started = Instant::now();
     let (sender, receiver) = sync_channel(1);
     let mut message = LogMessage::Flush(sender);
@@ -118,26 +122,35 @@ fn write_line(level: &str, event: &str, detail: &str) {
         return;
     };
     let queue = LOG_QUEUE.get_or_init(|| {
-        let (sender, receiver) = sync_channel::<LogMessage>(QUEUE_CAPACITY);
-        std::thread::Builder::new()
-            .name("gitaview-diagnostics".into())
-            .spawn(move || {
-                for message in receiver {
-                    match message {
-                        LogMessage::Line(line) => append_line(logger, &line),
-                        LogMessage::Flush(completion) => {
-                            let _ = completion.try_send(());
-                        }
-                    }
-                }
-            })
-            .ok()
-            .map(|_| sender)
+        spawn_log_worker(Logger {
+            file_path: logger.file_path.clone(),
+        })
+        .map(|(sender, _worker)| sender)
     });
     if let Some(queue) = queue {
         // Never wait for disk, the file lock, or room in the diagnostic queue.
         let _ = queue.try_send(LogMessage::Line(format_line(level, event, detail)));
     }
+}
+
+fn spawn_log_worker(
+    logger: Logger,
+) -> Option<(SyncSender<LogMessage>, std::thread::JoinHandle<()>)> {
+    let (sender, receiver) = sync_channel::<LogMessage>(QUEUE_CAPACITY);
+    let worker = std::thread::Builder::new()
+        .name("gitaview-diagnostics".into())
+        .spawn(move || {
+            for message in receiver {
+                match message {
+                    LogMessage::Line(line) => append_line(&logger, &line),
+                    LogMessage::Flush(completion) => {
+                        let _ = completion.try_send(());
+                    }
+                }
+            }
+        })
+        .ok()?;
+    Some((sender, worker))
 }
 
 #[cfg(test)]
@@ -293,17 +306,35 @@ mod tests {
     #[test]
     fn flush_deadline_does_not_wait_forever_on_a_blocked_sink() {
         let dir = unique_temp_dir();
-        init(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let (queue, worker) = spawn_log_worker(Logger {
+            file_path: dir.join("gitaview-core.log"),
+        })
+        .unwrap();
         let sink = block_sink_for_test();
-        log("test.flush.blocked", "queued before the flush barrier");
+        queue
+            .try_send(LogMessage::Line("queued before the flush barrier\n".into()))
+            .unwrap();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let flush_sender = queue.clone();
         let flushing = std::thread::spawn(move || {
-            done_tx.send(flush(Duration::from_millis(20))).unwrap();
+            done_tx
+                .send(flush_queue(&flush_sender, Duration::from_millis(20)))
+                .unwrap();
         });
         let timed_out = done_rx.recv_timeout(Duration::from_secs(1)).ok();
         drop(sink);
         flushing.join().unwrap();
-        assert!(flush(Duration::from_secs(5)));
+        assert!(flush_queue(&queue, Duration::from_secs(5)));
+        queue
+            .try_send(LogMessage::Line("queued after the flush timeout\n".into()))
+            .unwrap();
+        drop(queue);
+        worker.join().unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.join("gitaview-core.log")).unwrap(),
+            "queued before the flush barrier\nqueued after the flush timeout\n"
+        );
         fs::remove_dir_all(dir).unwrap();
         assert_eq!(timed_out, Some(false));
     }

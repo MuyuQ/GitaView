@@ -343,11 +343,13 @@ fn repo_add_validates_group_membership() {
 fn repo_remove_respects_busy_lock_and_missing_id() {
     let temp = unique_temp_dir("gitaview_n06_remove");
     let service = open(&temp);
-    let repo = fake_repo(&temp, "repo");
-    service.repo_add(&repo, None).unwrap();
+    fake_repo(&temp, "repo");
+    fs::create_dir_all(temp.join("path-alias")).unwrap();
+    let repo = temp.join("path-alias").join("..").join("repo");
+    let (registered, _) = service.repo_add(&repo, None).unwrap();
 
     let locks = OperationLocks::new();
-    let guard = locks.try_acquire(&repo).unwrap();
+    let guard = locks.try_acquire(&registered.path_buf()).unwrap();
     assert_eq!(
         service.repo_remove("repo", &locks),
         Err(CoreError::RepoBusy),

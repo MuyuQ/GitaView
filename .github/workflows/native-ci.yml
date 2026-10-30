@@ -33,8 +33,8 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Validate native JSON Schema
@@ -46,7 +46,7 @@ jobs:
         with:
           components: rustfmt, clippy
       - name: Install .NET (Windows App SDK workload)
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
       - name: Rust format
@@ -64,7 +64,7 @@ jobs:
       - name: Package (unsigned dev artifact)
         run: powershell -NoProfile -File scripts\native\package-windows.ps1 -Configuration Debug -Architecture x64 -SkipBuild
       - name: Upload dev artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: gitaview-native-windows-dev
           path: apps/windows/GitaView.Native/*.msix
@@ -76,8 +76,8 @@ jobs:
     #（见 docs/native-platform-matrix.md），不在此伪装验证。
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
       - name: Validate native JSON Schema
