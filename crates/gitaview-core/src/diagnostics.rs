@@ -331,9 +331,10 @@ mod tests {
             .unwrap();
         drop(queue);
         worker.join().unwrap();
-        assert_eq!(
-            fs::read_to_string(dir.join("gitaview-core.log")).unwrap(),
-            "queued before the flush barrier\nqueued after the flush timeout\n"
+        let contents = fs::read_to_string(dir.join("gitaview-core.log")).unwrap();
+        assert!(
+            contents == "queued before the flush barrier\nqueued after the flush timeout\n",
+            "the isolated log must contain exactly the two queued lines"
         );
         fs::remove_dir_all(dir).unwrap();
         assert_eq!(timed_out, Some(false));
@@ -426,6 +427,28 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("gitaview_diag_{suffix}"))
+        temp_dir_at(suffix)
+    }
+
+    fn temp_dir_at(timestamp: u128) -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+        let sequence = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "gitaview_diag_{}_{timestamp}_{sequence}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn parallel_log_tests_get_distinct_directories_at_the_same_timestamp() {
+        let workers: Vec<_> = (0..8)
+            .map(|_| std::thread::spawn(|| (0..100).map(|_| temp_dir_at(42)).collect::<Vec<_>>()))
+            .collect();
+        let paths: std::collections::HashSet<_> = workers
+            .into_iter()
+            .flat_map(|worker| worker.join().unwrap())
+            .collect();
+        assert_eq!(paths.len(), 800);
     }
 }
