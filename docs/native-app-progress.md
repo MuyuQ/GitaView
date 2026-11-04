@@ -2,21 +2,23 @@
 
 > 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
 
-更新日期：2026-11-05（第 60 轮，计算机操作实机界面验收 + 分组归属回写 P1 修复 + WASDK 2.6.5 升级；Windows 源码版本 0.1.5.24，本机已安装 0.1.5.24）。
+更新日期：2026-11-05（第 60 轮，计算机操作实机界面验收 + 分组归属回写 P1 修复 + 呈现停摆根因确认与修复：WASDK 2.6.5 升级 + DesktopAcrylicBackdrop→MicaBackdrop；Windows 源码版本 0.1.5.27，本机已安装 0.1.5.27）。
 
 ## 当前状态
 
-第 60 轮用 computer use 对 0.1.5.22→0.1.5.23 完成全范围实机界面验收（真实鼠标 / 键盘 / 截图核对），期间发现并修复一项 P1：设置页仓库归属下拉的选择会被容器再生回声事件以空归属覆盖——归属保存约 230ms 后 LoadFromEngine 重挂 ItemsSource 使 SelectedIndex 瞬时重置为 -1，回声 SelectionChanged 把"未分组"当成真实修改发出，revision +2 净效果为零（磁盘轮询时间线实证：rev26 groupId=group-1 → 228ms 后 rev27 归属被抹）。修复为 SettingsGroupPresentation.AssignmentFromSelection：SelectedIndex<0 的回声与越界一律忽略、按名称映射归属、与当前归属一致不发盘；新增 7 项回归测试。0.1.5.23 实机复验：同一操作只产生一次 config.commit，归属持久。
+**呈现停摆已解决（第 60 轮核心成果）**。根因 = `DesktopAcrylicBackdrop`：在其存在下，swapchain 不随窗口缩放、新帧不向 DWM 提交（最大化后内容冻结在旧尺寸、AX 树与 PrintWindow 证明 XAML 内容照常更新渲染、后台启动的首帧永不呈现），最小化-还原 / 真实点击 / 移动窗口均无法恢复。取证对照（可见前台 + 最大化）：同版本同条件仅去掉背景材质 → 最大化后内容立即全屏呈现并随窗口缩放；换 `MicaBackdrop Kind=BaseAlt` → 全部正常。主窗口与托盘浮窗均已替换为 Mica（版本 0.1.5.27 实机验证：主窗口后台启动即最大化全屏呈现；浮窗真实托盘点击后在屏幕上完整渲染内容与按钮——亚克力版同浮窗曾全黑）。视觉上 Mica 比 DesktopAcrylic 更含蓄（壁纸色调而非模糊），用户如偏好亚克力观感可在平台修复（microsoft-ui-xaml #5148，官方修复随 2026 夏季 2.6 期落地——实测 2.6.5 未覆盖本症状）后重新评估。连带升级 WASDK 2.5.1→2.6.5（平台修复所在版本带）。取证方法与证据链保留在本文与 target/ui-*.png。
+
+第 60 轮主体：computer use 对 0.1.5.22→0.1.5.23 完成全范围实机界面验收（真实鼠标 / 键盘 / 截图核对），期间发现并修复一项 P1：设置页仓库归属下拉的选择会被容器再生回声事件以空归属覆盖——归属保存约 230ms 后 LoadFromEngine 重挂 ItemsSource 使 SelectedIndex 瞬时重置为 -1，回声 SelectionChanged 把"未分组"当成真实修改发出，revision +2 净效果为零（磁盘轮询时间线实证：rev26 groupId=group-1 → 228ms 后 rev27 归属被抹）。修复为 SettingsGroupPresentation.AssignmentFromSelection：SelectedIndex<0 的回声与越界一律忽略、按名称映射归属、与当前归属一致不发盘；新增 7 项回归测试。0.1.5.23 实机复验：同一操作只产生一次 config.commit，归属持久。
 
 实机验收通过项（0.1.5.23，临时分叉仓库 target/ui-temp/work，验后已从界面移除并清理分组，设置恢复 14 仓库 / 无分组原状）：主页面列表 / 排序 / 计数 / 汇总栏 / 搜索（命中路径）/ 状态筛选（未比较 3 ↔ 全部 15）/ 行展开操作面板；对分叉仓库执行 Fetch、Pull 确认+取消+执行、Push 确认+执行，关系随操作自动刷新（分叉→本地领先→已同步），执行反馈与忙态正确；FolderPicker 添加仓库全流程（含 PickerHost 独立进程对话框）；移除仓库带平台确认框，磁盘文件保留；分组创建 / 归属 / 删除与参照完整性（仓库移除后分组计数归 0）。托盘：真实托盘图标点击打开浮窗、内容（计数 / 时间 / 空态文案 / 三按钮）正确、浮窗内刷新按钮生效、Esc 收起、再次点击重开、"打开 GitaView"聚焦主窗口并收起浮窗。退出流：浮窗"退出"触发完整序列（exit.begin → snapshot.loop.exit → stop_requested → writer_flushed → exit.done，共约 25ms），进程干净退出，Provider 存活。小组件：Board 发现并固定"仓库状态"卡片，卡片显示真实数据（共 14 个仓库 / 已同步 11 · 待同步 0 / 需关注 0 · 待读 0 · 未比较 3 / 刷新时间）与深链按钮；主应用完全退出后卡片保留最后有效缓存（01:53 时间戳）继续显示历史。设置冲突项按架构修正：引擎常驻内存设置，手改 settings.json 不经过引擎内存，无法产生真实 UI 冲突；SETTINGS_CONFLICT → ConflictBar 的映射与事务语义由 C# / FFI 测试覆盖。
 
 原位更新注意：直接 Add-AppxPackage 不执行 package 脚本 -Install 的 Provider 预热，新包首次固定组件会因自包含单文件解压（实测约 3.2s）超过 Board 添加超时报"无法添加"；手动 COM 激活一次预热后即可正常固定。部署后固定组件前应先预热。
 
-开放问题（未修复，本轮如实记录）：① 呈现管线间歇停摆——后台启动或遮挡恢复后窗口客户区黑屏 / 帧冻结（AX 树内容实时更新、PrintWindow 证实 XAML 内容已渲染、引擎与日志无异常，DWM 不合成新帧；最大化时内容保持旧尺寸、其余区域黑），最小化-还原循环可恢复，正常前台启动的首帧呈现正常；疑 WinAppSDK 组合层问题，复现与取证方法（GDI 截屏 vs PrintWindow vs UIA 三方对照、settings.json 轮询）已记录，待独立排查。② 托盘右键菜单未能通过自动化触发（a11y 按下总是模拟左键；Shell 限制）；菜单链路此前已由用户实机确认（0.1.2.8）。③ Board 卡片尺寸切换的菜单项自动化点击未提交（与归属下拉同类回声问题的 Board 侧表现，三种尺寸模板由 WidgetCardContentFacts 单测覆盖）。
+开放问题收尾：呈现停摆已解决（见当前状态）；遗留观察项 = Mica 观感是否需按用户偏好调回亚克力（平台修复后可重评）。自动化受限留档：② 托盘右键菜单未能通过自动化触发（a11y 按下总是模拟左键；Shell 限制）；菜单链路此前已由用户实机确认（0.1.2.8）。③ Board 卡片尺寸切换的菜单项自动化点击未提交（与归属下拉同类回声问题的 Board 侧表现，三种尺寸模板由 WidgetCardContentFacts 单测覆盖）。
 
-第 60 轮补记（WASDK 升级）：查证确认"WinUI 3 窗口 resize 黑边 / 延迟重绘、swapchain 不随窗口同步缩放"为微软确认的平台级缺陷（microsoft-ui-xaml #5148，官方修复随 2026 年夏季的 WASDK 2.6 期落地），与本项目观察到的呈现停摆 / 内容不随窗口缩放吻合。应用随即从 WASDK 2.5.1 升级到 2.6.5（GitaView.Native 与 WidgetProvider 两个工程），版本 0.1.5.24：C# 151 项全绿、Release 构建与签名打包通过、原位安装（Provider 已预热）。0.1.5.24 上取证：后台启动 + a11y 交互后 PrintWindow 显示完整界面内容渲染进表面（数据实时，含 GitaView 自身"本地领先 ↑1"的真实状态）；因自动化环境的前台锁（外部窗口持有前台，SetForegroundWindow / 协议激活 / 任务栏点击均被拒），无法在本轮完成"窗口可见前台"下的 DWM 合成对照，停摆是否消除留待真实使用观察。平台修复背景见 https://github.com/microsoft/microsoft-ui-xaml/issues/5148 与报道 https://windowsforum.com/news/winui-3-resizing-fix-coming-summer-2026-to-stop-black-edges-and-tearing.420604。
+第 60 轮补记（WASDK 升级与取证过程）：查证确认"WinUI 3 窗口 resize 黑边 / 延迟重绘、swapchain 不随窗口同步缩放"为微软确认的平台级缺陷（microsoft-ui-xaml #5148，官方修复随 2026 年夏季的 WASDK 2.6 期落地）。先升级 WASDK 2.5.1→2.6.5（版本 0.1.5.24，C# 151 全绿）；随后完成可见前台取证：最小化遮挡窗口后主窗口可见并正常呈现（GDI 屏幕截屏 = 实时数据全内容），但 SW_MAXIMIZE 后内容冻结在旧尺寸、AX 实时更新而屏幕停留旧帧（02:17:39 vs 02:21:07），最小化-还原 / 真实点击 / 移动窗口均不恢复（2.6.5 上较 2.5.1 更严重）——停摆在 2.6.5 复现。对照实验定位根因：同条件去除 Window.SystemBackdrop → 最大化立即全屏呈现且随窗口缩放；换 MicaBackdrop Kind=BaseAlt → 同样全部正常。修复落地为 0.1.5.25/26/27 三步实验-验证-收编，主窗口与浮窗均改 Mica。平台修复背景见 https://github.com/microsoft/microsoft-ui-xaml/issues/5148 与报道 https://windowsforum.com/news/winui-3-resizing-fix-coming-summer-2026-to-stop-black-edges-and-tearing.420604。
 
-验证：新增回归后 C# 151 项、Rust 148 项通过；fmt / Clippy / Schema 6/6 通过；Release 构建与签名打包通过，0.1.5.23 验收后升级 WASDK 2.6.5 重打包为 0.1.5.24 原位安装（LocalState 保留，Provider 预热），版本 Status=Ok。验收证据截图存 target/ui-*.png（不入库）。
+验证：新增回归后 C# 151 项、Rust 148 项通过（0.1.5.24/27 两轮均跑）；fmt / Clippy / Schema 6/6 通过；Release 构建与签名打包通过，0.1.5.27 原位安装（LocalState 保留，Provider 预热），版本 Status=Ok。实机复核：主窗口后台启动即最大化全屏呈现、内容随窗口缩放、刷新/交互后屏幕实时更新；浮窗真实托盘点击后屏幕完整渲染（计数 / 本地领先行 / 三按钮）。验收证据截图存 target/ui-*.png（不入库）。
 
 ### 第 59 轮记录
 

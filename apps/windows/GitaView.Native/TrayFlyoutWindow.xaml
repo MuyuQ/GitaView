@@ -14,7 +14,7 @@
     xmlns:media="using:Microsoft.UI.Xaml.Media"
     mc:Ignorable="d">
     <Window.SystemBackdrop>
-        <media:DesktopAcrylicBackdrop />
+        <media:MicaBackdrop Kind="BaseAlt" />
     </Window.SystemBackdrop>
     <!-- VerticalAlignment=Top：内容自适应高度（Grid 默认拉伸会让
          ActualHeight 永远等于窗口高度，SizeChanged 无法驱动窗口收缩） -->
