@@ -2,15 +2,21 @@
 
 > 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
 
-更新日期：2026-10-30（第 59 轮，缓存读取统一与死代码清理；Windows 源码版本 0.1.5.22，本机安装仍为 0.1.5.11；N15 / N16 保持 implemented_unverified）。
+更新日期：2026-11-05（第 60 轮，计算机操作实机界面验收 + 分组归属回写 P1 修复；Windows 源码版本 0.1.5.23，本机已安装 0.1.5.23）。
 
 ## 当前状态
 
-第 59 轮处理第二轮冗余审查的四项 P3。删除未绑定的设置返回事件、托盘四个无引用成员和未进入 C ABI 的 Rust refresh_completed 方法。WidgetDataReader 按调用方路径统一文件读取与契约解码，Provider、首刷缓存保护和写入测试共用；删除 WidgetDataWriter.TryRead 旧入口。缺失、损坏、未知 schema 与 IOException 返回 null；权限异常继续交给调用方，写入器首刷保护仍将无读取权限的文件视为无有效缓存。修正相邻的旧 Win32 消息注释及测试可见性说明。
+第 60 轮用 computer use 对 0.1.5.22→0.1.5.23 完成全范围实机界面验收（真实鼠标 / 键盘 / 截图核对），期间发现并修复一项 P1：设置页仓库归属下拉的选择会被容器再生回声事件以空归属覆盖——归属保存约 230ms 后 LoadFromEngine 重挂 ItemsSource 使 SelectedIndex 瞬时重置为 -1，回声 SelectionChanged 把"未分组"当成真实修改发出，revision +2 净效果为零（磁盘轮询时间线实证：rev26 groupId=group-1 → 228ms 后 rev27 归属被抹）。修复为 SettingsGroupPresentation.AssignmentFromSelection：SelectedIndex<0 的回声与越界一律忽略、按名称映射归属、与当前归属一致不发盘；新增 7 项回归测试。0.1.5.23 实机复验：同一操作只产生一次 config.commit，归属持久。
 
-验证：缓存相关 22 项定向测试通过；完整 Rust 148 项、C# 144 项（含 8 项新增读取回归）、布局 12 项通过；fmt / Clippy / 文档相对链接与 diff 检查通过，Release 构建通过。回归覆盖有效路径、缺失、损坏和必填缺失、未知 schema、必填字段 null、共享读取失败及解除占用后的恢复。正式 C ABI 和宿主刷新完成判断路径保持不变。未安装或启动应用。第 58 轮提交 b4ad8af 的云端 native-ci 已全部通过。
+实机验收通过项（0.1.5.23，临时分叉仓库 target/ui-temp/work，验后已从界面移除并清理分组，设置恢复 14 仓库 / 无分组原状）：主页面列表 / 排序 / 计数 / 汇总栏 / 搜索（命中路径）/ 状态筛选（未比较 3 ↔ 全部 15）/ 行展开操作面板；对分叉仓库执行 Fetch、Pull 确认+取消+执行、Push 确认+执行，关系随操作自动刷新（分叉→本地领先→已同步），执行反馈与忙态正确；FolderPicker 添加仓库全流程（含 PickerHost 独立进程对话框）；移除仓库带平台确认框，磁盘文件保留；分组创建 / 归属 / 删除与参照完整性（仓库移除后分组计数归 0）。托盘：真实托盘图标点击打开浮窗、内容（计数 / 时间 / 空态文案 / 三按钮）正确、浮窗内刷新按钮生效、Esc 收起、再次点击重开、"打开 GitaView"聚焦主窗口并收起浮窗。退出流：浮窗"退出"触发完整序列（exit.begin → snapshot.loop.exit → stop_requested → writer_flushed → exit.done，共约 25ms），进程干净退出，Provider 存活。小组件：Board 发现并固定"仓库状态"卡片，卡片显示真实数据（共 14 个仓库 / 已同步 11 · 待同步 0 / 需关注 0 · 待读 0 · 未比较 3 / 刷新时间）与深链按钮；主应用完全退出后卡片保留最后有效缓存（01:53 时间戳）继续显示历史。设置冲突项按架构修正：引擎常驻内存设置，手改 settings.json 不经过引擎内存，无法产生真实 UI 冲突；SETTINGS_CONFLICT → ConflictBar 的映射与事务语义由 C# / FFI 测试覆盖。
 
-### 第 58 轮记录
+原位更新注意：直接 Add-AppxPackage 不执行 package 脚本 -Install 的 Provider 预热，新包首次固定组件会因自包含单文件解压（实测约 3.2s）超过 Board 添加超时报"无法添加"；手动 COM 激活一次预热后即可正常固定。部署后固定组件前应先预热。
+
+开放问题（未修复，本轮如实记录）：① 呈现管线间歇停摆——后台启动或遮挡恢复后窗口客户区黑屏 / 帧冻结（AX 树内容实时更新、PrintWindow 证实 XAML 内容已渲染、引擎与日志无异常，DWM 不合成新帧；最大化时内容保持旧尺寸、其余区域黑），最小化-还原循环可恢复，正常前台启动的首帧呈现正常；疑 WinAppSDK 组合层问题，复现与取证方法（GDI 截屏 vs PrintWindow vs UIA 三方对照、settings.json 轮询）已记录，待独立排查。② 托盘右键菜单未能通过自动化触发（a11y 按下总是模拟左键；Shell 限制）；菜单链路此前已由用户实机确认（0.1.2.8）。③ Board 卡片尺寸切换的菜单项自动化点击未提交（与归属下拉同类回声问题的 Board 侧表现，三种尺寸模板由 WidgetCardContentFacts 单测覆盖）。
+
+验证：新增回归后 C# 151 项、Rust 148 项通过；fmt / Clippy / Schema 6/6 通过；Release 构建与签名打包通过，GitaView.Native_0.1.5.23_x64.msix 原位安装（LocalState 保留），版本 Status=Ok。验收证据截图存 target/ui-*.png（不入库）。
+
+### 第 59 轮记录
 
 第 58 轮处理冗余审查的四项 P3：删除无调用的刷新文案方法与专用 DTO、未绑定的 Pull / Push 颜色属性及通知、非 C ABI 的 unused unsafe reply helper。正式 20 个 C ABI 入口与确认行为保持不变。WidgetCatalogProbe 移入 tools/windows，补使用说明；按包族与扩展 ID 区分目录为空、缺少目标、发现目标，缺失不再推断为缓存过期。CI 增加工具路径触发与独立构建，工具不进入应用包。
 

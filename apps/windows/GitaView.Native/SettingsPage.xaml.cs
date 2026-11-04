@@ -309,16 +309,15 @@ public sealed partial class SettingsPage : Page
             return;
         }
         // 与加载映射一致：0=未分组，1..=分组；按名称稳定映射回 ID。
-        string? groupId = null;
-        if (comboBox.SelectedIndex > 0 && comboBox.SelectedIndex < row.GroupOptions.Count)
-        {
-            groupId = _settings.Groups
-                .FirstOrDefault(group => group.Name == row.GroupOptions[comboBox.SelectedIndex])?.Id;
-        }
-        if (_settings.Repos.FirstOrDefault(repo => repo.Id == row.RepoId)?.GroupId == groupId) return;
+        // SelectedIndex<0 的回声事件（容器再生重置）在此被丢弃，绝不发送空归属。
+        var currentGroupId = _settings.Repos
+            .FirstOrDefault(repo => repo.Id == row.RepoId)?.GroupId;
+        var assignment = SettingsGroupPresentation.AssignmentFromSelection(
+            comboBox.SelectedIndex, row.GroupOptions, _settings.Groups, row.RepoId, currentGroupId);
+        if (assignment is null) return;
         var engine = Engine;
         if (engine is null) return;
-        var input = SettingsEditRequest.ForRepoGroup(_settings, row.RepoId, groupId);
+        var input = SettingsEditRequest.ForRepoGroup(_settings, assignment.RepoId, assignment.GroupId);
         try
         {
             await Task.Run(() => engine.SettingsSave(input));
