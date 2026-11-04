@@ -2,7 +2,7 @@
 
 > 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
 
-更新日期：2026-11-05（第 60 轮，计算机操作实机界面验收 + 分组归属回写 P1 修复；Windows 源码版本 0.1.5.23，本机已安装 0.1.5.23）。
+更新日期：2026-11-05（第 60 轮，计算机操作实机界面验收 + 分组归属回写 P1 修复 + WASDK 2.6.5 升级；Windows 源码版本 0.1.5.24，本机已安装 0.1.5.24）。
 
 ## 当前状态
 
@@ -14,7 +14,9 @@
 
 开放问题（未修复，本轮如实记录）：① 呈现管线间歇停摆——后台启动或遮挡恢复后窗口客户区黑屏 / 帧冻结（AX 树内容实时更新、PrintWindow 证实 XAML 内容已渲染、引擎与日志无异常，DWM 不合成新帧；最大化时内容保持旧尺寸、其余区域黑），最小化-还原循环可恢复，正常前台启动的首帧呈现正常；疑 WinAppSDK 组合层问题，复现与取证方法（GDI 截屏 vs PrintWindow vs UIA 三方对照、settings.json 轮询）已记录，待独立排查。② 托盘右键菜单未能通过自动化触发（a11y 按下总是模拟左键；Shell 限制）；菜单链路此前已由用户实机确认（0.1.2.8）。③ Board 卡片尺寸切换的菜单项自动化点击未提交（与归属下拉同类回声问题的 Board 侧表现，三种尺寸模板由 WidgetCardContentFacts 单测覆盖）。
 
-验证：新增回归后 C# 151 项、Rust 148 项通过；fmt / Clippy / Schema 6/6 通过；Release 构建与签名打包通过，GitaView.Native_0.1.5.23_x64.msix 原位安装（LocalState 保留），版本 Status=Ok。验收证据截图存 target/ui-*.png（不入库）。
+第 60 轮补记（WASDK 升级）：查证确认"WinUI 3 窗口 resize 黑边 / 延迟重绘、swapchain 不随窗口同步缩放"为微软确认的平台级缺陷（microsoft-ui-xaml #5148，官方修复随 2026 年夏季的 WASDK 2.6 期落地），与本项目观察到的呈现停摆 / 内容不随窗口缩放吻合。应用随即从 WASDK 2.5.1 升级到 2.6.5（GitaView.Native 与 WidgetProvider 两个工程），版本 0.1.5.24：C# 151 项全绿、Release 构建与签名打包通过、原位安装（Provider 已预热）。0.1.5.24 上取证：后台启动 + a11y 交互后 PrintWindow 显示完整界面内容渲染进表面（数据实时，含 GitaView 自身"本地领先 ↑1"的真实状态）；因自动化环境的前台锁（外部窗口持有前台，SetForegroundWindow / 协议激活 / 任务栏点击均被拒），无法在本轮完成"窗口可见前台"下的 DWM 合成对照，停摆是否消除留待真实使用观察。平台修复背景见 https://github.com/microsoft/microsoft-ui-xaml/issues/5148 与报道 https://windowsforum.com/news/winui-3-resizing-fix-coming-summer-2026-to-stop-black-edges-and-tearing.420604。
+
+验证：新增回归后 C# 151 项、Rust 148 项通过；fmt / Clippy / Schema 6/6 通过；Release 构建与签名打包通过，0.1.5.23 验收后升级 WASDK 2.6.5 重打包为 0.1.5.24 原位安装（LocalState 保留，Provider 预热），版本 Status=Ok。验收证据截图存 target/ui-*.png（不入库）。
 
 ### 第 59 轮记录
 
