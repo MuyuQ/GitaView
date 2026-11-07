@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://gitaview.dev/contracts/native/v1/schema.json",
   "title": "GitaView native contract v1 (frozen at N09)",
-  "description": "原型子集：探针、应用快照、Widget 投影与统一 envelope。N09 冻结前必须补齐 settings / view / 生命周期等全部 DTO（见同目录 README）。计数的和不变式（四桶+pending=total 等）无法用 schema 表达，由三方测试断言。",
+  "description": "原型子集：探针、应用快照、Summary 投影与统一 envelope。N09 冻结前必须补齐 settings / view / 生命周期等全部 DTO（见同目录 README）。计数的和不变式（四桶+pending=total 等）无法用 schema 表达，由三方测试断言。",
   "definitions": {
     "uint64": { "type": "integer", "minimum": 0, "maximum": 18446744073709551615 },
     "uint32": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
@@ -172,7 +172,7 @@
         }
       ]
     },
-    "widgetCounts": {
+    "summaryCounts": {
       "type": "object",
       "additionalProperties": false,
       "required": ["total", "synced", "localAhead", "remoteAhead", "diverged", "noRemote", "error", "pending"],
@@ -198,7 +198,7 @@
         "noRemote": { "$ref": "#/definitions/uint32" }
       }
     },
-    "widgetRepo": {
+    "summaryRepo": {
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "name", "readState"],
@@ -206,13 +206,14 @@
         "id": { "type": "string", "minLength": 1 },
         "name": { "type": "string", "minLength": 1 },
         "readState": { "$ref": "#/definitions/readState" },
-        "relation": { "type": ["string", "null"], "enum": ["diverged", "remote_ahead", "local_ahead", "error", null] },
+        "relation": { "type": ["string", "null"], "enum": ["diverged", "remote_ahead", "local_ahead", null] },
         "errorCode": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorCode" }] }
       }
     },
-    "widgetSnapshot": {
+    "summarySnapshot": {
       "type": "object",
       "additionalProperties": false,
+      "description": "托盘浮窗安全投影：不含 path、完整远端 URL、凭据或原始 Git 输出",
       "required": [
         "schemaVersion", "sessionId", "generation", "stateRevision", "settingsRevision",
         "attemptedAtMs", "lastSuccessAtMs", "refreshState", "refreshPolicy",
@@ -229,9 +230,9 @@
         "refreshState": { "$ref": "#/definitions/refreshState" },
         "refreshErrorCode": { "anyOf": [{ "type": "null" }, { "$ref": "#/definitions/errorCode" }] },
         "refreshPolicy": { "$ref": "#/definitions/refreshPolicy" },
-        "counts": { "$ref": "#/definitions/widgetCounts" },
+        "counts": { "$ref": "#/definitions/summaryCounts" },
         "compact": { "$ref": "#/definitions/compactCounts" },
-        "attention": { "type": "array", "maxItems": 10, "items": { "$ref": "#/definitions/widgetRepo" } }
+        "attention": { "type": "array", "maxItems": 10, "items": { "$ref": "#/definitions/summaryRepo" } }
       }
     },
     "probeRequest": {
@@ -277,10 +278,10 @@
         "generation": { "$ref": "#/definitions/uint64" },
         "settingsRevision": { "$ref": "#/definitions/uint64" },
         "effective": { "$ref": "#/definitions/viewQuery", "description": "协调后的有效筛选；搜索零结果不清空搜索" },
-        "summaryCounts": { "$ref": "#/definitions/widgetCounts", "description": "全部仓库摘要，不受筛选影响" },
+        "summaryCounts": { "$ref": "#/definitions/summaryCounts", "description": "全部仓库摘要，不受筛选影响" },
         "summaryCompact": { "$ref": "#/definitions/compactCounts" },
         "groups": { "type": "array", "items": { "$ref": "#/definitions/groupCount" }, "description": "组计数基于全部仓库" },
-        "statusCounts": { "$ref": "#/definitions/widgetCounts", "description": "只基于所选组，不随状态筛选或搜索缩小" },
+        "statusCounts": { "$ref": "#/definitions/summaryCounts", "description": "只基于所选组，不随状态筛选或搜索缩小" },
         "rows": { "type": "array", "items": { "$ref": "#/definitions/repoStatus" }, "description": "依次应用分组、状态筛选、搜索后排序" }
       }
     },
@@ -364,7 +365,7 @@
       "required": ["sessionId", "abiVersion", "startupWarnings"],
       "properties": {
         "sessionId": { "type": "string", "minLength": 1 },
-        "abiVersion": { "const": 1 },
+        "abiVersion": { "const": 2 },
         "startupWarnings": { "type": "array", "items": { "$ref": "#/definitions/startupWarningCode" } }
       }
     },
@@ -521,7 +522,7 @@
   "anyOf": [
     { "$ref": "#/definitions/envelope" },
     { "$ref": "#/definitions/appSnapshot" },
-    { "$ref": "#/definitions/widgetSnapshot" },
+    { "$ref": "#/definitions/summarySnapshot" },
     { "$ref": "#/definitions/probeRequest" },
     { "$ref": "#/definitions/probeResult" },
     { "$ref": "#/definitions/viewQuery" },

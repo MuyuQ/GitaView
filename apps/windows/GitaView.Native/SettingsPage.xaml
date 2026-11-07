@@ -2,7 +2,7 @@
 <!--
     设置页（统一设计，升级自旧版 SettingsShell 的"仓库设置 / 常规设置"分区）。
     仓库设置：添加仓库、扫描目录与候选选择、已管理仓库（路径 / 分组 / 移除）、
-    分组管理。常规设置：刷新策略、默认分组、安全确认规则、系统启动、小组件说明。
+    分组管理。常规设置：刷新策略、默认分组、安全确认规则、系统启动。
     移除只删除管理记录，不删除磁盘仓库。
 -->
 <Page
@@ -210,7 +210,6 @@
                             </Grid>
                         </Border>
                         <StackPanel Spacing="6" Margin="0,18,0,0"><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="操作确认" Style="{StaticResource GvSectionTitle}"/><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="Pull 会修改工作区，Push 会更新远端分支。每次执行前都需要确认。" Style="{StaticResource GvHelpText}"/></StackPanel>
-                        <StackPanel Spacing="6" Margin="0,18,0,0"><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="小组件" Style="{StaticResource GvSectionTitle}"/><TextBlock FontFamily="{StaticResource GvUiFontFamily}" Text="按 Win+W，在小组件面板添加 GitaView。应用退出后仍显示最近一次结果；数据过期时会提示。" Style="{StaticResource GvHelpText}"/></StackPanel>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>

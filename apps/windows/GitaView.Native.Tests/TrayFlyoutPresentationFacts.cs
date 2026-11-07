@@ -5,7 +5,7 @@ namespace GitaView.Native.Tests;
 
 public class TrayFlyoutPresentationFacts
 {
-    private static WidgetCounts Counts(uint synced = 0, uint noRemote = 0, uint pending = 0) => new()
+    private static SummaryCounts Counts(uint synced = 0, uint noRemote = 0, uint pending = 0) => new()
     {
         Total = synced + noRemote + pending,
         Synced = synced,

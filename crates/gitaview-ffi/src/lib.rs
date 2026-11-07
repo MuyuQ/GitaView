@@ -27,15 +27,15 @@ use gitaview_core::engine::{
 use gitaview_core::error::CoreError;
 use gitaview_core::model::SCHEMA_VERSION;
 use gitaview_core::settings::SettingsSaveInput;
+use gitaview_core::summary::project_summary;
 use gitaview_core::view::ViewQuery;
-use gitaview_core::widget::project_widget;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::time::Duration;
 
-pub const GV_ABI_VERSION: u32 = 1;
+pub const GV_ABI_VERSION: u32 = 2;
 
 pub const GV_OK: i32 = 0;
 pub const GV_ERROR: i32 = 1;
@@ -742,7 +742,7 @@ pub unsafe extern "C" fn gv_snapshot_wait(
     .unwrap_or(GV_PANIC)
 }
 
-// —— 视图与 Widget ——
+// —— 视图与 Summary ——
 
 /// 视图查询：`{groupId?, relationFilter?, query?}` → ViewResult。
 ///
@@ -778,15 +778,15 @@ pub unsafe extern "C" fn gv_view_query(
     .unwrap_or(GV_PANIC)
 }
 
-/// 当前安全 Widget 投影：不写磁盘、不调用系统组件 API、不含 path / 凭据。
+/// 当前托盘浮窗 Summary 投影：不写磁盘、不调用系统组件 API、不含 path / 凭据。
 ///
 /// # Safety
 /// `engine` 有效；`reply` 已清零。
 #[no_mangle]
-pub unsafe extern "C" fn gv_widget_snapshot(engine: *mut GvEngine, reply: *mut GvBuffer) -> i32 {
+pub unsafe extern "C" fn gv_summary_snapshot(engine: *mut GvEngine, reply: *mut GvBuffer) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
         run_call(engine, reply, |engine| {
-            Ok(project_widget(&engine.snapshot_get()))
+            Ok(project_summary(&engine.snapshot_get()))
         })
     }))
     .unwrap_or(GV_PANIC)

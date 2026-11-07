@@ -27,21 +27,21 @@
 | 项目 | 实施要求 |
 | --- | --- |
 | 产品 | 多 Git 仓库状态总览，支持仓库管理、分组、筛选、Fetch / Pull / Push |
-| macOS | SwiftUI 内容、原生菜单栏和正常窗口；必要时使用 AppKit；WidgetKit 系统小组件 |
-| Windows | C# + WinUI 3、标准 Win32 托盘、正常窗口；Windows Widget Provider + Adaptive Cards |
+| macOS | SwiftUI 内容、原生菜单栏和正常窗口；必要时使用 AppKit |
+| Windows | C# + WinUI 3、标准 Win32 托盘与浮窗、正常窗口 |
 | 共享实现 | Rust Git 执行、状态、设置、刷新调度和应用服务；C ABI 供两个宿主调用 |
 | 界面设计 | macOS / Windows 使用统一产品设计，在当前旧版布局与视觉基础上升级；见统一界面设计文档 |
-| 原生组件 | 两端小 / 中 / 大尺寸；全部仓库摘要、需要关注的仓库、更新时间、打开应用 |
+| 原生组件 | 托盘浮窗：全部仓库摘要、需要关注的仓库、更新时间、打开应用 |
 | 运行方式 | 一个主应用实例持有扫描引擎；关闭窗口继续驻留；显式退出停止扫描 |
 | 数据 | 使用全新设置目录和新 schema，首次启动为空仓库列表 |
 | 分发 | macOS Developer ID 签名 / 公证后的 DMG；Windows 签名 MSIX |
 | 系统范围 | 由选定稳定 SDK、工具链和实际使用 API 的正式支持范围确定；记录准确 OS 下限 |
 
-明确排除：旧数据导入、旧 JSON 兼容、数据回退、旧安装升级、旧客户端再适配、WorkerW / Progman、跨进程 SetParent、特殊桌面层级、跨 Space 常驻复刻、WebView / Electron UI、libgit2 替换、自建 shell 面板、自动 Fetch、自选分组的小组件、独立后台扫描服务、自动更新和商店上架。
+明确排除：旧数据导入、旧 JSON 兼容、数据回退、旧安装升级、旧客户端再适配、WorkerW / Progman、跨进程 SetParent、特殊桌面层级、跨 Space 常驻复刻、WebView / Electron UI、libgit2 替换、自建 shell 面板、自动 Fetch、系统小组件集成、独立后台扫描服务、自动更新和商店上架。
 
 不需要维持旧设置字段、旧 Tauri IPC 或旧 Widget 文件。UI 保留旧版的信息架构、紧凑密度与视觉识别，在两端使用共同设计升级；原生字体度量和系统窗口装饰允许有差异。仍需保留 Git 行为、安全确认、设置一致性和平台原生交互的正确性。
 
-菜单栏 / 托盘可以显示汇总并提供“打开仓库列表、刷新、设置、退出”。两端不用复制同一套菜单样式。小组件由系统负责添加、移除和放置，不实现一个虚假的跨平台组件开关。
+菜单栏 / 托盘可以显示汇总并提供“打开仓库列表、刷新、设置、退出”。两端不用复制同一套菜单样式。
 
 ## 3. 仓库现实与工作方式
 
@@ -55,9 +55,9 @@
 | `crates/gitaview-core/src/git/remote.rs`、`operation_lock.rs` | 浏览器安全 URL；仓库网络操作互斥 |
 | `crates/gitaview-core/src/engine.rs`、`refresh.rs` | 前置校验、生命周期、扫描合并、版本化快照与配置重投影 |
 | `crates/gitaview-core/src/settings.rs`、`src/storage/` | 设置事务、revision 冲突、原子写入与损坏隔离 |
-| `crates/gitaview-core/src/view.rs`、`widget.rs` | 排序、计数、筛选、Widget 投影与可用动作 |
+| `crates/gitaview-core/src/view.rs`、`summary.rs` | 排序、计数、筛选、Summary 投影与可用动作 |
 | `crates/gitaview-ffi/include/gitaview.h` | 正式 ABI、状态码和生命周期 |
-| `apps/windows/` | 原生宿主、Interop、Contracts、Widget Provider 与 C# 测试 |
+| `apps/windows/` | 原生宿主、Interop、Contracts 与 C# 测试 |
 | `.github/workflows/native-ci.yml` | Windows 完整构建验证、macOS 核心测试及双 Apple 目标检查 |
 
 复用现有 core / ffi 和 Windows 实现。后续 macOS 宿主直接接入同一份核心，不重新提取旧源码。每轮完成可验证的任务，再更新进度与平台证据；实现状态以代码、测试和实际验收为准。
@@ -69,7 +69,7 @@ Cargo.toml                       # 新增原生 workspace
 Cargo.lock                       # 新 workspace 自己的锁文件
 crates/
   gitaview-core/
-    src/{lib,model,error,engine,refresh,settings,registry,view,widget}.rs
+    src/{lib,model,error,engine,refresh,settings,registry,view,summary}.rs
     src/git/{commands,process,discovery,remote,operation_lock}.rs
     src/storage/store.rs
     tests/
@@ -81,15 +81,13 @@ apps/
   macos/
     project.yml                  # 默认沿用现有 XcodeGen 工程管理方式
     GitaViewNative/
-    GitaViewNativeWidget/
     Shared/
     Tests/
   windows/
     GitaView.Native.sln
     GitaView.Native/              # WinUI 3 主程序
     GitaView.Native.Interop/      # C ABI 包装
-    GitaView.Native.Contracts/    # DTO 与 JSON 解码，供 Provider 复用
-    GitaView.Native.WidgetProvider/
+    GitaView.Native.Contracts/    # DTO 与契约 JSON 解码
     GitaView.Native.Package/      # 或 SDK 正式支持的等价打包结构
     GitaView.Native.Tests/
 contracts/native/v1/
@@ -121,7 +119,7 @@ resolver = "2"
 
 两个新 crate 的 edition 首先使用 2021，减少与现有模块无关的改动。根 workspace 记录 release profile 和 Rust 工具链版本。Workspace 共用根锁文件和输出目录，当前只包含 core / ffi 两个成员。[Cargo：Workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html)
 
-`gitaview-core` 与 `gitaview-ffi` 不依赖 Tauri、AppKit、WidgetKit 或 WinUI。core 允许用于 Git 子进程和文件替换的 OS API。旧 `build.rs` 会编译 Swift Widget bridge，不能复制到新 crate；原生 Swift 宿主直接调用 WidgetCenter。
+`gitaview-core` 与 `gitaview-ffi` 不依赖 Tauri、AppKit、WidgetKit 或 WinUI。core 允许用于 Git 子进程和文件替换的 OS API。旧 `build.rs` 会编译 Swift Widget bridge，不能复制到新 crate。
 
 FFI crate 输出 `staticlib` 与 `cdylib`，根据目标平台消费正确产物。根 `target/` 中 `.a` / `.dll` 与宿主架构必须匹配。Swift 链接所需系统库用实际目标链接验证确定，不通过不断忽略未定义符号掩盖问题。
 
@@ -131,7 +129,7 @@ N00–N04 在 `docs/native-platform-matrix.md` 记录 OS 构建号、架构、Ru
 
 首批目标为 macOS arm64 / x86_64、Windows x64。若工具链正式不再支持某目标，记录证据并调整矩阵；若只是缺少设备，则标记未验收，不能写成平台不支持。Windows ARM64 为后续范围。
 
-新身份的默认建议：macOS 主 bundle `com.gitaview.native`，Widget bundle `com.gitaview.native.widget`；Windows 包名 `GitaView.Native`。真实 Publisher、Team ID 与 App Group ID 来自可用签名身份，不填伪造值。App Group 的标识形式与权限按 Apple 对 macOS 的正式规则配置，主程序与扩展一致。
+新身份的默认建议：macOS 主 bundle `com.gitaview.native`；Windows 包名 `GitaView.Native`。真实 Publisher 与 Team ID 来自可用签名身份，不填伪造值。
 
 原生版本使用新协议 `gitaview-native://`，避免复用旧客户端的协议注册。允许的首版路由只有：
 
@@ -146,16 +144,16 @@ gitaview-native://repo/<percent-encoded-repo-id>
 
 N02 先建立 `contracts/native/v1/README.md`、`schema.json` 和可解析的 JSON fixture，再实现三个语言模型。原型期间可调整命名，但 N09 实现正式导出前必须固定首版字段；之后的变更同时更新 schema、三个语言模型、样例和测试。不能靠解码默认值隐藏不匹配。
 
-schema 必须覆盖完整 Settings / SettingsSaveInput、RepoStatus、Snapshot、ViewResult、WidgetSnapshot、Error / Envelope，以及每个 FFI 函数的输入与成功 data。逐字段写明类型、必填、可空、枚举、数值范围和未知字段策略；本文示例不是字段全集。缺字段、错误类型、未知枚举 / schema 和非法组合都要有反例。测试需验证真实 Rust 序列化结果及两端解码，不能只测试三个各自手写的样例。原型只冻结实际使用的子集，N09 的退出条件才是全部闭合。
+schema 必须覆盖完整 Settings / SettingsSaveInput、RepoStatus、Snapshot、ViewResult、SummarySnapshot、Error / Envelope，以及每个 FFI 函数的输入与成功 data。逐字段写明类型、必填、可空、枚举、数值范围和未知字段策略；本文示例不是字段全集。缺字段、错误类型、未知枚举 / schema 和非法组合都要有反例。测试需验证真实 Rust 序列化结果及两端解码，不能只测试三个各自手写的样例。原型只冻结实际使用的子集，N09 的退出条件才是全部闭合。
 
 ### 6.1 基础规则
 
 - JSON 键使用 camelCase；枚举使用文中指定的小写值；文本 UTF-8。
-- `schemaVersion = 1`，`abiVersion = 1`，各自独立于产品版本。
+- `schemaVersion = 1`，`abiVersion = 2`（2026-11 因导出更名自 1 升级），各自独立于产品版本。
 - 时间为 Unix 毫秒 `u64` / Swift `UInt64` / C# `ulong`，显式转换；不混用秒、ISO 字符串与默认 Date 解码。
 - 引擎每次启动生成新的 `sessionId`，会话内 generation 单调递增；跨会话不比较 generation 大小。
 - 初始 generation 为 0；每次被接受并发布的扫描完成结果递增一代，包括全局失败。因配置已变化而丢弃的结果不占代数。
-- `stateRevision` 是会话内公开状态的通知序号，初始为 0；扫描开始 / 完成、请求入队、配置提交等可见变化都递增。订阅和 Widget 写入去重使用它，不能只看 generation。
+- `stateRevision` 是会话内公开状态的通知序号，初始为 0；扫描开始 / 完成、请求入队、配置提交等可见变化都递增。订阅去重使用它，不能只看 generation。
 - `requestId` 标识刷新请求，`settingsRevision` 标识配置，`generation` 标识扫描结果，`stateRevision` 标识可见状态；均使用无符号 64 位，禁止互相替代。
 - 仓库 ID 与分组 ID 为稳定机器标识，不用界面文字作标识。每仓库最多属于一个分组；`groupId = null` 表示未分组，筛选的 `groupId = null` 表示全部仓库。
 - 两种 null 发生在不同字段对象中；UI 的“全部分组”是虚拟筛选，不持久化为真实分组。首版不提供单独“仅未分组”筛选，避免复用 null 造成歧义。
@@ -197,7 +195,7 @@ schema 必须覆盖完整 Settings / SettingsSaveInput、RepoStatus、Snapshot�
 
 已有 GitBranchState 提供 ahead / behind / remote_branch 等信息，`hasCommit` 在已有状态算法中已经判断；将必要结果保留在结构中即可。不新增工作区修改统计，也不把 ahead / behind 称为未提交文件数量。
 
-错误对象使用稳定 code 与可选安全 message；保留内部诊断上下文，但 Widget 不包含原始 stderr、用户路径或带凭据 URL。
+错误对象使用稳定 code 与可选安全 message；保留内部诊断上下文，但投影不包含原始 stderr、用户路径或带凭据 URL。
 
 ### 6.3 应用快照与时间语义
 
@@ -228,7 +226,7 @@ refreshState 只描述最近完成尝试：pending 表示尚未完成首次尝�
 
 设置读改写、仓库删除和分组变更与扫描结果不能交错复活旧记录：扫描捕获 settingsRevision，发布前检查。若 revision 已变化，丢弃过时结果并合并一次新扫描；停止阶段不再补扫。
 
-配置保存成功返回前，核心提交与新配置一致的可见状态并唤醒订阅：移除仓库立即从列表、计数、托盘和 Widget 投影删除；分组变更立即重投影；新仓库立即出现为 pending。保留仍存在仓库的历史结果和原成功时间；配置提交本身不增加 generation、不表示 Git 扫描成功。首次启动同样从新设置建立 pending 行。平台显示可异步更新，不能因下一轮扫描失败而重新出现已删记录。
+配置保存成功返回前，核心提交与新配置一致的可见状态并唤醒订阅：移除仓库立即从列表、计数、托盘和 Summary 投影删除；分组变更立即重投影；新仓库立即出现为 pending。保留仍存在仓库的历史结果和原成功时间；配置提交本身不增加 generation、不表示 Git 扫描成功。首次启动同样从新设置建立 pending 行。平台显示可异步更新，不能因下一轮扫描失败而重新出现已删记录。
 
 开启定时刷新时，距离最后完整收集成功超过两个配置间隔即为过期；等于阈值尚不标记过期。关闭时显示手动刷新及时间。单仓库错误始终单独提示；有成功收集时间不表示每个仓库都读取成功。
 
@@ -242,9 +240,9 @@ refreshState 只描述最近完成尝试：pending 表示尚未完成首次尝�
 
 配置写入按“校验候选 → 原子落盘 → 提交内存与 revision → 发布配置变化”执行。写入失败不得改变内存、revision 或对外投影。设置写入串行器可覆盖落盘步骤，不能占住刷新状态锁或阻塞 UI 线程。损坏配置隔离成功后加载默认值，并在 engine_create 的 `startupWarnings` 返回 `SETTINGS_RECOVERED` 供 UI 提示；无法读取 / 隔离 / 建立数据目录时初始化失败，不静默当成首次空配置。startupWarnings 是本次启动的结果，不作为永久设置。
 
-### 6.5 Widget 快照
+### 6.5 Summary 快照
 
-Widget 快照由 Rust 投影生成，两端消费同一种 JSON：包含 schemaVersion、sessionId、generation、stateRevision、settingsRevision、尝试 / 成功时间、刷新策略、安全错误码、全部仓库计数及有界关注列表。默认关注列表最多 10 项，按共享排序选取读取失败、分叉、远程领先、本地领先，UI 按尺寸显示适合的前几项。pending 计入 total 和独立 pendingCount，不挤入五种关系或 error；组件显示“部分仓库尚未读取”，不能显示全部同步。
+Summary 快照（托盘浮窗数据源）由 Rust 投影生成，两端消费同一种 JSON：包含 schemaVersion、sessionId、generation、stateRevision、settingsRevision、尝试 / 成功时间、刷新策略、安全错误码、全部仓库计数及有界关注列表。默认关注列表最多 10 项，按共享排序选取读取失败、分叉、远程领先、本地领先，浮窗显示适合的前几项。pending 计入 total 和独立 pendingCount，不挤入五种关系或 error；浮窗显示“部分仓库尚未读取”，不能显示全部同步。
 
 不包含 path、完整远端 URL、凭据或原始 Git 输出。错误展示由稳定错误码映射为原生文案。摘要始终覆盖全部仓库，不能用截断后的关注列表计算总数。fixture 必须证明摘要计数正确、裁剪不泄漏路径。
 
@@ -284,17 +282,11 @@ origin 是唯一管理的远端。沿用现有 upstream 选择和 origin 同名�
 
 所有刷新来源使用同一个请求序号：每个已接受请求获得递增 requestId；调度器只保存最新请求号，最多一个扫描和一个待扫标记，不建立请求队列。扫描开始时捕获当时最新请求号；完成并接受结果后，将 completedRequestId 推进到捕获值。扫描期间的新请求由下一轮覆盖。因配置变化丢弃结果时不推进 completedRequestId，下轮继续覆盖未完成请求。全局失败也完成所覆盖的请求，但 UI 必须显示失败。宿主等待自身请求时检查同一 session 下 completedRequestId >= requestId；进入 Stopping 后退出等待，不伪造完成。
 
-定时期限使用单调时钟；展示时间使用 Unix 毫秒。宿主收到原生恢复 / 唤醒通知时，定时开启则合并请求一次刷新，不按休眠期间遗漏的间隔补 N 次；手动模式仍保持手动。时间回拨导致成功时间在未来时显示时间异常 / 等待刷新，避免无符号减法下溢或把数据永久当新。两个 Widget 用相同时间 fixture 验证边界；系统实际重绘时间仍由平台决定。
+定时期限使用单调时钟；展示时间使用 Unix 毫秒。宿主收到原生恢复 / 唤醒通知时，定时开启则合并请求一次刷新，不按休眠期间遗漏的间隔补 N 次；手动模式仍保持手动。时间回拨导致成功时间在未来时显示时间异常 / 等待刷新，避免无符号减法下溢或把数据永久当新。两端用相同时间 fixture 验证边界。
 
 复用现有最多 8 worker 的策略，停止时不再从队列取新仓库。单次 Git 命令的超时覆盖子进程退出和 stdout / stderr 读取，不能重新退化为阻塞 read_to_end。
 
-刷新状态锁内只更新状态与克隆快照，不执行 Git、磁盘 I/O、主线程同步或系统 Widget API。配置提交与扫描发布采用固定且无反向获取的锁顺序，确保 revision 检查与结果接受属于同一个同步步骤。先提交最新快照并通知等待者，再由宿主异步写 Widget 数据与更新菜单；平台失败不阻塞核心。
-
-每个宿主只保留一个 Widget 写入器和一份最新待发布投影，顺序写入并按 sessionId / stateRevision 忽略过时数据。不能每来一次快照就启动独立写线程，让旧写入最后覆盖新文件。每个写入器只接受所属引擎会话；重建引擎前先停止并等待旧写入器结束，不能用 sessionId 的字典序判断新旧。写入失败记录诊断并等待下一次通知或有界退避重试，不无界堆积任务或忙循环。
-
-冷启动尚未首刷时，若已有同 schema 且 settingsRevision 与当前配置一致的有效 Widget 文件，保留它，避免用 generation 0 的 pending 内容清空上次结果。该缓存只供 Widget 展示，不回灌核心为成功状态。首轮完成或配置实际变化后再用当前投影替换；没有有效缓存则正常发布 pending。删除仓库或配置恢复为空必须及时发布新投影，不能以保留历史为由继续展示已删内容。此规则只读取新原生应用自己的共享文件，不读取旧版数据。
-
-正常退出在停止引擎与等待在途调用完成后，按上述缓存规则尝试写入宿主已收到的最后有效待发布投影，再结束写入器；无需等待系统 Widget 重绘。共享容器不可用时主应用仍可管理仓库，明确记录组件发布失败，不退回旧 home 路径或临时目录假装共享成功。
+刷新状态锁内只更新状态与克隆快照，不执行 Git、磁盘 I/O 或主线程同步。配置提交与扫描发布采用固定且无反向获取的锁顺序，确保 revision 检查与结果接受属于同一个同步步骤。先提交最新快照并通知等待者，再由宿主异步更新托盘浮窗与主界面；平台失败不阻塞核心。
 
 ### 8.2 共享视图投影
 
@@ -356,13 +348,13 @@ int32_t gv_snapshot_wait(GvEngine *engine, const uint8_t *cursor_json,
                         size_t len, uint32_t timeout_ms, GvBuffer *reply);
 int32_t gv_view_query(GvEngine *engine, const uint8_t *json,
                      size_t len, GvBuffer *reply);
-int32_t gv_widget_snapshot(GvEngine *engine, GvBuffer *reply);
+int32_t gv_summary_snapshot(GvEngine *engine, GvBuffer *reply);
 int32_t gv_repo_target(GvEngine *engine, const uint8_t *json,
                       size_t len, GvBuffer *reply);
 void gv_buffer_free(GvBuffer *buffer);
 ```
 
-JSON init 只接受主应用私有数据目录、日志配置等初始化参数；不接受任意脚本。Widget 输出路径由平台宿主掌握，核心只产生安全投影。repo_target 请求固定 kind（directory / remote），核心按 repo ID 返回验证后的路径或 HTTP(S) URL，宿主调用系统打开 API。
+JSON init 只接受主应用私有数据目录、日志配置等初始化参数；不接受任意脚本。核心只产生安全投影，不含路径与凭据。repo_target 请求固定 kind（directory / remote），核心按 repo ID 返回验证后的路径或 HTTP(S) URL，宿主调用系统打开 API。
 
 各函数 payload 与 data 约定如下；表中 JSON 都是 envelope 内部的数据，不省略外层统一错误协议：
 
@@ -379,7 +371,7 @@ JSON init 只接受主应用私有数据目录、日志配置等初始化参数�
 | snapshot_get | 无 | 当前快照；初始 generation 0 带未就绪状态，不伪造成功 |
 | snapshot_wait | `{sessionId,stateRevision}` + timeout_ms | 公开状态变化后的快照；不同会话立即返回；TIMEOUT / STOPPING 独立处理 |
 | view_query | `{groupId, relationFilter, query}` | sessionId / stateRevision / generation / settingsRevision、有效筛选、摘要、计数与排序行；relationFilter 为 all / error / 五种关系之一 |
-| widget_snapshot | 无 | 当前安全 Widget 投影，不写磁盘也不调用系统组件 API |
+| summary_snapshot | 无 | 当前托盘浮窗安全投影，不写磁盘也不调用系统组件 API |
 | repo_target | `{repoId, kind}`，kind 为 directory / remote | `{kind,value}`；复核目录存在或重新读取并验证当前 origin URL |
 | request_stop / wait_stopped | 前者无，后者有 timeout_ms | 生命周期状态；等待超时不销毁引擎 |
 
@@ -408,13 +400,13 @@ request_stop / wait_stopped 等生命周期控制调用不计入它们正在等�
 
 主程序按顺序完成单实例注册、路径解析、ABI 检查、引擎创建、快照订阅和 UI 更新。第二次启动只导航已有实例，不创建第二个引擎。配置冲突提示重载，不静默覆盖。
 
-DLL / 静态库版本不匹配、路径失败或 engine_create 失败时，显示可恢复的启动错误与重试入口；不进入“空仓库且启动成功”的主界面，不发布空 Widget 覆盖历史。重试前释放失败调用的 buffer，并确认没有残留引擎 / 订阅循环。startupWarnings 非空时展示配置恢复提示，不能只写到日志。
+DLL / 静态库版本不匹配、路径失败或 engine_create 失败时，显示可恢复的启动错误与重试入口；不进入“空仓库且启动成功”的主界面。重试前释放失败调用的 buffer，并确认没有残留引擎 / 订阅循环。startupWarnings 非空时展示配置恢复提示，不能只写到日志。
 
 使用一个后台快照消费循环；状态变动后查询最新视图，在 UI 线程提交状态。窗口关闭不停止循环。用户修改筛选和搜索时不启动 Git 扫描，只重新计算视图。刷新按钮与 Git 操作各有状态，不能因为单仓库 Fetch 把整张列表清空。
 
-UI 必须包含仓库列表 / 详情操作、分组与状态筛选、搜索、最近读取时间、手动刷新、空态、初始加载、全局失败和单仓库错误。设置包含仓库添加 / 扫描 / 移除、分组管理、默认分组、刷新配置、开机启动和小组件使用说明。
+UI 必须包含仓库列表 / 详情操作、分组与状态筛选、搜索、最近读取时间、手动刷新、空态、初始加载、全局失败和单仓库错误。设置包含仓库添加 / 扫描 / 移除、分组管理、默认分组、刷新配置和开机启动。
 
-主应用布局与视觉遵循 [统一界面设计](native-app-ui-design.md)，以当前 WidgetExpanded / RepoTable / SettingsShell 及主题 token 为基线。两端共享页面结构、筛选顺序、选中行展开操作、设置分区与语义主题；不得按 SwiftUI / WinUI 默认模板各自重做另一套产品导航。主应用内容的紧凑 / 明细模式与系统 Widget 分开，均不要求旧桌面层行为。
+主应用布局与视觉遵循 [统一界面设计](native-app-ui-design.md)，以该文档第 2 节列出的当前原生入口及主题 token 为基线。两端共享页面结构、筛选顺序、选中行展开操作、设置分区与语义主题；不得按 SwiftUI / WinUI 默认模板各自重做另一套产品导航。主应用内容的紧凑 / 明细模式不要求旧桌面层行为。
 
 Pull / Push 取消不触发 FFI；成功和失败都有结果反馈。写操作禁用状态以 core 的 actions 为依据，执行时仍再次校验。未知 / 不安全远端 URL 不显示可打开入口。
 
@@ -422,43 +414,25 @@ Pull / Push 取消不触发 FFI；成功和失败都有结果反馈。写操作�
 
 ## 11. macOS 工程要求
 
-主应用与 Widget Extension 同一原生 Xcode 工程，默认使用 XcodeGen。新增 Shared 模型用于主应用与 Widget 解码；Swift wrapper 只链接到主应用，扩展不能链接完整 Rust 引擎。
+macOS 宿主是单一原生 Xcode 工程，默认使用 XcodeGen。Swift wrapper 只链接到主应用，通过 FFI 调用 Rust 核心，不重复实现业务规则。
 
 主应用使用菜单栏常驻模式和正常状态 / 设置窗口；优先所选系统版本的原生 MenuBarExtra / Scene API，必要时 AppKit 接管生命周期。是否 accessory、窗口关闭与退出的处理需在所选 API 下测试，不能把旧 NSWindow level 代码带过来。
 
-App Group URL 使用系统容器解析，不拼接 `~/Library/...`。主应用原子写 Widget JSON 后请求 WidgetCenter 重载；由 Swift 平台适配器处理写入节流并保留最新待发布数据，失败有诊断且下一次数据变化仍可重试。[Apple：Configuring app groups](https://developer.apple.com/documentation/xcode/configuring-app-groups)
-
-Widget 只读取共享 JSON：三种尺寸使用同一个语义模型。适配系统 container background、内容边距和着色渲染；缺失数据提示打开应用，损坏 / 未知 schema 提示重新读取。对带成功时间的历史数据显示时间，不能始终退回装饰性 placeholder。
-
-Timeline 在过期阈值安排状态变化，并设置合理兜底读取；时间线只是请求，实际更新服从系统调度。脱离调试器测试，不能用 Xcode 中及时更新推导正式环境固定时延。[Apple：Keeping a widget up to date](https://developer.apple.com/documentation/widgetkit/keeping-a-widget-up-to-date)
-
 构建先验证单架构，再为矩阵分别构建 `.a` 和主应用 / 扩展。不要把某架构 `.a` 放入另一个架构；若采用 universal，需要显式验证所有 slice，而不是仅改文件名。
 
-发布脚本检查 Team ID、bundle ID、App Group、主程序 / extension 的签名与 entitlement、嵌入 Rust 链接产物、Developer ID 与 hardened runtime；按原生工具链正确顺序签名、公证和 staple。不要使用 `codesign --deep` 作为修复错误 entitlement 的替代方法。
+发布脚本检查 Team ID、bundle ID、主程序的签名与 entitlement、嵌入 Rust 链接产物、Developer ID 与 hardened runtime；按原生工具链正确顺序签名、公证和 staple。不要使用 `codesign --deep` 作为修复错误 entitlement 的替代方法。
 
 ## 12. Windows 工程要求
 
-使用当前稳定 WinUI 3 桌面模板，主程序默认 x64。Interop 和 Contracts 独立于 WinUI 控件；Contracts 可被 Provider 与测试使用，Provider 不引用 Interop 的引擎创建代码。SDK 模板与实际项目名写入最终构建脚本。
+使用当前稳定 WinUI 3 桌面模板，主程序默认 x64。Interop 和 Contracts 独立于 WinUI 控件；Contracts 供宿主解码与测试使用。SDK 模板与实际项目名写入最终构建脚本。
 
 单实例在创建 XAML 窗口和引擎之前完成，协议激活重定向给主实例；按 Windows App SDK 正式 AppInstance 机制实现并测试安装后的行为。[Microsoft：Single-instanced WinUI app](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/applifecycle/applifecycle-single-instance)
 
 主程序按固定安装位置解析 Rust DLL，不依赖当前工作目录或用户 PATH 去寻找同名 DLL。WinUI DispatcherQueue 提交 UI；Task.Run 等后台执行阻塞 FFI。托盘使用正式 Shell_NotifyIcon 机制，Explorer 重启后重新注册标准图标，无桌面重父化。
 
-MSIX 中包含主程序、Rust DLL 和 Provider COM server。Provider 清单、CLSID、可执行路径、图标和小 / 中 / 大模板定义必须一致。安装验证必须证明包身份、依赖、COM 激活以及主程序写入文件可被 Provider 读取，不能只验证双击 exe。[Microsoft：C# Widget Provider](https://learn.microsoft.com/en-us/windows/apps/develop/widgets/implement-widget-provider-cs)
+MSIX 中包含主程序与 Rust DLL。安装验证必须证明包身份、依赖与运行时注册，不能只验证双击 exe。
 
-Provider 生命周期：
-
-1. Create / Activate / 尺寸上下文变化读取最近快照；持久化必要的 widget instance ID / 状态。
-2. 至少一个实例活跃时监听共享目录；原子 rename、快速覆盖、丢失通知和重读竞争都需恢复。
-3. 更新 JSON 使用 WidgetManager，按实例当前尺寸选择 Adaptive Card 模板；卡片的计数和关注列表只来自安全投影。
-4. 所有实例 Deactivate 后停止主动监听；下一次 Activate 必须重读，不依赖此前一定收到通知。
-5. Delete 清理实例，Provider 被系统回收后无需常驻；不能创建另一个引擎来“补刷新”。
-
-Provider 重启用 WidgetManager.GetWidgetInfos 重建现有实例信息，不能等系统重新 Create 才认识已固定的小组件。回调中复制 ID、尺寸等普通值，不能跨异步任务保留只在回调期间有效的 WidgetContext / 参数对象；共享实例表和更新任务须同步，删除后取消该实例的待更新。以上生命周期限制以所选 SDK 文档核对。[Microsoft：Provider 回调与启动恢复](https://learn.microsoft.com/en-us/windows/apps/develop/widgets/implement-widget-provider-cs)
-
-文件监听不能处理“文件没变，但时间已过期”。本项目要求：活跃期间按最后成功时间和当前策略安排一次过期边界更新，即使主应用退出、没有新文件，也重新计算并提交过期卡片；等于阈值仍有效，因此触发时间须越过边界。最新快照到达时重设期限。所有实例失活后取消监听和计时；重新 Activate / 系统恢复时重读并计算当前状态。时间回拨显示异常并在活跃期间有界重查，不能忙循环。Provider 不为这一计时创建 Git 引擎，也不保证系统立即重绘。
-
-稳定场景测试包括主程序未启动、主程序完全退出、Provider 重启、快速连续快照、Board 关闭再打开、尺寸变化、空态和协议冷启动。Windows Widgets Board 由系统托管，UI 不显示贴桌面开关。
+稳定场景测试包括主程序未启动、主程序完全退出、快速连续快照、空态和协议冷启动。托盘图标由 Explorer 托管，Explorer 重启后重新注册；UI 不显示贴桌面开关。
 
 ## 13. 验证方法与构建入口
 
@@ -495,9 +469,9 @@ powershell -NoProfile -File scripts/native/package-windows.ps1 -Architecture x64
 | Git 集成 | 本地临时 bare origin + 两个 clone，不访问公网；领先 / 落后 / 分叉、不同跟踪分支、空仓库、detached |
 | 假进程 | 超时、子孙进程持有管道、连续输出、非零退出、停止期间不启动后续命令；用短注入期限测试 |
 | ABI | 真实导出符号、布局、UTF-8、错误、buffer 释放、关闭竞争和 Swift / C# 真实调用 |
-| 契约 | schema 校验真实 Rust 输出与两端解码；必填 / null / 反例；错误返回映射；Widget 没有 path / 原始错误 |
+| 契约 | schema 校验真实 Rust 输出与两端解码；必填 / null / 反例；错误返回映射；投影没有 path / 原始错误 |
 | 原生 UI | 选择仓库、筛选、设置冲突、确认取消 / 执行、加载与失败恢复 |
-| 安装与系统组件 | 真正签名安装后的组件发现、冷启动缓存、无新写入时过期、重启恢复、协议、单实例、运行时依赖 |
+| 安装与系统组件 | 真正签名安装后的协议、单实例、运行时依赖与托盘浮窗实测 |
 
 文件系统测试使用唯一临时目录并清理，Git 测试设置局部作者身份，不改用户全局 Git 配置。假 Git / 故障注入接口仅供测试，不作为生产任意程序执行配置。
 
@@ -515,7 +489,7 @@ N01 分共享 / Windows / macOS 子项；N02 只要求共享子项已固定，N0
 
 平台实机结果记录精确 OS、架构、包版本、签名状态、步骤与观察。构建成功不代表组件可发现，组件可添加不代表数据读取正常，mock / fixture 画面不代表真实仓库已接通。
 
-整个项目只有在核心 / FFI / 两端原生应用 / 两端系统小组件 / 声明矩阵安装验收全部 verified，且已知问题没有阻断时才报告完成。无法完成的验收诚实列出，交付可运行的已验证部分和续做入口。
+整个项目只有在核心 / FFI / 两端原生应用（含托盘与浮窗）/ 声明矩阵安装验收全部 verified，且已知问题没有阻断时才报告完成。无法完成的验收诚实列出，交付可运行的已验证部分和续做入口。
 
 每轮报告：当前任务、实际修改、已运行检查及结果、未运行原因、下一条可执行任务。依据保存在 [进度记录](native-app-progress.md)，避免依赖聊天历史记忆。
 
@@ -523,8 +497,8 @@ N01 分共享 / Windows / macOS 子项；N02 只要求共享子项已固定，N0
 
 本文给出实施约定，不冻结外部 SDK 的具体版本。GLM 应先读本地锁文件、已安装工具和现有工程，再按所选版本查官方文档。优先使用以下来源，不从非官方示例猜签名、生命周期或包清单：
 
-- Apple：App Groups、WidgetKit 时间线、原生 SwiftUI / AppKit 生命周期与 Developer ID 分发。
-- Microsoft：WinUI、Windows App SDK AppInstance、C# Widget Provider、MSIX 与 .NET native interop。
+- Apple：原生 SwiftUI / AppKit 生命周期与 Developer ID 分发。
+- Microsoft：WinUI、Windows App SDK AppInstance、MSIX 与 .NET native interop。
 - Rust：Cargo workspace、FFI / panic 规则和标准库进程 API。
 
 发生 API 不一致时记录 SDK 版本、实际错误和官方依据，修正文档与代码。不要通过关闭确认、删除测试、引入 WebView、恢复 WorkerW 或把未验证平台移出表格来获得表面上的全绿。

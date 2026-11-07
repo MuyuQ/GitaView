@@ -38,8 +38,8 @@ repository status.
   be the easiest information to scan.
 - Earn attention. Use emphasis only for current selection, risk, errors, and
   actions that matter.
-- Preserve context. Expanding the widget, filtering, and opening actions should
-  keep the user oriented.
+- Preserve context. Filtering and opening actions should keep the user
+  oriented.
 - Make safety visible. Potentially modifying Git operations must be clearly
   labeled and explicitly confirmed.
 - Respect desktop flow. Keep controls compact, predictable, and fast for

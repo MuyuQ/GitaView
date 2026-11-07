@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  IgnorableNamespaces="uap uap5 uap10 rescap">
+
+  <!--
+    Rust 核心 + Flutter 宿主（0.2.0.0）：包身份与签名要求与 0.1.5.x WinUI
+    宿主一致（Name / Publisher 不变，原位升级替换安装）。
+    Publisher 必须与签名证书主题一致；正式发布证书缺失，待发布身份确定后更新。
+  -->
+  <Identity
+    Name="GitaView.Native"
+    Publisher="CN=c078af0d-efbc-4831-a9e3-8955819ef156"
+    Version="0.2.0.0" />
+
+  <Properties>
+    <DisplayName>GitaView 原生</DisplayName>
+    <PublisherDisplayName>GitaView</PublisherDisplayName>
+    <Logo>assets\StoreLogo.png</Logo>
+    <uap10:PackageIntegrity>
+      <uap10:Content Enforcement="on"/>
+    </uap10:PackageIntegrity>
+  </Properties>
+
+  <Dependencies>
+    <!-- Flutter 自包含运行时，无框架包依赖（不再需要 Windows App SDK）。 -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <!-- 手工打包链（flutter build + makeappx）不做 MSBuild 资源生成，
+       不能使用占位符 x-generate（安装报 0x80070057）；声明实际语言。 -->
+  <Resources>
+    <Resource Language="en-US"/>
+  </Resources>
+
+  <Applications>
+    <!-- Executable 显式写 gitaview.exe：BINARY_NAME 由 windows/CMakeLists.txt 固定；
+         $targetnametoken$ 仅由 MSBuild recipe 解析，手工打包不可用。 -->
+    <Application Id="App"
+      Executable="gitaview.exe"
+      EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="GitaView 原生"
+        Description="Git 仓库状态总览（原生版）"
+        BackgroundColor="transparent"
+        Square150x150Logo="assets\Square150x150Logo.png"
+        Square44x44Logo="assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="assets\SplashScreen.png" />
+      </uap:VisualElements>
+
+      <Extensions>
+        <!-- 深链协议：仅导航，不执行 Git 操作。 -->
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="gitaview-native">
+            <uap:DisplayName>GitaView 原生协议</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+
+        <!-- 开机启动：系统管理的 StartupTask；UI 显示实际状态。 -->
+        <uap5:Extension Category="windows.startupTask">
+          <uap5:StartupTask TaskId="GitaViewStartup" Enabled="false" DisplayName="GitaView 开机启动" />
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

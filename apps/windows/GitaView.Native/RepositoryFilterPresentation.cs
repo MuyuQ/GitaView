@@ -28,7 +28,7 @@ internal static class RepositoryFilterPresentation
         return chips;
     }
 
-    internal static IReadOnlyList<FilterChip<RelationFilter>> Statuses(WidgetCounts counts, RelationFilter selected)
+    internal static IReadOnlyList<FilterChip<RelationFilter>> Statuses(SummaryCounts counts, RelationFilter selected)
     {
         var chips = new List<FilterChip<RelationFilter>>
         {

@@ -78,9 +78,9 @@ public static class TestEnvironment
 public class AbiFacts
 {
     [Fact]
-    public void abi_version_is_one()
+    public void abi_version_is_two()
     {
-        Assert.Equal(1u, GitaViewEngine.AbiVersion());
+        Assert.Equal(2u, GitaViewEngine.AbiVersion());
     }
 }
 
@@ -92,7 +92,7 @@ public class EngineLifecycleFacts
         string dir = TestEnvironment.TempDir("gitaview_n10_create");
         using var engine = TestEnvironment.CreateEngine(dir);
         Assert.False(string.IsNullOrEmpty(engine.SessionId));
-        Assert.Equal(1u, engine.CreateData.AbiVersion);
+        Assert.Equal(2u, engine.CreateData.AbiVersion);
         Assert.Empty(engine.CreateData.StartupWarnings);
 
         var settings = engine.SettingsGet();
@@ -176,7 +176,7 @@ public class EngineLifecycleFacts
 public class RepoWorkflowFacts
 {
     [Fact]
-    public void repo_add_snapshot_wait_view_and_widget_roundtrip()
+    public void repo_add_snapshot_wait_view_and_summary_roundtrip()
     {
         string dir = TestEnvironment.TempDir("gitaview_n10_workflow");
         using var engine = TestEnvironment.CreateEngine(dir);
@@ -223,13 +223,13 @@ public class RepoWorkflowFacts
         Assert.Equal(1u, view.SummaryCounts.Total);
         Assert.Equal(1u, view.SummaryCounts.NoRemote);
 
-        // Widget 投影：无 path、无远端 URL；计数与摘要一致。
-        var widget = engine.WidgetSnapshot();
-        Assert.Equal(1u, widget.Counts.Total);
-        Assert.Empty(widget.Attention);
-        string widgetJson = ContractsJson.Encode(widget);
-        Assert.DoesNotContain("\"path\"", widgetJson);
-        Assert.DoesNotContain("github.com", widgetJson);
+        // Summary 投影：无 path、无远端 URL；计数与摘要一致。
+        var summary = engine.SummarySnapshot();
+        Assert.Equal(1u, summary.Counts.Total);
+        Assert.Empty(summary.Attention);
+        string summaryJson = ContractsJson.Encode(summary);
+        Assert.DoesNotContain("\"path\"", summaryJson);
+        Assert.DoesNotContain("github.com", summaryJson);
 
         // 打开目标：remote 返回规范化 URL。
         var target = engine.RepoTarget(new RepoTargetInput { RepoId = added.Repo.Id, Kind = RepoTargetKind.Remote });
@@ -375,9 +375,9 @@ public class ContractFixtureFacts
     [Fact]
     public void unknown_schema_and_unknown_fields_are_rejected()
     {
-        string unknownSchema = Path.Combine(TestEnvironment.FixturesDir(), "widget-unknown-schema.json");
+        string unknownSchema = Path.Combine(TestEnvironment.FixturesDir(), "summary-unknown-schema.json");
         Assert.Throws<JsonException>(() =>
-            ContractsJson.Decode<WidgetSnapshot>(File.ReadAllBytes(unknownSchema)));
+            ContractsJson.Decode<SummarySnapshot>(File.ReadAllBytes(unknownSchema)));
 
         // 未知字段（非契约内容）必须拒绝，不能用默认值隐藏。
         Assert.Throws<JsonException>(() =>

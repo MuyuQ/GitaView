@@ -2,7 +2,35 @@
 
 > 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
 
-更新日期：2026-11-05（第 60 轮，计算机操作实机界面验收 + 分组归属回写 P1 修复 + 呈现停摆根因确认与修复：WASDK 2.6.5 升级 + DesktopAcrylicBackdrop→MicaBackdrop；Windows 源码版本 0.1.5.27，本机已安装 0.1.5.27）。
+更新日期：2026-11-07（第 62 轮，启动 Rust 核心 + Flutter 宿主迁移：新增 apps/flutter 全栈，WinUI 宿主保留至验收门禁；Windows 侧构建 / 打包 / GUI 待 CI 与实机验证）。
+
+### 第 62 轮记录
+
+2026-11-07 用户确认推进 Rust+Flutter 宿主迁移（先前已修订方案：手写 dart:ffi 对冻结 C ABI v2、Devolutions fork desktop_multi_window 浮窗第二窗口、fluent_ui 基座、ChangeNotifier 状态层、MSIX 身份 0.2.0.0 原位升级）。同轮按用户指示清除冗余与失效代码。
+
+新增 `apps/flutter`（Flutter 3.47.9 / Dart 3.13）：`lib/contracts`（契约严格解码，未知字段 / 未知 schema / 未知枚举一律拒绝，与 Rust / C# 三方一致）→ `lib/ffi`（20 个 gv_* 导出绑定、GvBuffer、envelope、阻塞调用统一出口）→ `lib/engine`（EngineService：命令 isolate 串行业务 + watcher isolate 共享引擎地址跑 snapshot_wait 循环推送快照与 Summary；退出序列 stop→wait→destroy BUSY 重试 30s 排空）→ `lib/presentation`（8 个纯逻辑类自 C# 忠实移植：SnapshotVersionGate、TrayFlyoutPresentation 含银行家舍入对齐、RepositoryFilterPresentation、SettingsGroupPresentation、SettingsEditRequest、MainWindowClosePolicy、ProtocolNavigation 含 Dart Uri.port 差异处理、ErrorText 14 码文案）→ `lib/ui`（token 表浅 / 深两套、主状态页工具栏 / 双层筛选 / 表格 / 两段式确认操作面板、设置页两分区、浮窗内容组件）→ `lib/platform` + `lib/flyout`（Windows 接线）。测试 60 项全绿（契约 fixture 与 Rust 消费同一组 expectations、FFI 层真实 dylib + 真实 Git 仓库全链路、EngineService 双 isolate 集成、UI widget FakeGateway），`flutter analyze` 零问题。
+
+Windows 集成（本机 macOS 无法编译运行，全部由 CI windows-flutter job 与实机验证）：runner CMake 新增 `cargo build --release --locked` 产出 gitaview_ffi.dll 并随包安装；`gv_platform` C++ 插件承载 Shell_NotifyIcon 托盘（TaskbarCreated 重注册、右键菜单焦点规则）、LocalState 路径（与 0.1.5.x 同一 settings.json）、StartupTask 注册表镜像（best-effort）、openTarget（仅放行目录与 http/https）；MSIX 清单 `windows/msix/` 身份 GitaView.Native 0.2.0.0 原位升级、去 WASDK 依赖、协议 / startupTask / runFullTrust 保留、Executable 手工解析为 gitaview.exe；打包脚本 `package-flutter-windows.ps1`（布局校验 → makeappx → 可选 GITAVIEW_SIGN_THUMBPRINT 签名，无 -Install）；CI 新增 windows-flutter job（Dart 测试真实 DLL → Release 构建 → 无签名 MSIX），macOS job 增加 Dart 层 analyze + 测试。
+
+本地调试发现并修复的关键缺陷：isolate 内 kill 阻塞原生调用的 watcher 导致 flutter_tester 段错误（改为优雅停机：stop 信号 → watcher 完成当前等待并确认 → 再销毁引擎）；watcher 同步 FFI 循环饿死 ReceivePort（迭代间让渡事件循环）；C# 引擎 / C# 测试 ABI 断言与 schema 收紧等 16 处（见第 61 轮审阅收敛段）。
+
+按用户指示清除冗余与失效代码：删除未跟踪 `src-tauri/`（23GB 旧 Tauri 构建产物，核查无源码）；删除 `GvCallResult.errorMessage` 死字段、重复的 GvErrorJson 扩展、EngineService 未监听的 exit 端口与未使用参数；补 ABI 版本启动门禁（对齐 C# App.xaml.cs）；脚手架样板 README 替换为真实分层文档。
+
+验证：本地（macOS）`flutter analyze` 零问题、`flutter test` 60/60、Rust workspace 147 项 + schema 6/6（本轮 Rust 无改动，随后复查）。C++ / CMake / MSIX / 双窗口 / 深链 / 托盘 / 单实例全部待 CI 与 Windows 实机验证；WinUI 宿主与 windows-flutter job 并行存在，验收门禁通过前不删 C# 链。
+
+第 62 轮审阅收敛（同日）：独立复审发现 7 项并全部修复——(1) 高危：windows/CMakeLists.txt 的 Rust crate 相对路径少一级（Windows 构建链必断）；(2) gv_platform.cpp ShellExecuteW 成功判定（失败返回 SE_ERR_* ≤32，改为 >32）；(3) EngineService dispose / 启动超时路径仍会 kill 阻塞在原生调用中的 isolate（与第 62 轮优雅停机修复矛盾）——恢复 onExit 退出信号 + 6 秒宽限等待，dispose 走与 requestExit 相同的退出命令异步收尾，绝不 kill 阻塞中的 isolate；(4) gv_platform.h 通道方法清单注释漂移；(5) pubspec 移除无引用的 cupertino_icons 脚手架残留；(6) 删除 MSIX 包内 4 个未引用资产；(7) platform-matrix §4"旧 CI 保持原状"陈旧句更正。另按复审观察把 launchTarget 钩子签名改为透传契约 RepoTargetData.kind（directory/remote），不再由 main.dart 以字符串启发式反推。复验：analyze 零问题、60/60 全绿。
+
+### 第 61 轮记录
+
+2026-11-07 产品决定移除 Windows 小组件子系统，只保留主窗口与托盘 / 浮窗。整体删除：`GitaView.Native.WidgetProvider` 工程、manifest 的 COM ExeServer 与 widgets AppExtension 声明、Contracts 的 WidgetDataReader / WidgetDataWriter / WidgetStaleness、主程序 `App.xaml.cs` 的 widget-data.json 写入链路、`tools/windows/WidgetCatalogProbe` 诊断工具、8 个 Widget*Facts 测试文件，以及 package-windows.ps1 `-Install` 的 Widget 宿主重启与 Provider 预热。`GitaView.Native.Contracts` 项目保留（契约 DTO 与严格解码仍被宿主与测试使用）。
+
+投影更名为 Summary（`widgetSnapshot`→`summarySnapshot`、`WidgetCounts`→`SummaryCounts` 等，仅定义名变化，线上 JSON 字段不变）：Rust `widget.rs`→`summary.rs`、FFI `gv_widget_snapshot`→`gv_summary_snapshot`、`GV_ABI_VERSION` 1→2（`engine_create` data 的 `abiVersion` 常量与 C# 启动检查同步为 2）。托盘浮窗经 `gv_summary_snapshot` 实时取投影，不再存在任何 Widget 持久缓存；`schemaVersion` 保持 1。契约层按规则同步：schema.json 定义更名与 `viewResult` 引用更新、契约 README 修订记录、fixture `widget-unknown-schema.json`→`summary-unknown-schema.json`、expectations.json、test-contract-schema.py。文档同步：README / AGENTS / PRODUCT / native-architecture / platform-matrix / ui-design / implementation / platform-acceptance（§4 标注为历史记录）。
+
+验证：本地（macOS）Rust workspace 147 项、`cargo fmt`、`clippy -D warnings`、契约 schema 校验 6/6、aarch64 与 x86_64 双 Apple target `cargo check` 通过。C# 真实 FFI 测试、布局检查、构建与无签名 MSIX 打包由 native-ci 云端验证（本轮改动后尚未推送）；Windows 主窗口 / 托盘浮窗实机复测未执行。已安装版本上固定的旧小组件随包更新后消失；磁盘残留 widget-data.json 不读取、不迁移（符合"不读取旧数据"边界）。
+
+第 61 轮审阅收敛（同日）：全面复审追加修复。关键项：C# `EngineFacts` 的 ABI 断言由 1 同步为 2（测试更名 `abi_version_is_two`，含 `CreateData.AbiVersion`）——宿主启动检查已是 2 而测试仍断言 1，会使 CI 的 `dotnet test` 必然失败。契约收紧：`summaryRepo.relation` 枚举移除任何生产者都不会发出的 `"error"`（读取失败以 `readState` 表达、relation 为 null，与"错误不是第六种关系"边界一致），契约 README 修订记录同步；模型端解码本就拒绝该值，无需改码。文档更正：`implementation` §6.1 abiVersion、§14 完成定义去掉"两端系统小组件"、§10 基线不再指向已删除的旧 React 组件名；`platform-matrix` ABI 行改 abiVersion=2；`AGENTS.md` FFI 行头文件路径更正为 crate 内 include；`DiagFile.cs` 头注释去掉已删除的 Provider；`platform-acceptance` §5 Provider 内存行与 §7 固定组件超时行标注已随小组件移除、基线段去掉 Board；`.gitignore` 删除 tools/windows 残留规则；`snapshot-stale-boundary` 描述由"超过一分钟"更正为"边界后 1 毫秒"（expectations 数据本为 +1ms，Rust 测试注释同步）。复验：Rust fmt / Clippy / 147 项、schema 6/6 通过；C# 侧修复由 native-ci 云端验证。
+
+### 第 59 轮记录
 
 ## 当前状态
 

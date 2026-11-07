@@ -31,7 +31,8 @@ extern "C" {
 typedef struct GvEngine GvEngine;
 typedef struct { uint8_t *data; size_t len; } GvBuffer;
 
-/* ABI 版本；当前为 1。宿主加载库后先核对再调用其他函数。 */
+/* ABI 版本；当前为 2（2026-11：gv_widget_snapshot 更名 gv_summary_snapshot）。
+ * 宿主加载库后先核对再调用其他函数。 */
 uint32_t gv_abi_version(void);
 
 /* 创建引擎。输入 {"dataDirectory":"…","logDirectory":"…"}（绝对私有路径）；
@@ -99,8 +100,8 @@ int32_t gv_snapshot_wait(GvEngine *engine, const uint8_t *cursor_json,
 int32_t gv_view_query(GvEngine *engine, const uint8_t *json,
                       size_t len, GvBuffer *reply);
 
-/* 当前安全 Widget 投影：不写磁盘、不调用系统组件 API、不含 path / 凭据。 */
-int32_t gv_widget_snapshot(GvEngine *engine, GvBuffer *reply);
+/* 当前托盘浮窗 Summary 投影：不写磁盘、不调用系统组件 API、不含 path / 凭据。 */
+int32_t gv_summary_snapshot(GvEngine *engine, GvBuffer *reply);
 
 /* 打开目标 {"repoId","kind":"directory"|"remote"} → {"kind","value"}；
  * 复核目录存在或重读并验证当前 origin URL，宿主调用系统打开 API。 */

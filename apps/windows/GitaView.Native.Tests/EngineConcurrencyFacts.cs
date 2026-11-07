@@ -47,7 +47,7 @@ public class EngineConcurrencyFacts
 
         var t1 = Task.Run(() => engine.SettingsGet());
         var t2 = Task.Run(() => engine.SnapshotGet());
-        var t3 = Task.Run(() => engine.WidgetSnapshot());
+        var t3 = Task.Run(() => engine.SummarySnapshot());
 
         Assert.NotNull(t1.Result);
         Assert.NotNull(t2.Result);

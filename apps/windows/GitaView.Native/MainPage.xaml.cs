@@ -1,4 +1,4 @@
-// 状态明细页（统一设计，升级自旧版 WidgetExpanded / RepoTable / RepoActions）：
+// 状态明细页（统一设计，升级自旧版 RepoTable / RepoActions）：
 // - 分组 / 状态筛选、对齐表格与选中行操作；紧凑摘要由托盘浮窗承载；
 // - 筛选、搜索、排序与协调由核心 view_query 统一计算（组筛选 + 状态筛选两次查询）；
 // - 行操作走 FFI（Fetch 无确认，Pull / Push 两段式确认），单仓库独立忙态与结果；
@@ -349,7 +349,7 @@ public sealed partial class MainPage : Page
             SelectGroup, group: true);
     }
 
-    private void BuildStatusChips(WidgetCounts counts)
+    private void BuildStatusChips(SummaryCounts counts)
     {
         UpdateChips(StatusChipsPanel,
             RepositoryFilterPresentation.Statuses(counts, _selectedRelation), SelectRelation, group: false);

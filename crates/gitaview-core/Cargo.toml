@@ -1,6 +1,6 @@
 [package]
 name = "gitaview-core"
-description = "GitaView 原生应用共享核心：模型、Git 执行、Widget 投影"
+description = "GitaView 原生应用共享核心：模型、Git 执行、Summary 投影"
 edition.workspace = true
 version.workspace = true
 rust-version.workspace = true

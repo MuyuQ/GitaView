@@ -10,7 +10,7 @@ on:
       - "Cargo.lock"
       - "crates/**"
       - "apps/windows/**"
-      - "tools/windows/**"
+      - "apps/flutter/**"
       - "contracts/**"
       - "scripts/native/**"
       - ".github/workflows/native-ci.yml"
@@ -20,7 +20,7 @@ on:
       - "Cargo.lock"
       - "crates/**"
       - "apps/windows/**"
-      - "tools/windows/**"
+      - "apps/flutter/**"
       - "contracts/**"
       - "scripts/native/**"
       - ".github/workflows/native-ci.yml"
@@ -60,8 +60,6 @@ jobs:
         run: powershell -NoProfile -File scripts\native\test-package-layout.ps1
       - name: C# tests (real FFI)
         run: dotnet test apps\windows\GitaView.Native.Tests\GitaView.Native.Tests.csproj
-      - name: Build Widget catalog diagnostic tool
-        run: dotnet build tools\windows\WidgetCatalogProbe\WidgetCatalogProbe.csproj -c Release
       - name: Build (unsigned package layout)
         run: powershell -NoProfile -File scripts\native\build-windows.ps1 -Configuration Debug -Architecture x64
       - name: Package (unsigned dev artifact)
@@ -73,9 +71,50 @@ jobs:
           path: apps/windows/GitaView.Native/*.msix
           if-no-files-found: error
 
+  windows-flutter:
+    # Flutter 宿主 Windows 全链：Dart 层真实 FFI 测试 → Release 构建 →
+    # 无签名 MSIX（身份 GitaView.Native 0.2.0.0）。GUI / 签名 / 安装验收
+    # 仍待实机，不在 CI 伪装。
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build Rust FFI (for Dart tests)
+        run: cargo build -p gitaview-ffi --release --locked
+      - name: Install Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Flutter pub get
+        working-directory: apps/flutter
+        run: flutter pub get
+      - name: Flutter analyze
+        working-directory: apps/flutter
+        run: flutter analyze --no-pub
+      - name: Flutter tests (real FFI)
+        working-directory: apps/flutter
+        env:
+          GV_FFI_LIB: ${{ github.workspace }}\target\release\gitaview_ffi.dll
+        run: flutter test --no-pub
+      - name: Build (unsigned package layout)
+        working-directory: apps/flutter
+        run: flutter build windows --release
+      - name: Package (unsigned dev artifact)
+        run: powershell -NoProfile -File scripts\native\package-flutter-windows.ps1 -SkipBuild
+      - name: Upload dev artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: gitaview-flutter-windows-dev
+          path: apps/flutter/*.msix
+          if-no-files-found: error
+
   macos-core:
     # macOS 上验证共享 Rust 核心（跨平台）：gitaview-core / gitaview-ffi 的
-    # 测试与静态检查。原生 macOS 应用与 WidgetKit 构建仍阻塞于签名身份
+    # 测试与静态检查。原生 macOS 应用构建仍阻塞于签名身份
     #（见 docs/native-platform-matrix.md），不在此伪装验证。
     runs-on: macos-latest
     steps:
@@ -103,3 +142,15 @@ jobs:
         run: |
           cargo check --workspace --locked --target aarch64-apple-darwin
           cargo check --workspace --locked --target x86_64-apple-darwin
+      - name: Build Rust FFI dylib (for Dart tests)
+        run: cargo build -p gitaview-ffi --release --locked
+      - name: Install Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Flutter analyze + tests (Dart contracts / FFI / engine on macOS)
+        working-directory: apps/flutter
+        run: |
+          flutter pub get
+          flutter analyze --no-pub
+          flutter test --no-pub

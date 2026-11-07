@@ -99,19 +99,6 @@
     <Exec Command="cargo build -p gitaview-ffi $(CargoReleaseFlags)" WorkingDirectory="$(RepoRoot)" />
   </Target>
 
-  <!-- 独立 Widget Provider 进程：主应用是自包含布局（includedFrameworks），
-       打包应用不能依赖全局 .NET，因此 Provider 也自包含 + 单文件发布
-       （框架依赖 exe 实测报 "You must install or update .NET"）。 -->
-  <Target Name="BuildWidgetProvider" BeforeTargets="BeforeBuild">
-    <Exec Command="dotnet publish ..\GitaView.Native.WidgetProvider\GitaView.Native.WidgetProvider.csproj -c $(Configuration) -r win-x64 --self-contained true -p:PublishSingleFile=true" />
-  </Target>
-  <PropertyGroup>
-    <WidgetProviderOutput>..\GitaView.Native.WidgetProvider\bin\$(Configuration)\net10.0-windows10.0.26100.0\win-x64\publish</WidgetProviderOutput>
-  </PropertyGroup>
-  <ItemGroup>
-    <None Include="$(WidgetProviderOutput)\GitaView.Native.WidgetProvider.exe" CopyToOutputDirectory="PreserveNewest" Link="GitaView.Native.WidgetProvider.exe" />
-    <None Include="$(WidgetProviderOutput)\*.dll" Exclude="$(WidgetProviderOutput)\GitaView.Native.dll" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
   <ItemGroup>
     <None Include="$(RepoRoot)target\$(RustTargetDir)\gitaview_ffi.dll" CopyToOutputDirectory="PreserveNewest" Link="gitaview_ffi.dll" Pack="true" />
   </ItemGroup>

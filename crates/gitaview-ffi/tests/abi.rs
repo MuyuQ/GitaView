@@ -5,7 +5,7 @@ use gitaview_ffi::{
     gv_abi_version, gv_buffer_free, gv_engine_create, gv_engine_destroy, gv_engine_request_stop,
     gv_engine_wait_stopped, gv_refresh_request, gv_repo_add, gv_repo_pull, gv_repo_remove,
     gv_repo_target, gv_scan_directory, gv_settings_get, gv_settings_save, gv_snapshot_get,
-    gv_snapshot_wait, gv_view_query, gv_widget_snapshot, GvBuffer, GvEngine, GV_BUSY, GV_ERROR,
+    gv_snapshot_wait, gv_summary_snapshot, gv_view_query, GvBuffer, GvEngine, GV_BUSY, GV_ERROR,
     GV_INVALID_ARGUMENT, GV_OK, GV_STOPPING, GV_TIMEOUT,
 };
 use serde_json::Value;
@@ -115,8 +115,8 @@ fn snapshot_of(engine: *mut GvEngine) -> Value {
 }
 
 #[test]
-fn abi_version_is_one() {
-    assert_eq!(gv_abi_version(), 1);
+fn abi_version_is_two() {
+    assert_eq!(gv_abi_version(), 2);
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn engine_create_returns_session_and_defaults() {
     let temp = unique_temp_dir("gitaview_n09_create");
     let (engine, data) = create_engine(&temp);
 
-    assert_eq!(data["abiVersion"], 1);
+    assert_eq!(data["abiVersion"], 2);
     assert!(data["sessionId"].as_str().is_some_and(|s| !s.is_empty()));
     assert_eq!(data["startupWarnings"], serde_json::json!([]));
     // 首次启动为内存默认值；settings.json 在第一次变更时才落盘（N06 语义）。
@@ -419,7 +419,7 @@ fn pull_requires_confirmation_and_validates_state() {
 }
 
 #[test]
-fn refresh_snapshot_view_and_widget_roundtrip() {
+fn refresh_snapshot_view_and_summary_roundtrip() {
     let temp = unique_temp_dir("gitaview_n09_roundtrip");
     let (engine, create_data) = create_engine(&temp);
     let session_id = create_data["sessionId"].as_str().unwrap().to_string();
@@ -448,14 +448,14 @@ fn refresh_snapshot_view_and_widget_roundtrip() {
     assert_eq!(view["summaryCounts"]["total"], 0);
     assert_eq!(view["rows"], serde_json::json!([]));
 
-    // Widget 投影：空仓库，total 0；不含 path 字段。
+    // Summary 投影：空仓库，total 0；不含 path 字段。
     let mut reply = GvBuffer::empty();
     let (status, envelope) =
-        unsafe { call_result(gv_widget_snapshot(engine, &mut reply), &mut reply) };
+        unsafe { call_result(gv_summary_snapshot(engine, &mut reply), &mut reply) };
     assert_eq!(status, GV_OK);
-    let widget = envelope.unwrap()["data"].clone();
-    assert_eq!(widget["counts"]["total"], 0);
-    assert!(widget.get("path").is_none());
+    let summary = envelope.unwrap()["data"].clone();
+    assert_eq!(summary["counts"]["total"], 0);
+    assert!(summary.get("path").is_none());
 
     // 未知 relationFilter → INVALID_ARGUMENT。
     let bad_query = r#"{"relationFilter":"pending"}"#;

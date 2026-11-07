@@ -33,7 +33,7 @@
   </Properties>
 
   <Dependencies>
-    <!-- 系统小组件需要 Windows 11 Widgets Board；下限 22000。 -->
+    <!-- 最低 22000 与 Windows App SDK 支持范围一致。 -->
     <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
     <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
     <!-- 框架包依赖：官方 MSIX 管线自动注入；手工打包必须显式声明，
@@ -75,62 +75,6 @@
         <uap5:Extension Category="windows.startupTask">
           <uap5:StartupTask TaskId="GitaViewStartup" Enabled="false" DisplayName="GitaView 开机启动" />
         </uap5:Extension>
-
-        <!-- Provider COM 服务器：运行在主程序进程内。 -->
-        <com:Extension Category="windows.comServer">
-          <com:ComServer>
-            <com:ExeServer Executable="GitaView.Native.WidgetProvider.exe" DisplayName="GitaView Widget Provider">
-              <com:Class Id="4caa94b6-2e9c-455a-a482-3af61a355f64" DisplayName="GitaView Widget Provider"/>
-            </com:ExeServer>
-          </com:ComServer>
-        </com:Extension>
-
-        <!-- Widgets Board 发现注册（com.microsoft.windows.widgets 契约）。 -->
-        <uap3:Extension Category="windows.appExtension">
-          <uap3:AppExtension Name="com.microsoft.windows.widgets" DisplayName="GitaView" Id="GitaViewWidget" PublicFolder="Public">
-            <uap3:Properties>
-              <WidgetProvider>
-                <ProviderIcons>
-                  <Icon Path="Assets\StoreLogo.png" />
-                </ProviderIcons>
-                <Activation>
-                  <CreateInstance ClassId="4caa94b6-2e9c-455a-a482-3af61a355f64" />
-                </Activation>
-                <TrustedPackageFamilyNames>
-                  <TrustedPackageFamilyName>Microsoft.MicrosoftEdge.Stable_8wekyb3d8bbwe</TrustedPackageFamilyName>
-                </TrustedPackageFamilyNames>
-                <Definitions>
-                  <Definition Id="GitaView_Summary"
-                      DisplayName="GitaView 仓库状态"
-                      Description="全部 Git 仓库状态摘要"
-                      AllowMultiple="false">
-                    <Capabilities>
-                      <Capability>
-                        <Size Name="small" />
-                      </Capability>
-                      <Capability>
-                        <Size Name="medium" />
-                      </Capability>
-                      <Capability>
-                        <Size Name="large" />
-                      </Capability>
-                    </Capabilities>
-                    <ThemeResources>
-                      <Icons>
-                        <Icon Path="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
-                      </Icons>
-                      <Screenshots>
-                        <Screenshot Path="Assets\Wide310x150Logo.scale-200.png" DisplayAltText="GitaView widget preview" />
-                      </Screenshots>
-                      <DarkMode />
-                      <LightMode />
-                    </ThemeResources>
-                  </Definition>
-                </Definitions>
-              </WidgetProvider>
-            </uap3:Properties>
-          </uap3:AppExtension>
-        </uap3:Extension>
       </Extensions>
     </Application>
   </Applications>

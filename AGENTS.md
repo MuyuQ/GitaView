@@ -1,9 +1,10 @@
 # GitaView
 
-Native desktop Git status application. Windows uses C# / WinUI 3 with a Win32
-tray and Windows Widget Provider. Rust implements the shared core and C ABI.
-The macOS SwiftUI / AppKit host and WidgetKit extension are planned; only the
-shared Rust core currently runs in macOS CI.
+Native desktop Git status application. Rust implements the shared core and
+C ABI. Windows hosts: the current C# / WinUI 3 app (0.1.5.x) and the Rust +
+Flutter host (0.2.0.0, migration in progress) that must pass Windows device
+acceptance before the WinUI host is removed. Only the shared Rust core and the
+Flutter host's Dart layer currently run in macOS CI.
 
 This checkout contains only the native application. Do not restore a web UI,
 Tauri client, WorkerW / Progman embedding, or an old release pipeline. Earlier
@@ -25,8 +26,8 @@ python scripts/native/test-contract-schema.py
 
 Windows build/package scripts support x64. Package signing uses
 GITAVIEW_SIGN_THUMBPRINT and the -Sign switch. -Install removes the existing
-package and its LocalState, installs the signed package and restarts widget
-hosts; use it only when installation is part of the user's request.
+package and its LocalState and installs the signed package; use it only when
+installation is part of the user's request.
 
 The only app CI is .github/workflows/native-ci.yml. Windows runs Rust format,
 Clippy, tests, layout checks, C# tests, build and unsigned MSIX packaging.
@@ -40,15 +41,14 @@ targets. There is no automatic tag-triggered release workflow.
 | Core / engine | crates/gitaview-core/src/engine.rs | Lifecycle, admission, versioned snapshots, configuration reprojection |
 | Git execution | crates/gitaview-core/src/git/ | Fixed arguments, deadlines, Windows Job Object / macOS process group |
 | Settings / storage | crates/gitaview-core/src/settings.rs, src/storage/ | Revision checks, atomic writes, corrupt-data isolation |
-| FFI | crates/gitaview-ffi/, include/gitaview.h | Owned buffers, owner leases, explicit shutdown |
+| FFI | crates/gitaview-ffi/（含 include/gitaview.h） | Owned buffers, owner leases, explicit shutdown |
 | Native contracts | contracts/native/v1/ | JSON Schema, fixtures and cross-language expectations |
-| Windows host | apps/windows/GitaView.Native/ | Main window, settings, tray and flyout |
+| Flutter host | apps/flutter/ | Contracts decode, dart:ffi binding, engine service, pure logic and UI (Dart layer verified on macOS) |
+| Windows host | apps/windows/GitaView.Native/ | Main window, settings, tray and flyout (0.1.5.x; kept until Flutter host acceptance) |
 | C# interop | apps/windows/GitaView.Native.Interop/ | Native library binding and handle lifetime |
-| DTO / cache | apps/windows/GitaView.Native.Contracts/ | Shared JSON validation and atomic widget cache |
-| Widget Provider | apps/windows/GitaView.Native.WidgetProvider/ | Serialized updates, COM lifetime, no scanning engine |
-| Windows tests | apps/windows/GitaView.Native.Tests/ | Real FFI plus lifecycle, UI presentation and widget contracts |
+| DTO | apps/windows/GitaView.Native.Contracts/ | Shared contract JSON validation |
+| Windows tests | apps/windows/GitaView.Native.Tests/ | Real FFI plus lifecycle and UI presentation contracts |
 | Brand assets | assets/brand/, scripts/native/ | Shared SVG and optional Node/Sharp generation tool |
-| Diagnostics | tools/windows/WidgetCatalogProbe/ | Read-only Widget catalog query, built separately from the application |
 
 The root Cargo workspace has gitaview-core and gitaview-ffi as members and one
 Cargo.lock. There is no root npm project. The package in scripts/native is
@@ -78,8 +78,8 @@ optional asset tooling; ordinary builds use committed PNG/ICO/SVG files.
   no_remote. Read failures are errors, not a sixth Git relation. Pending rows
   have no invented Git fields. Keep no_remote last in summaries and filters.
 - Both platforms share product layout and semantic styles. Respect native
-  font rendering, window chrome, pickers, tray/menu bar and widget hosting.
+  font rendering, window chrome, pickers and tray/menu bar.
 - Use SVG icons, text labels and counts; do not rely on color alone. Hover
   and focus must not move content.
-- One main-app engine owns scanning. Explicit exit stops it; widgets retain
-  the last valid cache and never start an independent scanner.
+- One main-app engine owns scanning. Explicit exit stops it; no component
+  scans independently or keeps a separate cache.

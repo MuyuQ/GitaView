@@ -22,5 +22,6 @@ apps/windows/**/obj/
 apps/windows/GitaView.Native/pkg/
 apps/windows/**/*.msix
 apps/windows/**/*.cer
-tools/windows/**/bin/
-tools/windows/**/obj/
+
+# ZCode 会话工作区
+.zcode/

@@ -10,8 +10,7 @@
 # 不传指纹且未设置环境变量时，-Sign 报错退出；无 -Sign 产出未签名包
 #（不能直接安装，仅作 CI 可审查产物）。
 #
-# -Install：签名安装到本机（需要签名成功），并重启 Widget 宿主强制重扫
-#（重装包后 Board 不刷新的实测结论）。安装会清除应用 LocalState。
+# -Install：签名安装到本机（需要签名成功）。安装会清除应用 LocalState。
 
 param(
     [ValidateSet("Debug", "Release")]
@@ -78,22 +77,7 @@ if ($Install) {
     if ($family) { Remove-AppxPackage -Package (Get-AppxPackage $identityName).PackageFullName }
     Add-AppxPackage $outMsix
     if ($LASTEXITCODE -ne 0) { Write-Error "Add-AppxPackage failed"; exit 1 }
-    # 重装后 Widget 宿主缓存不刷新（实测）：强制重扫。
-    Get-Process WidgetBoard, WidgetService -ErrorAction SilentlyContinue | Stop-Process -Force
-    # 重装不清运行中的旧 Provider 进程（包删除后进程存活，占用内存且持旧代码）
-    Get-Process GitaView.Native.WidgetProvider -ErrorAction SilentlyContinue | Stop-Process -Force
-    # 预热 Provider：COM 激活一次，让自包含单文件的首次解压发生在安装时
-    #（实测全新缓存首次 COM 激活 5.3s，超过 Board 添加组件的超时 → "无法添加小组件"；
-    #  解压缓存永久生效，之后激活 0.1s）。预热后无固定组件，Provider 自行退出。
-    try {
-        $t = [Type]::GetTypeFromCLSID([Guid]'4caa94b6-2e9c-455a-a482-3af61a355f64')
-        $null = [Activator]::CreateInstance($t)
-        Start-Sleep -Seconds 2
-        Write-Host "provider warmed (extraction cached)"
-    } catch {
-        Write-Host "provider warm-up skipped: $($_.Exception.Message)"
-    }
-    Write-Host "INSTALLED: $identityName $version (widget hosts restarted)"
+    Write-Host "INSTALLED: $identityName $version"
 }
 Write-Host "PACKAGE OK"
 exit 0

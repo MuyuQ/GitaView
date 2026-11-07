@@ -1,9 +1,9 @@
 // 托盘浮窗（借鉴 Magpie 交互）：点击托盘图标动效弹出，点击外部 / Esc 关闭。
 // - 无边框、置顶、不进任务栏与 Alt+Tab；DWM 圆角 + 阴影（不自己画窗框）；
 // - 位置锚定托盘图标上方（TrayWindow 提供图标矩形），失败回退工作区右下角；
-// - 内容 = 紧凑摘要语义（WidgetSnapshot 安全投影：总数 · 待同步 · 需关注 ·
+// - 内容 = 紧凑摘要语义（SummarySnapshot 安全投影：总数 · 待同步 · 需关注 ·
 //   无远端 + 需注意仓库列表）+ 打开 / 刷新 / 退出；
-// - 显示期间订阅 SnapshotArrived 实时更新；不读路径 / 凭据（同 Widget 投影边界）。
+// - 显示期间订阅 SnapshotArrived 实时更新；不读路径 / 凭据（同 Summary 投影边界）。
 
 using GitaView.Native.Contracts;
 using GitaView.Native.Interop;
@@ -244,11 +244,11 @@ public sealed partial class TrayFlyoutWindow : Window
         {
             return;
         }
-        WidgetSnapshot snapshot;
+        SummarySnapshot snapshot;
         _contentVersions.BeginSession(engine.SessionId);
         try
         {
-            snapshot = await Task.Run(() => engine.WidgetSnapshot());
+            snapshot = await Task.Run(() => engine.SummarySnapshot());
         }
         catch (Exception exception) when (exception is GvException or ObjectDisposedException)
         {
@@ -298,7 +298,7 @@ public sealed partial class TrayFlyoutWindow : Window
             : Visibility.Collapsed;
     }
 
-    private static string StatusTextOf(WidgetRepo item) => item.ReadState switch
+    private static string StatusTextOf(SummaryRepo item) => item.ReadState switch
     {
         ReadState.Error => "读取失败",
         ReadState.Pending => "待读",
@@ -311,7 +311,7 @@ public sealed partial class TrayFlyoutWindow : Window
         },
     };
 
-    private static Brush DotOf(WidgetRepo item) => item.ReadState switch
+    private static Brush DotOf(SummaryRepo item) => item.ReadState switch
     {
         ReadState.Error => ThemeBrush("GvRedBrush"),
         ReadState.Pending => ThemeBrush("GvSlateBrush"),
@@ -324,7 +324,7 @@ public sealed partial class TrayFlyoutWindow : Window
         },
     };
 
-    private static Brush StatusBrushOf(WidgetRepo item) => item.ReadState switch
+    private static Brush StatusBrushOf(SummaryRepo item) => item.ReadState switch
     {
         ReadState.Error => ThemeBrush("GvRedBrush"),
         ReadState.Pending => ThemeBrush("GvMutedBrush"),

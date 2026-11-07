@@ -479,7 +479,7 @@ fn assert_config_change_preserves_failed_refresh(change: &str) {
     };
     wait_for_calls(&collector, 3);
     let intermediate = engine.snapshot_get();
-    let widget = gitaview_core::widget::project_widget(&intermediate);
+    let summary = gitaview_core::summary::project_summary(&intermediate);
     let serialized = serde_json::to_value(&intermediate).unwrap();
     release.send(()).unwrap();
     let recovered = wait_for_snapshot(&engine, "recovery after config", |s| {
@@ -495,7 +495,7 @@ fn assert_config_change_preserves_failed_refresh(change: &str) {
     assert_eq!(intermediate.attempted_at_ms, failed.attempted_at_ms);
     assert_eq!(intermediate.last_success_at_ms, ready.last_success_at_ms);
     assert_eq!(serialized["refreshError"]["code"], "GIT_FAILED");
-    assert_eq!(widget.refresh_error_code.as_deref(), Some("GIT_FAILED"));
+    assert_eq!(summary.refresh_error_code.as_deref(), Some("GIT_FAILED"));
     assert_eq!(recovered.refresh_error, None);
 }
 
@@ -659,11 +659,11 @@ fn clock_setback_has_defined_display_semantics() {
     assert_eq!(failed.attempted_at_ms, Some(success_at - 1000));
     assert_eq!(failed.last_success_at_ms, Some(success_at));
 
-    // Widget 侧明确显示规则：成功时间在未来 → FutureTime（不显示永久新鲜）。
-    let widget = gitaview_core::widget::project_widget(&failed);
+    // Summary 投影明确显示规则：成功时间在未来 → FutureTime（不显示永久新鲜）。
+    let summary = gitaview_core::summary::project_summary(&failed);
     assert_eq!(
-        widget.staleness(success_at - 1001),
-        gitaview_core::widget::Staleness::FutureTime
+        summary.staleness(success_at - 1001),
+        gitaview_core::summary::Staleness::FutureTime
     );
     stop_engine(&engine);
     remove_dir_retry(&temp);

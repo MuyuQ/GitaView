@@ -1,6 +1,6 @@
 //! GitaView 原生应用共享核心。
 //!
-//! N02：契约模型、错误码、Widget 投影、Git 探针。
+//! N02：契约模型、错误码、Summary 投影、Git 探针。
 //! N05：目录扫描（truncated / stop）、网络操作（确认 + 锁 + 前置校验）、
 //! 仓库记录基础（稳定 ID / 路径规范化 / 去重）。
 //! N06：新设置 schema 与应用服务（revision 事务、原子落盘、损坏隔离）。
@@ -19,7 +19,7 @@ pub mod refresh;
 pub mod registry;
 pub mod settings;
 pub mod storage;
+pub mod summary;
 pub mod view;
-pub mod widget;
 
 pub use error::CoreError;

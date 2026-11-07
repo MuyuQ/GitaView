@@ -113,7 +113,7 @@ public static class ContractsJson
         {
             throw new JsonException($"null is not a valid {typeof(T).Name}");
         }
-        // 镜像 Rust codec：未知 schemaVersion 拒绝（如 Widget 缓存文件的 999）。
+        // 镜像 Rust codec：未知 schemaVersion 拒绝（如契约反例 fixture 的 999）。
         if (value is ISchemaVersioned versioned && versioned.SchemaVersion != 1)
         {
             throw new JsonException(

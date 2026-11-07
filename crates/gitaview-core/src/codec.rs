@@ -1,7 +1,7 @@
 //! 契约解码入口：宿主（Swift / C#）镜像同一规则。
 //! 未知 schemaVersion 必须显式拒绝；不允许解码默认值隐藏不匹配。
 
-use crate::model::{AppSnapshot, WidgetSnapshot, SCHEMA_VERSION};
+use crate::model::{AppSnapshot, SummarySnapshot, SCHEMA_VERSION};
 use serde::Deserialize;
 use std::fmt;
 
@@ -36,12 +36,12 @@ fn check_schema_version(value: &serde_json::Value) -> Result<(), DecodeError> {
     }
 }
 
-/// 先校验 schemaVersion，再解码 Widget 快照。
-pub fn decode_widget_snapshot(bytes: &[u8]) -> Result<WidgetSnapshot, DecodeError> {
+/// 先校验 schemaVersion，再解码 Summary 快照。
+pub fn decode_summary_snapshot(bytes: &[u8]) -> Result<SummarySnapshot, DecodeError> {
     let value: serde_json::Value =
         serde_json::from_slice(bytes).map_err(|_| DecodeError::Malformed)?;
     check_schema_version(&value)?;
-    WidgetSnapshot::deserialize(value).map_err(|_| DecodeError::Malformed)
+    SummarySnapshot::deserialize(value).map_err(|_| DecodeError::Malformed)
 }
 
 /// 同规则解码应用快照。

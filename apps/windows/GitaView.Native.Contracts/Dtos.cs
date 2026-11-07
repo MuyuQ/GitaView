@@ -117,7 +117,7 @@ public sealed record AppSnapshot : ISchemaVersioned
     public required IReadOnlyList<RepoStatus> Repos { get; init; }
 }
 
-public sealed record WidgetCounts
+public sealed record SummaryCounts
 {
     public required uint Total { get; init; }
     public required uint Synced { get; init; }
@@ -137,7 +137,7 @@ public sealed record CompactCounts
     public required uint NoRemote { get; init; }
 }
 
-public sealed record WidgetRepo
+public sealed record SummaryRepo
 {
     public required string Id { get; init; }
     public required string Name { get; init; }
@@ -146,7 +146,8 @@ public sealed record WidgetRepo
     public string? ErrorCode { get; init; }
 }
 
-public sealed record WidgetSnapshot : ISchemaVersioned, IJsonOnDeserialized
+/// <summary>托盘浮窗 Summary 投影：不含 path、完整远端 URL、凭据或原始 Git 输出。</summary>
+public sealed record SummarySnapshot : ISchemaVersioned, IJsonOnDeserialized
 {
     public required ulong SchemaVersion { get; init; }
     public required string SessionId { get; init; }
@@ -158,15 +159,15 @@ public sealed record WidgetSnapshot : ISchemaVersioned, IJsonOnDeserialized
     public required RefreshState RefreshState { get; init; }
     public string? RefreshErrorCode { get; init; }
     public required RefreshPolicy RefreshPolicy { get; init; }
-    public required WidgetCounts Counts { get; init; }
+    public required SummaryCounts Counts { get; init; }
     public required CompactCounts Compact { get; init; }
-    public required IReadOnlyList<WidgetRepo> Attention { get; init; }
+    public required IReadOnlyList<SummaryRepo> Attention { get; init; }
 
     void IJsonOnDeserialized.OnDeserialized()
     {
         // Nullable annotations do not validate collection element nullability.
         if (Attention is null || Attention.Any(row => row is null))
-            throw new System.Text.Json.JsonException("attention must contain non-null widget repositories");
+            throw new System.Text.Json.JsonException("attention must contain non-null summary repositories");
     }
 }
 
@@ -311,10 +312,10 @@ public sealed record ViewResult
     public required ulong Generation { get; init; }
     public required ulong SettingsRevision { get; init; }
     public required ViewQuery Effective { get; init; }
-    public required WidgetCounts SummaryCounts { get; init; }
+    public required SummaryCounts SummaryCounts { get; init; }
     public required CompactCounts SummaryCompact { get; init; }
     public required IReadOnlyList<GroupCount> Groups { get; init; }
-    public required WidgetCounts StatusCounts { get; init; }
+    public required SummaryCounts StatusCounts { get; init; }
     public required IReadOnlyList<RepoStatus> Rows { get; init; }
 }
 

@@ -2,7 +2,7 @@
 //!
 //! 规则（实施说明 §6.1）：
 //! - JSON 键 camelCase；枚举小写 snake_case；UTF-8。
-//! - schemaVersion 与 abiVersion 均为 1，独立于产品版本。
+//! - schemaVersion = 1（数据契约）、abiVersion = 2（C ABI，2026-11 因导出更名自 1 升级），各自独立于产品版本。
 //! - 时间为 Unix 毫秒 u64；未知时间显式 null。
 //! - 五种关系是读取成功的结果；读取失败是独立 readState，不是第六种关系。
 
@@ -224,12 +224,12 @@ pub struct AppSnapshot {
     pub repos: Vec<RepoStatus>,
 }
 
-// —— Widget 安全投影（§6.5）——
+// —— Summary 安全投影（§6.5）——
 
-/// Widget 全量摘要计数。五种关系 + error + pending 之和等于 total。
+/// 全量摘要计数。五种关系 + error + pending 之和等于 total。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WidgetCounts {
+pub struct SummaryCounts {
     pub total: u32,
     pub synced: u32,
     pub local_ahead: u32,
@@ -253,7 +253,7 @@ pub struct CompactCounts {
 /// 关注列表条目：不含 path、完整远端 URL 或原始 Git 输出。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WidgetRepo {
+pub struct SummaryRepo {
     pub id: String,
     pub name: String,
     pub read_state: ReadState,
@@ -263,10 +263,10 @@ pub struct WidgetRepo {
     pub error_code: Option<String>,
 }
 
-/// Widget 快照：由 Rust 投影生成，两端消费同一种 JSON。
+/// Summary 快照（托盘浮窗投影）：由 Rust 投影生成，两端消费同一种 JSON。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct WidgetSnapshot {
+pub struct SummarySnapshot {
     pub schema_version: u64,
     pub session_id: String,
     pub generation: u64,
@@ -278,10 +278,10 @@ pub struct WidgetSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refresh_error_code: Option<String>,
     pub refresh_policy: RefreshPolicy,
-    pub counts: WidgetCounts,
+    pub counts: SummaryCounts,
     pub compact: CompactCounts,
     /// 关注列表：读取失败、分叉、远程领先、本地领先，最多 10 项。
-    pub attention: Vec<WidgetRepo>,
+    pub attention: Vec<SummaryRepo>,
 }
 
 #[cfg(test)]

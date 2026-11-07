@@ -27,12 +27,10 @@
     <Compile Include="..\GitaView.Native\NativeWindowFrame.cs" Link="NativeWindowFrame.cs" />
     <Compile Include="..\GitaView.Native\MainWindowClosePolicy.cs" Link="MainWindowClosePolicy.cs" />
     <Compile Include="..\GitaView.Native\ProtocolNavigation.cs" Link="ProtocolNavigation.cs" />
-    <Compile Include="$(RepoRoot)tools\windows\WidgetCatalogProbe\WidgetCatalogReport.cs" Link="WidgetCatalogReport.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\GitaView.Native.Interop\GitaView.Native.Interop.csproj" />
-    <ProjectReference Include="..\GitaView.Native.WidgetProvider\GitaView.Native.WidgetProvider.csproj" />
     <ProjectReference Include="..\GitaView.Native.Contracts\GitaView.Native.Contracts.csproj" />
   </ItemGroup>
 

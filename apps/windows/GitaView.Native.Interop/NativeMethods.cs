@@ -88,8 +88,8 @@ public static unsafe partial class NativeMethods
     [LibraryImport(Library, EntryPoint = "gv_view_query")]
     internal static partial int GvViewQuery(IntPtr engine, byte* json, nuint len, GvBuffer* reply);
 
-    [LibraryImport(Library, EntryPoint = "gv_widget_snapshot")]
-    internal static partial int GvWidgetSnapshot(IntPtr engine, GvBuffer* reply);
+    [LibraryImport(Library, EntryPoint = "gv_summary_snapshot")]
+    internal static partial int GvSummarySnapshot(IntPtr engine, GvBuffer* reply);
 
     [LibraryImport(Library, EntryPoint = "gv_repo_target")]
     internal static partial int GvRepoTarget(IntPtr engine, byte* json, nuint len, GvBuffer* reply);

@@ -38,7 +38,7 @@ class ContractSchemaTests(unittest.TestCase):
 
     def test_nullable_refs_accept_null_and_defined_values_but_not_unknown_codes(self):
         for definition, field in (("repoStatus", "error"), ("probeResult", "error"), ("appSnapshot", "refreshError"),
-                                  ("widgetRepo", "errorCode"), ("widgetSnapshot", "refreshErrorCode")):
+                                  ("summaryRepo", "errorCode"), ("summarySnapshot", "refreshErrorCode")):
             # Isolate each property while preserving the schema's local ref scope.
             schema = {"definitions": SCHEMA["definitions"],
                       "allOf": [SCHEMA["definitions"][definition]["properties"][field]]}
@@ -51,7 +51,7 @@ class ContractSchemaTests(unittest.TestCase):
     def test_entry_still_rejects_unknown_fields(self):
         self.assertFalse(validator("repoAddInput").is_valid({"path": "C:\\repo", "unexpected": True}))
 
-    def test_windows_ready_widget_shape_accepts_explicit_null_error(self):
+    def test_windows_ready_summary_shape_accepts_explicit_null_error(self):
         snapshot = {
             "schemaVersion": 1, "sessionId": "windows", "generation": 1,
             "stateRevision": 2, "settingsRevision": 1, "attemptedAtMs": 1000,
@@ -61,7 +61,7 @@ class ContractSchemaTests(unittest.TestCase):
             "compact": dict.fromkeys(("synced", "syncable", "needsAttention", "noRemote"), 0),
             "attention": [],
         }
-        validator("widgetSnapshot").validate(snapshot)
+        validator("summarySnapshot").validate(snapshot)
         validator().validate(snapshot)
 
 

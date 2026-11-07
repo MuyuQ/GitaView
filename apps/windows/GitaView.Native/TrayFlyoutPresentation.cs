@@ -6,7 +6,7 @@ internal readonly record struct FlyoutBounds(int X, int Y, int Width, int Height
 
 internal static class TrayFlyoutPresentation
 {
-    internal static string EmptyMessage(WidgetCounts counts, RefreshState refreshState)
+    internal static string EmptyMessage(SummaryCounts counts, RefreshState refreshState)
     {
         if (refreshState == RefreshState.Failed)
         {

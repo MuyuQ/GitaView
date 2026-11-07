@@ -12,9 +12,9 @@
 //!   搜索零结果不清空搜索。
 //! - 摘要始终覆盖全部仓库，不受筛选影响；pending 仅出现在"全部状态"。
 
-use crate::model::{AppSnapshot, CompactCounts, ReadState, Relation, RepoStatus, WidgetCounts};
+use crate::model::{AppSnapshot, CompactCounts, ReadState, Relation, RepoStatus, SummaryCounts};
 use crate::settings::GroupSettings;
-use crate::widget::{compare_repos, summarize};
+use crate::summary::{compare_repos, summarize};
 use serde::{Deserialize, Serialize};
 
 /// 状态筛选。pending 不是关系：仅 `All` 包含 pending 行（不新增关系筛选项）。
@@ -109,12 +109,12 @@ pub struct ViewResult {
     /// 协调后的有效筛选。
     pub effective: ViewQuery,
     /// 全部仓库摘要计数（不受筛选影响）。
-    pub summary_counts: WidgetCounts,
+    pub summary_counts: SummaryCounts,
     pub summary_compact: CompactCounts,
     /// 各分组计数（基于全部仓库）。
     pub groups: Vec<GroupCount>,
     /// 所选组内的状态计数（不随状态筛选或搜索缩小）。
-    pub status_counts: WidgetCounts,
+    pub status_counts: SummaryCounts,
     /// 排序后的行（依次应用分组、状态筛选、搜索）。
     pub rows: Vec<RepoStatus>,
 }

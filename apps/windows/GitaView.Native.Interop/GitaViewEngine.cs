@@ -176,8 +176,8 @@ public sealed unsafe class GitaViewEngine : IDisposable
     public ViewResult ViewQuery(ViewQuery query) =>
         CallJson<ViewResult>("gv_view_query", query, &NativeMethods.GvViewQuery);
 
-    public WidgetSnapshot WidgetSnapshot() =>
-        Call<WidgetSnapshot>("gv_widget_snapshot", &NativeMethods.GvWidgetSnapshot);
+    public SummarySnapshot SummarySnapshot() =>
+        Call<SummarySnapshot>("gv_summary_snapshot", &NativeMethods.GvSummarySnapshot);
 
     public RepoTargetData RepoTarget(RepoTargetInput input) =>
         CallJson<RepoTargetData>("gv_repo_target", input, &NativeMethods.GvRepoTarget);

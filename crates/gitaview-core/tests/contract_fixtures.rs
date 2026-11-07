@@ -1,9 +1,9 @@
 //! 契约 fixture 集成测试（N02）：以 contracts/native/v1/fixtures 为唯一期望来源。
 //! Rust 序列化 / 投影结果必须与 expectations.json 一致；两端解码测试（N10）复用同一文件。
 
-use gitaview_core::codec::{decode_app_snapshot, decode_widget_snapshot, DecodeError};
-use gitaview_core::model::{CompactCounts, WidgetCounts};
-use gitaview_core::widget::{project_widget, Staleness};
+use gitaview_core::codec::{decode_app_snapshot, decode_summary_snapshot, DecodeError};
+use gitaview_core::model::{CompactCounts, SummaryCounts};
+use gitaview_core::summary::{project_summary, Staleness};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
@@ -28,7 +28,7 @@ struct Expectations {
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SnapshotExpectation {
-    counts: WidgetCounts,
+    counts: SummaryCounts,
     compact: CompactCounts,
     attention_ids: Vec<String>,
     #[serde(default)]
@@ -50,7 +50,7 @@ fn schema_json_parses_and_lists_prototype_definitions() {
     for definition in [
         "envelope",
         "appSnapshot",
-        "widgetSnapshot",
+        "summarySnapshot",
         "probeRequest",
         "probeResult",
         "relation",
@@ -95,22 +95,22 @@ fn every_expected_snapshot_projects_to_declared_counts_and_attention() {
     for (fixture, expected) in &expectations.snapshots {
         let bytes = load_fixture(&format!("{fixture}.json"));
         let snapshot = decode_app_snapshot(&bytes).unwrap_or_else(|e| panic!("{fixture}: {e:?}"));
-        let widget = project_widget(&snapshot);
+        let summary = project_summary(&snapshot);
 
-        assert_eq!(widget.counts, expected.counts, "{fixture} counts");
-        assert_eq!(widget.compact, expected.compact, "{fixture} compact");
-        let attention: Vec<&str> = widget.attention.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(summary.counts, expected.counts, "{fixture} counts");
+        assert_eq!(summary.compact, expected.compact, "{fixture} compact");
+        let attention: Vec<&str> = summary.attention.iter().map(|r| r.id.as_str()).collect();
         let expected_attention: Vec<&str> =
             expected.attention_ids.iter().map(String::as_str).collect();
         assert_eq!(attention, expected_attention, "{fixture} attention order");
 
         // 四桶 + pending = total；摘要覆盖全部仓库。
-        let bucket_sum = widget.compact.synced
-            + widget.compact.syncable
-            + widget.compact.needs_attention
-            + widget.compact.no_remote
-            + widget.counts.pending;
-        assert_eq!(bucket_sum, widget.counts.total, "{fixture} bucket sum");
+        let bucket_sum = summary.compact.synced
+            + summary.compact.syncable
+            + summary.compact.needs_attention
+            + summary.compact.no_remote
+            + summary.counts.pending;
+        assert_eq!(bucket_sum, summary.counts.total, "{fixture} bucket sum");
 
         // 已删仓库不得在任何投影中复活。
         for absent in &expected.absent_repo_ids {
@@ -119,36 +119,36 @@ fn every_expected_snapshot_projects_to_declared_counts_and_attention() {
                 "{fixture}: deleted repo {absent} resurrected in snapshot"
             );
             assert!(
-                !widget.attention.iter().any(|repo| &repo.id == absent),
+                !summary.attention.iter().any(|repo| &repo.id == absent),
                 "{fixture}: deleted repo {absent} resurrected in attention"
             );
         }
 
         if let Some(preserved) = expected.last_success_at_ms_preserved {
             assert_eq!(
-                widget.last_success_at_ms,
+                summary.last_success_at_ms,
                 Some(preserved),
                 "{fixture} last success time must be preserved"
             );
         }
         if let Some(code) = &expected.refresh_error_code {
             assert_eq!(
-                widget.refresh_error_code.as_deref(),
+                summary.refresh_error_code.as_deref(),
                 Some(code.as_str()),
                 "{fixture} refresh error code"
             );
         }
 
-        // Widget 投影不泄漏 path、完整远端 URL 或错误消息文本。
-        let json = serde_json::to_string(&widget).unwrap();
-        assert!(!json.contains("path"), "{fixture} widget leaked path");
+        // Summary 投影不泄漏 path、完整远端 URL 或错误消息文本。
+        let json = serde_json::to_string(&summary).unwrap();
+        assert!(!json.contains("path"), "{fixture} summary leaked path");
         assert!(
             !json.contains("remoteUrl"),
-            "{fixture} widget leaked remote url"
+            "{fixture} summary leaked remote url"
         );
         assert!(
             !json.contains("message"),
-            "{fixture} widget leaked error message"
+            "{fixture} summary leaked error message"
         );
     }
 }
@@ -160,42 +160,42 @@ fn staleness_boundaries_follow_expectations() {
 
     let manual = &expectations.staleness["snapshot-manual"];
     let snapshot = decode_app_snapshot(&load_fixture("snapshot-manual.json")).unwrap();
-    let widget = project_widget(&snapshot);
+    let summary = project_summary(&snapshot);
     assert_eq!(
-        widget.staleness(manual["nowMs"].as_u64().unwrap()),
+        summary.staleness(manual["nowMs"].as_u64().unwrap()),
         Staleness::Manual
     );
 
     let boundary = &expectations.staleness["snapshot-stale-boundary"];
     let snapshot = decode_app_snapshot(&load_fixture("snapshot-stale-boundary.json")).unwrap();
-    let widget = project_widget(&snapshot);
-    assert_eq!(widget.last_success_at_ms, Some(1790000000000));
+    let summary = project_summary(&snapshot);
+    assert_eq!(summary.last_success_at_ms, Some(1790000000000));
     // 等于两倍间隔：尚不标记过期。
     assert_eq!(
-        widget.staleness(boundary["freshAtMs"].as_u64().unwrap()),
+        summary.staleness(boundary["freshAtMs"].as_u64().unwrap()),
         Staleness::Fresh
     );
-    // 超过边界一分钟：过期。
+    // 边界后 1 毫秒：过期。
     assert_eq!(
-        widget.staleness(boundary["staleAtMs"].as_u64().unwrap()),
+        summary.staleness(boundary["staleAtMs"].as_u64().unwrap()),
         Staleness::Stale
     );
     // 时间回拨（成功时间在未来）：异常显示，等待刷新。
     assert_eq!(
-        widget.staleness(boundary["futureAtMs"].as_u64().unwrap()),
+        summary.staleness(boundary["futureAtMs"].as_u64().unwrap()),
         Staleness::FutureTime
     );
 }
 
 #[test]
-fn unknown_schema_versions_are_rejected_for_widget_and_app() {
+fn unknown_schema_versions_are_rejected_for_summary_and_app() {
     let expectations: Expectations =
         serde_json::from_slice(&load_fixture("expectations.json")).unwrap();
     assert!(!expectations.rejects.is_empty());
     for fixture in &expectations.rejects {
         let bytes = load_fixture(fixture);
         assert_eq!(
-            decode_widget_snapshot(&bytes),
+            decode_summary_snapshot(&bytes),
             Err(DecodeError::UnknownSchema),
             "{fixture} must be rejected as unknown schema"
         );
@@ -210,7 +210,7 @@ fn malformed_payloads_are_rejected_not_defaulted() {
         Err(DecodeError::Malformed)
     );
     assert_eq!(
-        decode_widget_snapshot(b"{\"schemaVersion\":1,\"unknownField\":true}"),
+        decode_summary_snapshot(b"{\"schemaVersion\":1,\"unknownField\":true}"),
         Err(DecodeError::Malformed)
     );
     // 未知枚举值不能回落为默认关系。

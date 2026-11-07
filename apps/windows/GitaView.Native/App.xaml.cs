@@ -93,8 +93,7 @@ public partial class App : Application
         }
         catch (Exception exception)
         {
-            // 启动失败：可恢复错误展示 + 退出；不进入"空仓库且启动成功"的主界面，
-            // 不发布空 Widget 覆盖历史（§10）。
+            // 启动失败：可恢复错误展示 + 退出；不进入"空仓库且启动成功"的主界面。
             HostLog?.Log("ERROR", "engine.create.failed", exception.Message);
             LogStartupFailure("engine create failed: " + exception.Message);
             _ = MessageBoxW(0,
@@ -130,11 +129,7 @@ public partial class App : Application
         // —— 快照消费循环 ——
         // 宿主持有任务引用：退出时观察其结束，失败记录诊断（不再静默丢弃）。
         // Task.Run 包裹（review S04）：整个循环（含 await 之后的续体）在后台
-        // 线程执行，WidgetSnapshot FFI 与写入调度绝不回到 UI 线程。
-        // 写入器存储位置由宿主注入（Contracts 无 Windows 投影）。
-        WidgetDataWriter.DataDirectory = ApplicationData.Current.LocalFolder.Path;
-        WidgetDataWriter.Log = HostLog;
-        WidgetDataWriter.Start();
+        // 线程执行，SnapshotWait FFI 绝不回到 UI 线程。
         SnapshotLoopTask = Task.Run(() => RunSnapshotLoopAsync(engine));
         _protocolNavigation.SetReady(
             id => engine.SettingsGet().Repos.Any(repo => repo.Id == id),
@@ -146,9 +141,8 @@ public partial class App : Application
 
     /// <summary>
     /// 单一后台快照消费循环：以 sessionId + stateRevision 等待状态变化；
-    /// 窗口关闭（驻留）期间循环继续，Widget 数据照常发布。
-    /// Widget 写入与订阅解耦（review R05）：写入失败只记录并退避重试，
-    /// 绝不终止核心消费循环；循环自身异常记录后退出（可见于日志）。
+    /// 窗口关闭（驻留）期间循环继续发布状态通知。
+    /// 循环自身异常记录后退出（可见于日志）。
     /// </summary>
     private static async Task RunSnapshotLoopAsync(GitaViewEngine engine)
     {
@@ -165,20 +159,6 @@ public partial class App : Application
                         cursor = snapshot.StateRevision;
                         try
                         {
-                            // Widget 投影由 Rust 统一产生（不重复实现业务规则）。
-                            WidgetDataWriter.Write(engine.WidgetSnapshot());
-                        }
-                        catch (ObjectDisposedException)
-                        {
-                            // 引擎已在关闭：循环将随下一次 SnapshotWait 退出。
-                        }
-                        catch (Exception exception)
-                        {
-                            HostLog?.Log("ERROR", "widget.write.failed",
-                                $"{exception.GetType().Name}: {exception.Message}");
-                        }
-                        try
-                        {
                             SnapshotArrived?.Invoke(snapshot);
                         }
                         catch (Exception exception)
@@ -188,16 +168,7 @@ public partial class App : Application
                         }
                         break;
                     case SnapshotWaitKind.Timeout:
-                        // 无新快照：N16 实现过期边界重写。
-                        try
-                        {
-                            WidgetDataWriter.RewriteIfStale();
-                        }
-                        catch (Exception exception)
-                        {
-                            HostLog?.Log("ERROR", "widget.rewrite.failed",
-                                $"{exception.GetType().Name}: {exception.Message}");
-                        }
+                        // 无新快照：继续等待。
                         break;
                     case SnapshotWaitKind.Stopping:
                         HostLog?.Log("INFO", "snapshot.loop.exit", "stopping");
@@ -226,7 +197,7 @@ public partial class App : Application
             DataDirectory = System.IO.Path.Combine(localFolder, "data"),
             LogDirectory = System.IO.Path.Combine(localFolder, "logs"),
         };
-        if (GitaViewEngine.AbiVersion() != 1)
+        if (GitaViewEngine.AbiVersion() != 2)
         {
             throw new InvalidOperationException("gitaview_ffi.dll ABI 版本不匹配");
         }
@@ -417,22 +388,12 @@ public partial class App : Application
             }
             try
             {
-                // 快照循环结束后不再有新投影；停写入器（flush 最新投影）再销毁引擎。
+                // 快照循环结束后不再有新状态通知，再销毁引擎。
                 await SnapshotLoopTask;
             }
             catch (Exception exception)
             {
                 HostLog?.Log("WARN", "app.exit.snapshot_task",
-                    $"{exception.GetType().Name}: {exception.Message}");
-            }
-            try
-            {
-                await Task.Run(() => WidgetDataWriter.StopAsync());
-                HostLog?.Log("INFO", "app.exit.writer_flushed", "");
-            }
-            catch (Exception exception)
-            {
-                HostLog?.Log("WARN", "app.exit.writer_stop",
                     $"{exception.GetType().Name}: {exception.Message}");
             }
             try

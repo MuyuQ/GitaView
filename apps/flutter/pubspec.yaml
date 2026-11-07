@@ -1,0 +1,34 @@
+name: gitaview
+description: "GitaView Flutter 宿主：共享 Rust 核心 + 冻结 C ABI v2 的原生桌面 Git 状态总览。"
+publish_to: 'none'
+
+# 与 MSIX 清单版本 0.2.0.0 对应（原位升级取代 0.1.5.x WinUI 宿主）。
+version: 0.2.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # dart:ffi 的 malloc / free 与 Struct 内存管理。
+  ffi: ^2.1.4
+  fluent_ui: ^4.17.0
+  window_manager: ^0.6.0
+  flutter_acrylic: ^1.1.4
+  windows_single_instance: ^1.2.0
+
+  # 托盘浮窗第二窗口：Devolutions 维护的 fork（活跃修复，企业场景使用）。
+  desktop_multi_window:
+    git:
+      url: https://github.com/Devolutions/desktop_multi_window
+  file_selector: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -41,7 +41,7 @@ public class RepositoryFilterPresentationFacts
     [Fact]
     public void status_choices_hide_zero_counts_and_keep_no_remote_last()
     {
-        var counts = new WidgetCounts
+        var counts = new SummaryCounts
         {
             Total = 4, Synced = 1, LocalAhead = 0, RemoteAhead = 0,
             Diverged = 1, NoRemote = 1, Error = 1, Pending = 0,

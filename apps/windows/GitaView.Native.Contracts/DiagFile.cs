@@ -1,4 +1,4 @@
-// C# 诊断文件（宿主 / Provider 共用）：UTC 时间戳、大小轮转（5MB × 2 代）、
+// C# 诊断文件（宿主）：UTC 时间戳、大小轮转（5MB × 2 代）、
 // 写入绝不抛出（诊断不能反向影响业务）。与 Rust diagnostics 同一套规则。
 
 using System.Text;
