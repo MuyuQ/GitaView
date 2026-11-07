@@ -9,8 +9,8 @@
 // - Launcher / FolderPicker —— ShellExecute 打开目录 / 浏览器安全 URL；
 //   目录选择用 file_selector（Windows 实现为系统对话框）。
 //
-// 非 Windows 平台：所有方法抛 UnsupportedError 之外的路径不存在——
-// 调用方必须用 Platform.isWindows 守护（main.dart 已守护）。
+// 本通道封装 Windows runner 的 gv_platform 插件；main.dart 已用
+// Platform.isWindows 守护，macOS 走各自的系统路径（open / file_selector）。
 library;
 
 import 'package:file_selector/file_selector.dart';
@@ -35,15 +35,13 @@ class TrayContext {
   const TrayContext({required this.workArea, required this.scale, this.icon});
 }
 
-/// gv_platform 通道封装。测试可注入 [invoke] 替换真实通道。
+/// gv_platform 通道封装。
 class GvPlatformChannel {
   final Future<Object?> Function(String method, [Object? arguments]) invoke;
 
   static const MethodChannel _channel = MethodChannel('gitaview/platform');
 
   GvPlatformChannel() : invoke = _defaultInvoke;
-
-  const GvPlatformChannel.test(this.invoke);
 
   static Future<Object?> _defaultInvoke(String method, [Object? arguments]) {
     return _channel.invokeMethod(method, arguments);

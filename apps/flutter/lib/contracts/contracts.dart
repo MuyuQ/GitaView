@@ -696,14 +696,6 @@ Staleness stalenessOf({
   return Staleness.fresh;
 }
 
-/// SummarySnapshot 的新鲜度便捷方法。
-Staleness summaryStaleness(SummarySnapshot snapshot, int nowMs) => stalenessOf(
-      refreshEnabled: snapshot.refreshPolicy.enabled,
-      intervalMinutes: snapshot.refreshPolicy.intervalMinutes,
-      lastSuccessAtMs: snapshot.lastSuccessAtMs,
-      nowMs: nowMs,
-    );
-
 // —— 设置 ——
 
 /// 持久化后的仓库记录。
