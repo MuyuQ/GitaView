@@ -27,6 +27,18 @@ std::wstring ReadEnvironmentPath(const wchar_t* name) {
   return value;
 }
 
+// UTF-16 → UTF-8：EncodableValue 只支持窄字符串（std::string）。
+std::string ToUtf8(const std::wstring& value) {
+  if (value.empty()) return {};
+  const int size = WideCharToMultiByte(CP_UTF8, 0, value.c_str(),
+                                       static_cast<int>(value.size()), nullptr,
+                                       0, nullptr, nullptr);
+  std::string result(static_cast<size_t>(size), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, value.c_str(), static_cast<int>(value.size()),
+                      result.data(), size, nullptr, nullptr);
+  return result;
+}
+
 // 打包身份 → LocalState（与 C# ApplicationData.Current.LocalFolder 等价）；
 // 未打包（开发运行）→ %LOCALAPPDATA%\GitaView。
 std::wstring ResolveLocalStateBase() {
@@ -247,8 +259,8 @@ void GvPlatform::HandleMethodCall(
   if (method == "getSystemPaths") {
     const std::wstring base = ResolveLocalStateBase();
     flutter::EncodableMap response = {
-        {"dataDirectory", flutter::EncodableValue(base + L"\\data")},
-        {"logDirectory", flutter::EncodableValue(base + L"\\logs")},
+        {"dataDirectory", flutter::EncodableValue(ToUtf8(base + L"\\data"))},
+        {"logDirectory", flutter::EncodableValue(ToUtf8(base + L"\\logs"))},
     };
     result->Success(flutter::EncodableValue(response));
     return;

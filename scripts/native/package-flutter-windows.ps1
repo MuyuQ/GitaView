@@ -28,7 +28,6 @@ $buildLayout = "$flutterProject\build\windows\x64\runner\Release"
 $msixSource = "$flutterProject\windows\msix"
 
 if (-not (Test-Path "$flutterProject\pubspec.yaml")) { Write-Error "flutter project missing"; exit 1 }
-$flutter = Get-Command flutter -ErrorAction SilentlyContinue
 if (-not $flutter) { Write-Error "flutter not on PATH; install Flutter SDK or activate env"; exit 1 }
 
 if (-not $SkipBuild) {
@@ -55,6 +54,9 @@ Write-Host "layout: $buildLayout"
 Write-Host "layout gitaview_ffi.dll sha256: $ffiHash"
 
 # 注入 MSIX 清单与瓦片资产（AppxManifest.xml 为 makeappx 要求的名称）。
+# flutter build 输出没有顶层 assets\ 目录：先创建再拷贝，避免 Copy-Item
+# 对不存在目标的行为歧义。
+New-Item -ItemType Directory -Force "$buildLayout\assets" | Out-Null
 Copy-Item "$msixSource\Package.appxmanifest" "$buildLayout\AppxManifest.xml" -Force
 Copy-Item "$msixSource\assets\*" "$buildLayout\assets\" -Force
 

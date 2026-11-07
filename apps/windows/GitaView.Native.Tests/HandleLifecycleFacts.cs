@@ -71,10 +71,21 @@ public class HandleLifecycleFacts
         sw.Stop();
         Assert.True(sw.ElapsedMilliseconds < 30_000, "dispose must not deadlock");
 
-        var result = waitTask.Result;
-        Assert.True(
-            result.Kind is SnapshotWaitKind.Ready or SnapshotWaitKind.Stopping,
-            $"unexpected kind {result.Kind}");
+        // CI 负载下 Task.Run 可能晚于 300ms 才被调度：Dispose 先赢得竞态时
+        // SnapshotWait 对已释放引擎抛 ObjectDisposedException——同样满足本
+        // 测试的承诺（有界完成、无死锁、无崩溃），两种交错都接受。
+        try
+        {
+            var result = waitTask.Result;
+            Assert.True(
+                result.Kind is SnapshotWaitKind.Ready or SnapshotWaitKind.Stopping,
+                $"unexpected kind {result.Kind}");
+        }
+        catch (AggregateException ex)
+            when (ex.InnerExceptions.All(e => e is ObjectDisposedException))
+        {
+            // Dispose 赢得调度竞态：等待未进入租约即被拒。
+        }
     }
 
     [Fact]
@@ -110,8 +121,18 @@ public class HandleLifecycleFacts
         Assert.All(results, r => Assert.True(r.Status == TaskStatus.RanToCompletion, r.Status.ToString()));
         Assert.Throws<ObjectDisposedException>(() => engine.SettingsGet());
 
-        var result = waitTask.Result;
-        Assert.True(result.Kind is SnapshotWaitKind.Ready or SnapshotWaitKind.Stopping);
+        // 与上一测试相同的调度竞态：Dispose 赢时 SnapshotWait 抛
+        // ObjectDisposedException，同样满足"关闭串行、有界完成"。
+        try
+        {
+            var result = waitTask.Result;
+            Assert.True(result.Kind is SnapshotWaitKind.Ready or SnapshotWaitKind.Stopping);
+        }
+        catch (AggregateException ex)
+            when (ex.InnerExceptions.All(e => e is ObjectDisposedException))
+        {
+            // Dispose 赢得调度竞态。
+        }
     }
 
     [Fact]
