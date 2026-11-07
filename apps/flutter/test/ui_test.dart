@@ -325,10 +325,21 @@ final class FakeGateway implements EngineGateway {
     }
     final needle = query.query.trim().toLowerCase();
     if (needle.isNotEmpty) {
+      // 核心 haystack 含组名（view.rs group_name_of）。
+      String? groupNameOf(RepoStatus row) {
+        final id = row.groupId;
+        if (id == null) return null;
+        for (final group in groups) {
+          if (group.id == id) return group.name;
+        }
+        return null;
+      }
+
       scoped = scoped.where((row) =>
           row.name.toLowerCase().contains(needle) ||
           row.path.toLowerCase().contains(needle) ||
-          (row.branch ?? '').toLowerCase().contains(needle));
+          (row.branch ?? '').toLowerCase().contains(needle) ||
+          (groupNameOf(row) ?? '').toLowerCase().contains(needle));
     }
     return ViewResult(
       sessionId: 'fx-session-001',

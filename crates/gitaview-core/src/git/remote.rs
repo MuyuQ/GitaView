@@ -4,7 +4,7 @@ pub fn normalize_remote_url(raw: &str) -> Option<String> {
     // 控制字符（含值内部空白）不允许进入“浏览器可打开”产物：不变量在
     // 核心成立，不依赖每个宿主打开器的二次校验。
     let trimmed = raw.trim();
-    if trimmed.chars().any(|c| c.is_control() || c == ' ') {
+    if trimmed.chars().any(|c| c.is_control() || c.is_whitespace()) {
         return None;
     }
     let value = trimmed;

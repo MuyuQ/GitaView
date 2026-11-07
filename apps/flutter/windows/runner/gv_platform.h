@@ -68,6 +68,8 @@ class GvPlatform {
   UINT taskbar_created_message_ = 0;
   bool tray_added_ = false;
   int re_register_attempts_ = 0;
+  HICON tray_icon_ = nullptr;
+  bool tray_icon_owned_ = false;
 };
 
 }  // namespace gitaview

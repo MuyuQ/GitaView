@@ -140,9 +140,10 @@ final class EngineService extends ChangeNotifier {
     _setState(EngineServiceState.stopping);
     try {
       // C# RequestExit 按 network_timeout 600s + 余量给 660s：在途
-      // Pull / Push 合法耗时可到 600s，超时不能当成功。外层 730s =
-      // 660s 等待 + 60s destroy 重试 + 余量。
-      await _call('exit', const {}).timeout(const Duration(seconds: 730));
+      // Pull / Push 合法耗时可到 600s，超时不能当成功。外层 745s 覆盖
+      // 内部最坏路径（watcher 停止 15s + 等待 660s + destroy 重试 60s），
+      // 避免外层超时在命令 isolate 阻塞于原生调用时触发 kill。
+      await _call('exit', const {}).timeout(const Duration(seconds: 745));
     } catch (_) {
       // isolate 已随引擎销毁退出或回复通道关闭：视为完成。
     }
@@ -320,6 +321,8 @@ final class EngineService extends ChangeNotifier {
   }
 
   void _setState(EngineServiceState state) {
+    // dispose 后的迟到状态转换（如启动取消）不再通知已销毁的监听者。
+    if (_disposed) return;
     _state = state;
     notifyListeners();
   }

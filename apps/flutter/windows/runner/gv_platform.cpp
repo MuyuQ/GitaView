@@ -131,6 +131,8 @@ bool GvPlatform::EnsureTray() {
       GetModuleHandleW(nullptr), MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON,
       GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON),
       LR_DEFAULTCOLOR));
+  // LoadImageW 返回的图标归本对象所有；LoadIconW 的共享图标不可销毁。
+  bool owned = icon != nullptr;
   if (icon == nullptr) {
     icon = LoadIconW(nullptr, IDI_APPLICATION);
   }
@@ -142,14 +144,29 @@ bool GvPlatform::EnsureTray() {
   notify_icon_.uCallbackMessage = kTrayCallbackMessage;
   notify_icon_.hIcon = icon;
   lstrcpynW(notify_icon_.szTip, L"GitaView", ARRAYSIZE(notify_icon_.szTip));
-  tray_added_ = Shell_NotifyIconW(NIM_ADD, &notify_icon_) != FALSE;
-  return tray_added_;
+  if (Shell_NotifyIconW(NIM_ADD, &notify_icon_) == FALSE) {
+    if (owned) DestroyIcon(icon);
+    return false;
+  }
+  tray_added_ = true;
+  // 重注册成功后释放旧 owned 图标（NIM_DELETE 之前旧图标仍被引用）。
+  if (tray_icon_ != nullptr && tray_icon_owned_) {
+    DestroyIcon(tray_icon_);
+  }
+  tray_icon_ = icon;
+  tray_icon_owned_ = owned;
+  return true;
 }
 
 void GvPlatform::RemoveTray() {
   if (tray_added_) {
     Shell_NotifyIconW(NIM_DELETE, &notify_icon_);
     tray_added_ = false;
+  }
+  if (tray_icon_ != nullptr && tray_icon_owned_) {
+    DestroyIcon(tray_icon_);
+    tray_icon_ = nullptr;
+    tray_icon_owned_ = false;
   }
 }
 

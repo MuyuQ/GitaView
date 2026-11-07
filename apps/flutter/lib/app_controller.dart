@@ -342,6 +342,8 @@ class AppController extends ChangeNotifier {
     if (_sessionId != snapshot.sessionId) {
       _sessionId = snapshot.sessionId;
       _gate.beginSession(snapshot.sessionId);
+      // 新会话（引擎重建）重新播种默认分组：新引擎设置可能不同。
+      _defaultGroupSeeded = false;
     }
     return _gate.tryAccept(snapshot.sessionId, snapshot.stateRevision);
   }

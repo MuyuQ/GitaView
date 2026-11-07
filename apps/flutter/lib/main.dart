@@ -248,6 +248,8 @@ class _GitaViewAppState extends State<GitaViewApp>
   /// 过早注册会把冷启动请求立即降级为总列表——C# 在 OnLaunched 末尾注册）。
   void _registerProtocolReady() {
     if (_protocolReady) return;
+    // 快照未就绪不注册：存在性探测会读到 null 并把冷启动深链降级。
+    if (widget.service.snapshot == null) return;
     _protocolReady = true;
     _protocol.setReady(
       (repoId) =>
