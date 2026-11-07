@@ -214,6 +214,8 @@ class _GitaViewAppState extends State<GitaViewApp>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 浮窗推送跟随与深链就绪与平台无关；Windows 专属通道见下方分支。
+    widget.service.addListener(_onServiceChanged);
     if (Platform.isWindows) {
       // 先拦截系统关闭，交给 MainWindowClosePolicy 决定隐藏还是退出
       // （对应 C# AppWindow.Closing → HandleMainWindowClose）。
@@ -222,13 +224,13 @@ class _GitaViewAppState extends State<GitaViewApp>
       });
       // 引擎启动 + 托盘 + 深链就绪（对应 C# App.OnLaunched 序列）。
       unawaited(_bootstrap());
-      // 浮窗可见时跟随快照推送更新。
-      widget.service.addListener(_onServiceChanged);
       // 子窗口动作回传（打开 / 刷新 / 退出）。
       DesktopMultiWindow.setMethodHandler(_onFlyoutAction);
     } else {
       // 非 Windows 开发环境同样启动引擎（共享核心在 macOS CI 有覆盖）。
-      unawaited(widget.service.start().then((_) => controller.requery()));
+      unawaited(widget.service.start().then((_) {
+        return controller.requery();
+      }).then((_) => _registerProtocolReady()));
     }
     // 深链：冷启动请求缓存，首份快照就绪后派发（setReady 在 _bootstrap /
     // 首次快照时注册，见 _registerProtocolReady）；热请求立即派发。

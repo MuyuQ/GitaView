@@ -28,9 +28,10 @@ $buildLayout = "$flutterProject\build\windows\x64\runner\Release"
 $msixSource = "$flutterProject\windows\msix"
 
 if (-not (Test-Path "$flutterProject\pubspec.yaml")) { Write-Error "flutter project missing"; exit 1 }
-if (-not $flutter) { Write-Error "flutter not on PATH; install Flutter SDK or activate env"; exit 1 }
 
 if (-not $SkipBuild) {
+    $flutter = Get-Command flutter -ErrorAction SilentlyContinue
+    if (-not $flutter) { Write-Error "flutter not on PATH; install Flutter SDK or activate env"; exit 1 }
     Write-Host "== flutter build windows --release =="
     & flutter build windows --release
     if ($LASTEXITCODE -ne 0) { Write-Error "flutter build failed"; exit 1 }
