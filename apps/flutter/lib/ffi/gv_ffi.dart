@@ -13,7 +13,7 @@ library;
 
 import 'dart:convert';
 import 'dart:ffi';
-import 'dart:io' show Platform;
+import 'dart:io' show Directory, File, Platform;
 
 import 'package:ffi/ffi.dart';
 
@@ -122,18 +122,46 @@ final class GvNative {
 
   GvNative(this.lib);
 
-  /// 按平台默认名称加载本地库。测试可用 [path] 显式指定 dylib / DLL。
+  /// 加载本地库。测试可用 [path] 显式指定 dylib / DLL；未指定时按平台
+  /// 依次解析候选路径（与 C# 宿主 PreloadNativeLibrary 的固定位置语义
+  /// 对齐）：环境变量 → 可执行文件同目录（安装布局）→ 仓库 target
+  /// 目录（flutter run 开发布局）。均不存在时按默认名加载并抛出
+  /// 原生错误。
   static GvNative load({String? path}) {
-    final library =
-        path != null ? DynamicLibrary.open(path) : DynamicLibrary.open(_defaultName());
-    return GvNative(library);
+    return GvNative(DynamicLibrary.open(path ?? resolveLibraryPath()));
   }
 
-  static String _defaultName() => switch (Platform.operatingSystem) {
-        'windows' => 'gitaview_ffi.dll',
-        'macos' => 'libgitaview_ffi.dylib',
-        _ => 'libgitaview_ffi.so',
-      };
+  static String resolveLibraryPath() {
+    final fileName = switch (Platform.operatingSystem) {
+      'windows' => 'gitaview_ffi.dll',
+      'macos' => 'libgitaview_ffi.dylib',
+      _ => 'libgitaview_ffi.so',
+    };
+    // 可执行文件同目录（MSIX / .app 安装布局）与其祖先目录中的
+    // 仓库 target 布局（flutter run 的 GUI 进程 cwd 不固定，
+    // 逐级上溯直到仓库根的 target/release|debug）。
+    final exeDir = File(Platform.resolvedExecutable).parent;
+    final candidates = <String>[
+      if (Platform.environment['GV_FFI_LIB'] != null)
+        Platform.environment['GV_FFI_LIB']!,
+      '${exeDir.path}/$fileName',
+    ];
+    var dir = exeDir;
+    for (var depth = 0; depth < 12; depth++) {
+      candidates.add('${dir.path}/target/release/$fileName');
+      candidates.add('${dir.path}/target/debug/$fileName');
+      final parent = dir.parent;
+      if (parent.path == dir.path) break;
+      dir = parent;
+    }
+    candidates.add('${Directory.current.path}/target/release/$fileName');
+    for (final candidate in candidates) {
+      if (candidate.isNotEmpty && File(candidate).existsSync()) {
+        return candidate;
+      }
+    }
+    return fileName;
+  }
 
   late final GvAbiVersionD abiVersion =
       lib.lookupFunction<GvAbiVersionC, GvAbiVersionD>('gv_abi_version');

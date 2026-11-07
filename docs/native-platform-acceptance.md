@@ -73,6 +73,45 @@
 | 单实例与深链 | windows_single_instance 管道；gitaview-native:// 冷 / 热激活路由（未知 / 已删 ID 回总列表） | 待验证（实机） |
 | 开机启动 | StartupTask 注册表镜像读数与文案映射（best-effort，需与系统开关实测对齐） | 待验证（实机） |
 
+### 2.2 Flutter 宿主 macOS 开发构建前台实测（2026-11-07，computer use）
+
+> 范围与局限（如实标注）：这是 **macOS 开发构建**（`flutter run -d macos --debug
+> --no-enable-impeller`，Skia 软件路径）的界面实测——不是 Windows 实机验收，
+> 也不构成 macOS 应用打包/签名验收。托盘、浮窗第二窗口、单实例、深链、
+> 开机启动为 Windows 独占能力，不在本轮范围。Impeller 在本机 Intel Iris Pro
+> 上挂起（`PlatformView::NotifyCreated` 死等），Skia（`--no-enable-impeller`）
+> 正常——已确认为宿主环境限制。
+
+前置：脚手架 macos runner；main.dart 平台接线（窗口初始化/尺寸、macOS 用
+`open` 打开目标、file_selector 目录选择）；`GvNative.load` 候选路径解析
+（env → 可执行目录 → 仓库 target 逐级上溯，GUI 进程 cwd 不固定）；
+DebugProfile.entitlements 去除 App Sandbox（开发构建需加载容器外 Rust dylib）。
+测试数据：4 个真实 git 仓库（backend-api 同步 / docs-site 远端领先 /
+diverged-app 制造分叉 / no-remote-app 无远端，origin 为本地 bare 仓库），
+预置 settings.json（含"后端"分组）。
+
+computer use 前台实测结果（AX 驱动 + 截图，证据 target/ui-macos/）：
+
+| 项 | 结果 |
+| --- | --- |
+| 启动 / 空态 | 空态文案、添加仓库入口、底部摘要（0 仓库）正确渲染 |
+| 目录选择器添加仓库 | 原生 NSOpenPanel 打开、导航到 ~/Desktop/gv-e2e/backend-api、Open 后绿色横幅"已添加仓库"+ 仓库列表出现该仓库（分组下拉"未分组"+ 移除按钮） |
+| 分组种子 | backend-api 分组列显示"后端"（settings 预置生效） |
+| 4 仓库主页面 | 真实 git 扫描：docs-site 远端领先 ↓1（琥珀）、backend-api 已同步、diverged-app 未比较、no-remote-app 无远端；排序按核心规则；chips 计数全部正确（全部分组 4 / 后端 1；全部 4 / 远端领先 1 / 同步 1 / 未比较 2） |
+| 行展开操作面板 | backend-api（已同步）：打开目录/远端/Fetch 可用、Pull/Push 正确禁用；点击 Fetch → 绿色"Fetch 完成" |
+| Fetch 关系翻转 | diverged-app Fetch 后：未比较 → 分叉 ↑1 ↓1，chips 出现"分叉 1" |
+| Pull 两段式确认 | docs-site（远端领先）：Pull → 琥珀"确认 Pull"+"Pull 会修改当前仓库工作区，是否继续？"+ 取消确认 → 确认后真实 pull 执行 →"Pull 完成"+ 关系翻转已同步 |
+| Push 两段式确认 | shell 制造本地领先提交 → 刷新按钮检测（本地领先 ↑1）→ Push → 琥珀"确认 Push"+"Push 会更新远端分支，是否继续？" → 确认后真实 push →"Push 完成"+ 关系翻转已同步、Pull/Push 转禁用 |
+| 状态 chip 筛选 | 点击"同步"→ 表格只剩 2 个已同步仓库 |
+| 组合筛选 | 后端分组 + 全部状态 → 1 行；状态计数重算（全部 1/同步 1）；结果计数"1 / 4"出现 |
+| 筛选重置 | 全部分组/全部 → 4 行恢复 |
+| 设置页 | 4 仓库列表 + 分组下拉（后端）正确；返回主页面上下文保留 |
+| 自动刷新 | 刷新时间随 interval 自动更新（17:05:44） |
+| 搜索框键入 | 未验证：本机 helper 键盘注入受限 + AX setValue 不触发 Flutter onChanged（记录为待验） |
+
+未在本轮覆盖：分组下拉改归属（界面存在）、移除仓库确认流、深色/浅色切换、
+错误路径横幅（无真实失败源）。Windows 独占能力仍以 §2.1 实机验收为准。
+
 ## 3. Windows 主程序（源码 0.1.5.27，已安装 0.1.5.27）
 
 2026-11-05 / 0.1.5.23→0.1.5.27：computer use 实机界面验收大半完成（主页面 / 行操作 / 设置 / 托盘浮窗 / 退出流），并修复分组归属回写 P1（容器再生回声事件以空归属覆盖刚保存的归属；新增 7 项回归，C# 151 项通过）；归属选择修复后复验持久。呈现停摆根因确认并修复：DesktopAcrylicBackdrop 破坏呈现管线（可见前台取证：最大化后帧冻结且不随窗口缩放、最小化-还原/真实点击/移动均不恢复；对照实验去除背景材质即全部正常）——主窗口与浮窗改 MicaBackdrop Kind=BaseAlt，同批升级 WASDK 2.5.1→2.6.5；0.1.5.27 实机复核：后台启动即最大化全屏呈现、内容随窗口缩放、浮窗真实托盘点击后屏幕完整渲染。原位更新后首次固定组件需预热 Provider（脚本 -Install 自带；手动 Add-AppxPackage 需手动 COM 激活一次，实测解压约 3.2s）。

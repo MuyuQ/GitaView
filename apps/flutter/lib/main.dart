@@ -23,9 +23,10 @@ library;
 // ignore_for_file: deprecated_member_use
 
 import 'dart:async' show StreamController, StreamSubscription, unawaited;
-import 'dart:io' show Directory, Platform;
+import 'dart:io' show Directory, Platform, Process;
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
+import 'package:file_selector/file_selector.dart' show getDirectoryPath;
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/services.dart' show MethodCall, PlatformException;
@@ -82,23 +83,40 @@ Future<void> main(List<String> args) async {
     },
   );
 
-  // —— 窗口（仅 Windows；macOS 测试 / 开发不触碰 Windows 通道） ——
-  if (Platform.isWindows) {
+  // —— 窗口 ——
+  // Windows：沉浸式标题栏 + mica；macOS：保留系统标题栏（平台差异允许），
+  // 仅设定与 Windows 一致的内容尺寸。开发测试在 macOS 前台可运行。
+  if (Platform.isWindows || Platform.isMacOS) {
     await wm.windowManager.ensureInitialized();
-    await wm.windowManager.waitUntilReadyToShow(
-      const wm.WindowOptions(
-        size: Size(840, 520),
-        minimumSize: Size(640, 400),
-        titleBarStyle: wm.TitleBarStyle.hidden, // 沉浸式标题栏
-      ),
-      () async {
+    // macOS：不阻塞等待 ready 回调（legacy 桥在 macOS 上可能永不完成，
+    // 卡住 main() 导致窗口与 VM service 均不出现）——runner 默认窗口自行
+    // 显示，尺寸设置 fire-and-forget。
+    if (Platform.isWindows) {
+      await wm.windowManager.waitUntilReadyToShow(
+        const wm.WindowOptions(
+          size: Size(840, 520),
+          minimumSize: Size(640, 400),
+          titleBarStyle: wm.TitleBarStyle.hidden, // 沉浸式标题栏
+        ),
+        () async {
+          await wm.windowManager.show();
+          await wm.windowManager.focus();
+        },
+      );
+    } else {
+      unawaited((() async {
+        // window_manager 会在初始化时隐藏窗口：macOS 上必须显式 show。
+        await wm.windowManager.setSize(const Size(840, 520));
+        await wm.windowManager.setMinimumSize(const Size(640, 400));
         await wm.windowManager.show();
         await wm.windowManager.focus();
-      },
-    );
-    await acrylic.Window.initialize();
-    await _applyMica(
-        SchedulerBinding.instance.platformDispatcher.platformBrightness);
+      })());
+    }
+    if (Platform.isWindows) {
+      await acrylic.Window.initialize();
+      await _applyMica(
+          SchedulerBinding.instance.platformDispatcher.platformBrightness);
+    }
   }
 
   // —— 平台路径 ——
@@ -193,10 +211,18 @@ class _GitaViewAppState extends State<GitaViewApp>
     engineEvents: widget.service,
     launchTarget: Platform.isWindows
         ? (kind, value) => widget.platform.openTarget(kind: kind, value: value)
-        : null,
+        : Platform.isMacOS
+            // macOS 开发构建：系统 open 打开目录 / URL（无 shell 拼接）。
+            ? (kind, value) => Process.run('open', [value])
+                .then((result) => result.exitCode == 0)
+                .catchError((_) => false)
+            : null,
     pickFolder: Platform.isWindows
         ? (title) => widget.platform.pickFolder(title)
-        : null,
+        : Platform.isMacOS
+            // file_selector 在 macOS 走系统目录选择器。
+            ? (title) => getDirectoryPath()
+            : null,
     startupStateText: widget.startupStateText.isEmpty
         ? _startupStateUnread
         : widget.startupStateText,
