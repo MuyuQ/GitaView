@@ -60,6 +60,17 @@ Write-Host "layout gitaview_ffi.dll sha256: $ffiHash"
 New-Item -ItemType Directory -Force "$buildLayout\assets" | Out-Null
 Copy-Item "$msixSource\Package.appxmanifest" "$buildLayout\AppxManifest.xml" -Force
 Copy-Item "$msixSource\assets\*" "$buildLayout\assets\" -Force
+# 手工打包链不生成 resources.pri：MRT 不解析 scale 限定符，清单引用的
+# 基名文件必须实存（从 scale-200 变体生成；多尺度分辨率留设备验收评估）。
+$pairs = @(
+    @('Square150x150Logo.scale-200.png', 'Square150x150Logo.png'),
+    @('Square44x44Logo.scale-200.png', 'Square44x44Logo.png'),
+    @('Wide310x150Logo.scale-200.png', 'Wide310x150Logo.png'),
+    @('SplashScreen.scale-200.png', 'SplashScreen.png')
+)
+foreach ($pair in $pairs) {
+    Copy-Item "$buildLayout\assets\$($pair[0])" "$buildLayout\assets\$($pair[1])" -Force
+}
 
 # 版本来自清单（发布迭代必须递增；同版本原位安装复用旧部署文件）。
 [xml]$manifest = Get-Content "$msixSource\Package.appxmanifest"

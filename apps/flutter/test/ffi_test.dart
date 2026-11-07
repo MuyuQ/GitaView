@@ -256,10 +256,20 @@ void main() {
     );
   });
 
-  test('快照等待超时返回 TIMEOUT 且不携带 envelope', () {
+  test('快照等待超时返回 TIMEOUT 且不携带 envelope', () async {
     final base = _tempDir('wait');
     final engine = _createEngine(native, base);
-    final snapshot = engine.snapshotGet();
+
+    // 静置：等初始扫描完成（CI 慢机上扫描完成可能落在等待窗口内，
+    // 先归位 revision 再测超时，消除竞态）。
+    var snapshot = engine.snapshotGet();
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
+    while (snapshot.refreshState == RefreshState.pending ||
+        snapshot.generation == 0) {
+      if (DateTime.now().isAfter(deadline)) fail('初始扫描未在期限内完成');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      snapshot = engine.snapshotGet();
+    }
 
     final (result, status) = engine.snapshotWait(
       sessionId: snapshot.sessionId,
