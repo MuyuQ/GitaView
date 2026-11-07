@@ -170,6 +170,8 @@ final class FakeGateway implements EngineGateway {
   AppSnapshot snapshot;
   SettingsData settings;
   final List<RepoStatus> rows;
+  // 注意：settingsSave 只更新 settings.groups，不更新本列表——两者可能
+  // 失同步（与组存在性判断的既有简化同源）；核心永远用当前设置。
   final List<GroupCount> groups;
   final SummaryCounts counts;
   List<ViewQuery> queries = [];
@@ -704,6 +706,12 @@ void main() {
     expect(controller.rows.map((row) => row.id), ['repo-api'],
         reason: '搜索命中 backend-api 一行（name lowercase 包含）');
 
+    // 组名 haystack（view.rs group_name_of）：repo-api 属"后端"组。
+    controller.setQuery('后端');
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.rows.map((row) => row.id), ['repo-api'],
+        reason: '按组名搜索命中组内仓库');
+
     // 搜索零结果不清空搜索词（核心协调语义）。
     controller.setQuery('不存在的关键词');
     await Future<void>.delayed(Duration.zero);
@@ -740,4 +748,35 @@ void main() {
     expect(gateway.queries.length, greaterThan(baseline));
   });
 
+  test('会话切换：新引擎重新播种默认分组；非空选择跨会话保留', () async {
+    final gateway = FakeGateway();
+    final controller = _controller(gateway);
+    addTearDown(controller.dispose);
+    await controller.requery();
+    expect(controller.selectedGroupId, isNull,
+        reason: '首会话无默认分组');
+
+    // 引擎重建（sessionId 变化）+ 新设置带默认分组 → 重新播种。
+    gateway.snapshot = AppSnapshot.decode(
+        (jsonDecode(jsonEncode(gateway.snapshot.toJson()))
+              ..['sessionId'] = 'fx-session-002')
+            .cast<String, Object?>(), 'test');
+    gateway.settings = SettingsData.decode(
+        (jsonDecode(jsonEncode(gateway.settings.toJson()))
+              ..['defaultGroupId'] = 'group-docs')
+            .cast<String, Object?>(), 'test');
+    await controller.requery();
+    expect(controller.selectedGroupId, 'group-docs',
+        reason: '会话切换重置播种旗标，新默认分组生效');
+
+    // 反向语义（收敛复审固化）：播种值与用户显式选择共用同一字段，
+    // 非空选择跨会话经 ??= 保留，不被新引擎默认组覆盖。
+    gateway.snapshot = AppSnapshot.decode(
+        (jsonDecode(jsonEncode(gateway.snapshot.toJson()))
+              ..['sessionId'] = 'fx-session-003')
+            .cast<String, Object?>(), 'test');
+    await controller.requery();
+    expect(controller.selectedGroupId, 'group-docs',
+        reason: '??= 保留非空选择（设计取舍，见进度第 63 轮收敛记录）');
+  });
 }
