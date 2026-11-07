@@ -2,7 +2,17 @@
 
 > 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
 
-更新日期：2026-11-07（第 62 轮，启动 Rust 核心 + Flutter 宿主迁移：新增 apps/flutter 全栈，WinUI 宿主保留至验收门禁；Windows 侧构建 / 打包 / GUI 待 CI 与实机验证）。
+更新日期：2026-11-07（第 63 轮，全项目详细审阅并迭代 native-ci 至三 job 全绿：Windows 构建链云端验证完成，双无签名产物上传；实机 GUI / 签名安装 / 托盘浮窗行为仍待验证）。
+
+### 第 63 轮记录（全项目审阅）
+
+按用户要求做全项目详细审阅（两个并行深审子代理 + 本机脚本 / CI / 清单 / 文档复查），并提交推送触发 native-ci 云端验证，共迭代 6 轮至三 job 全绿（run 6，commit 149f8f9，产物 gitaview-native-windows-dev 65MB + gitaview-flutter-windows-dev 13.3MB）。
+
+深审发现与修复——Rust 核心（3 项）：InFlightGuard 的递减 + 通知移入状态锁（原锁外收尾存在丢唤醒窗口：最后一个在途调用恰在 wait_stopped 谓词评估与入队之间结束时，等待者睡满整个超时并伪报 TIMEOUT，停止后无自愈来源）；扫描线程创建失败补专门诊断（不再静默复用 SETTINGS_IO）；normalize_remote_url 拒绝控制字符与值内空白（浏览器安全不变量在核心成立）。Flutter 宿主（10 项）：托盘窗口从 message-only 改为普通隐藏顶层窗口并补 1s×5 有界重注册（TaskbarCreated 广播只达顶层窗口，message-only 会让 Explorer 重启后托盘永久丢失——C# TrayWindow 同款约定）；深链 setReady 移至首份快照就绪后（过早注册使冷启动深链恒降级总列表）；ProtocolRoute.parse 捕获非法 UTF-8 百分号序列（%FF 类）；启动播种默认分组；深链导航按 C# NavigateFromProtocolAsync 序列（清筛选 → 重查 → 展开目标）；退出等待 660s 对齐 C# network_timeout 语义（在途 Pull/Push 不被 60s 砍断）；启动取消状态一致 + 三处引擎排空边缘路径；watcher 异常上报并保证 'stopped' 必达（退出序列不再白等 15s）；托盘刷新后打开主窗口（C# RefreshFromTrayAsync）；FakeGateway 升级为核心协调语义 + 3 项新测试（60 → 63）。
+
+CI 云端迭代（每次提交一跑，失败即修）：run2 暴露 C++ 编译三处（Flutter 3.47 移除 registrar_messenger → GetRegistrarForPlugin；GetDpiForMonitor 在 shellscalingapi.h；UINT→double 窄化）与 C# HandleLifecycleFacts 调度竞态（CI 负载下 Task.Run 晚于 300ms，Dispose 先赢得竞态——测试改为接受两种交错，有界完成承诺不变）与打包脚本 assets 目录；run4 验证托盘窗口与链接修复（flutter_wrapper_plugin），暴露打包步死检查（flutter PATH 探针残留）与 getSystemPaths 的 wstring→EncodableValue；run5 验证 wstring 修复，暴露 makeappx 清单基名校验（无 resources.pri 不解析 scale 限定符——脚本按 scale-200 生成基名文件）与 ffi 超时测试竞态（CI 慢机上初始扫描落在 300ms 窗口内——先静置再测）；run6 全绿。另按自查把服务监听注册提为平台无关。
+
+结论：Windows 构建链（C++ 编译 / cargo DLL / flutter build / makeappx 打包 + 清单校验 / 产物上传）云端验证完成；Dart 层 63 项 + Rust 147 项 + C# 95 项全绿。剩余未验证项全部需要 Windows 实机（GUI、托盘浮窗行为、签名安装与原位升级、单实例 / 深链 / 开机启动）——computer use 在 macOS 主机无可验 GUI 对象，不适用；验收门禁（实机）通过前 WinUI 宿主保留。
 
 ### 第 62 轮记录
 
