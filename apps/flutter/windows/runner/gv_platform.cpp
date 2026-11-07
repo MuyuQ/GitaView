@@ -2,7 +2,7 @@
 
 #include <appmodel.h>
 #include <shlobj.h>
-#include <shcore.h>
+#include <shellscalingapi.h>
 
 #include <string>
 
@@ -180,7 +180,7 @@ void GvPlatform::SendTrayContext(
            {"width", flutter::EncodableValue(int64_t{work.right - work.left})},
            {"height",
             flutter::EncodableValue(int64_t{work.bottom - work.top})}})},
-      {"scale", flutter::EncodableValue(double{dpi} / 96.0)},
+      {"scale", flutter::EncodableValue(static_cast<double>(dpi) / 96.0)},
       {"hasIcon", flutter::EncodableValue(has_icon)},
   };
   result->Success(flutter::EncodableValue(response));

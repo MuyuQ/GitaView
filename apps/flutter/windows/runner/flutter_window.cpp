@@ -26,9 +26,10 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
-  platform_registrar_ =
-      std::make_unique<flutter::PluginRegistrarWindows>(
-          flutter_controller_->engine()->registrar_messenger());
+  // Flutter 3.47 client wrapper：PluginRegistrarWindows 接收 C 注册器引用
+  //（engine->registrar_messenger() 已不存在）。
+  platform_registrar_ = std::make_unique<flutter::PluginRegistrarWindows>(
+      flutter_controller_->engine()->GetRegistrarForPlugin("GitaViewPlatform"));
   gitaview::GvPlatform::Register(platform_registrar_.get());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
