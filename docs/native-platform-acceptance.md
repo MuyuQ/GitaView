@@ -64,12 +64,12 @@
 
 | 项 | 范围 | 状态 |
 | --- | --- | --- |
-| Dart 层（本机 macOS 已验证） | flutter analyze 零问题；60 项测试全绿（契约 fixture 与 Rust 同源、真实 dylib FFI 全链路、双 isolate 引擎服务、8 个纯逻辑类、8 项 widget 测试） | 已验证（macOS 开发机，2026-11-07） |
-| CI 全链（未推送） | windows-flutter job：Dart 测试真实 DLL → Release 构建 → 无签名 MSIX；macOS job 的 Dart 层步骤 | 待验证（推送后以 native-ci 结果为准） |
-| Windows 构建 | runner CMake 接 cargo 产出 gitaview_ffi.dll；gv_platform C++ 插件编译（托盘 / LocalState / StartupTask 镜像 / openTarget） | 待验证（CI 编译 + 实机行为） |
-| MSIX 打包与原位升级 | package-flutter-windows.ps1 无签名产物；0.1.5.27 → 0.2.0.0 原位替换；LocalState settings.json 共用不迁移 | 待验证（签名安装需实机 + 测试证书） |
-| GUI 验收 | 主页面（筛选 / 表格 / 两段式确认）/ 设置页 / mica 背景 / 沉浸式标题栏 | 待验证（实机，computer use 或人工） |
-| 托盘与浮窗 | Shell_NotifyIcon 注册 / TaskbarCreated 重注册 / 左键浮窗定位（TrayFlyoutPresentation 物理像素）/ 失焦收起 / 右键菜单 / 子窗口数据推送 | 待验证（实机） |
+| Dart 层 | flutter analyze 零问题；63 项测试全绿（契约 fixture 与 Rust 同源、真实 dylib FFI 全链路、双 isolate 引擎服务、8 个纯逻辑类、11 项 widget/控制器测试） | 已验证（macOS 开发机 + CI macos-core，2026-11-07） |
+| CI 全链 | native-ci 三 job 全绿（run 6，commit 149f8f9）：windows C# 全链、windows-flutter（Dart 真实 DLL 测试 → Release 构建 → makeappx 无签名 MSIX + 清单校验 → 双产物上传）、macos Rust + Dart 层；第 62-63 轮经 6 轮迭代修复（registrar API、shellscalingapi、窄化转换、wstring 编码、包装库链接、托盘窗口类型、makeappx 基名资产、两处测试竞态） | 已验证（云端构建链，2026-11-07） |
+| Windows 构建 | runner CMake 接 cargo 产出 gitaview_ffi.dll 随包安装；gv_platform C++ 插件编译（托盘 / LocalState / StartupTask 镜像 / openTarget） | 已验证（CI 编译）；运行行为待实机 |
+| MSIX 打包 | package-flutter-windows.ps1 无签名产物 13.3MB 上传（makeappx 清单校验通过；基名资产由 scale-200 生成，多尺度分辨率待评估） | 已验证（无签名打包）；0.1.5.27 → 0.2.0.0 原位替换、签名安装待实机（需测试证书） |
+| GUI 验收 | 主页面（筛选 / 表格 / 两段式确认）/ 设置页 / mica 背景 / 沉浸式标题栏 | 待验证（实机；macOS 主机无 GUI 可验对象，computer use 不适用） |
+| 托盘与浮窗 | Shell_NotifyIcon 注册 / TaskbarCreated 重注册（1s×5 重试）/ 左键浮窗定位 / 失焦收起 / 右键菜单 / 子窗口数据推送 | 待验证（实机） |
 | 单实例与深链 | windows_single_instance 管道；gitaview-native:// 冷 / 热激活路由（未知 / 已删 ID 回总列表） | 待验证（实机） |
 | 开机启动 | StartupTask 注册表镜像读数与文案映射（best-effort，需与系统开关实测对齐） | 待验证（实机） |
 
