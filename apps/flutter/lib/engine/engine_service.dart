@@ -75,7 +75,13 @@ final class EngineService extends ChangeNotifier {
       final ready = Completer<SendPort>();
       _commandsReceive!.listen((message) {
         if (message is SendPort) {
-          if (!ready.isCompleted) ready.complete(message);
+          if (!ready.isCompleted && !_exitRequested) {
+            ready.complete(message);
+          } else {
+            // 启动已被取消或已超时放弃：迟到 isolate 里可能刚创建完引擎，
+            // 发 exit 命令让它走 stop → wait → destroy，不泄漏原生引擎。
+            _sendLateExit(message);
+          }
           return;
         }
         if (message is Map && message['startupFailed'] is String) {
@@ -109,7 +115,13 @@ final class EngineService extends ChangeNotifier {
     } catch (error) {
       _startupError = error.toString();
       await _teardownIsolates();
-      _setState(EngineServiceState.failed);
+      if (_exitRequested) {
+        // 启动期退出（requestExit 已把状态置为 stopped）：保持 stopped，
+        // 不翻成 failed（用户已经放弃启动）。
+        _setState(EngineServiceState.stopped);
+      } else {
+        _setState(EngineServiceState.failed);
+      }
     }
   }
 
@@ -127,7 +139,10 @@ final class EngineService extends ChangeNotifier {
     }
     _setState(EngineServiceState.stopping);
     try {
-      await _call('exit', const {}).timeout(const Duration(seconds: 60));
+      // C# RequestExit 按 network_timeout 600s + 余量给 660s：在途
+      // Pull / Push 合法耗时可到 600s，超时不能当成功。外层 730s =
+      // 660s 等待 + 60s destroy 重试 + 余量。
+      await _call('exit', const {}).timeout(const Duration(seconds: 730));
     } catch (_) {
       // isolate 已随引擎销毁退出或回复通道关闭：视为完成。
     }
@@ -218,6 +233,20 @@ final class EngineService extends ChangeNotifier {
 
   // —— 内部协议 ——
 
+  /// 迟到完成握手的命令 isolate：发一次 exit 命令令其销毁引擎后自退。
+  void _sendLateExit(SendPort port) {
+    try {
+      port.send({
+        'id': -1,
+        'method': 'exit',
+        'args': const <String, Object?>{},
+        'reply': _commandsReceive!.sendPort,
+      });
+    } catch (_) {
+      // 端口已关闭：isolate 已退出。
+    }
+  }
+
   Future<Object?> _call(String method, Map<String, Object?> args) {
     final port = _commandsPort;
     if (port == null) throw StateError('引擎服务未运行');
@@ -247,6 +276,10 @@ final class EngineService extends ChangeNotifier {
   void _onWatcherEvent(Object? message) {
     // 服务关闭后 watcher 的在途推送仍可能到达：直接丢弃。
     if (_disposed || message is! Map) return;
+    if (message['watcherError'] is String) {
+      // 推送链路异常已上报：保留最后快照，等待退出序列收尾。
+      return;
+    }
     final snapshotJson = message['snapshot'];
     final summaryJson = message['summary'];
     if (snapshotJson is String) {
@@ -430,18 +463,19 @@ Future<void> _commandsMain(_CommandsConfig config) async {
   }
 }
 
-/// 停止 → 等待（30 秒）→ destroy（BUSY 重试：等在途调用排空）。
+/// 停止 → 等待（660 秒：在途网络操作合法耗时上限 + 余量，对齐 C#）→
+/// destroy（BUSY 重试：等在途调用排空）。
 Future<void> _stopAndDestroy(GvEngine engine) async {
   engine.requestStop();
   var stopped = false;
-  final waitDeadline = DateTime.now().add(const Duration(seconds: 30));
+  final waitDeadline = DateTime.now().add(const Duration(seconds: 660));
   while (!stopped && DateTime.now().isBefore(waitDeadline)) {
     stopped = engine.waitStopped(timeoutMs: 500);
   }
   if (!stopped) {
     throw const GvCallException(GvStatus.timeout, 'ENGINE_STOPPING');
   }
-  final destroyDeadline = DateTime.now().add(const Duration(seconds: 30));
+  final destroyDeadline = DateTime.now().add(const Duration(seconds: 60));
   while (true) {
     try {
       engine.destroy();
@@ -565,27 +599,38 @@ Future<void> _watcherMain(_WatcherConfig config) async {
   config.control.send(control.sendPort);
 
   var revision = config.startRevision;
-  while (!stopRequested) {
-    // 让渡事件循环：同步 FFI 调用之间必须处理控制消息（stop），
-    // 否则纯同步循环会永久饿死 ReceivePort 监听。
-    await Future<void>.delayed(const Duration(milliseconds: 1));
-    final (result, status) = engine.snapshotWait(
-      sessionId: config.sessionId,
-      stateRevision: revision,
-      timeoutMs: 1000,
-    );
-    if (stopRequested) break;
-    if (status == GvStatus.ok && result.ok) {
-      final snapshot = result.expectData((json) => AppSnapshot.decode(json, 'watcher'));
-      revision = snapshot.stateRevision;
-      final summary = engine.summarySnapshot();
-      config.control.send({
-        'snapshot': jsonEncode(snapshot.toJson()),
-        'summary': jsonEncode(summary.toJson()),
-      });
+  try {
+    while (!stopRequested) {
+      // 让渡事件循环：同步 FFI 调用之间必须处理控制消息（stop），
+      // 否则纯同步循环会永久饿死 ReceivePort 监听。
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+      try {
+        final (result, status) = engine.snapshotWait(
+          sessionId: config.sessionId,
+          stateRevision: revision,
+          timeoutMs: 1000,
+        );
+        if (stopRequested) break;
+        if (status == GvStatus.ok && result.ok) {
+          final snapshot =
+              result.expectData((json) => AppSnapshot.decode(json, 'watcher'));
+          revision = snapshot.stateRevision;
+          final summary = engine.summarySnapshot();
+          config.control.send({
+            'snapshot': jsonEncode(snapshot.toJson()),
+            'summary': jsonEncode(summary.toJson()),
+          });
+        }
+        // TIMEOUT：无变化继续等；STOPPING：引擎退出中，等待终态或确认退出。
+      } catch (error) {
+        // 推送链路异常（解码失败等）：上报后终止推送，UI 保留最后快照；
+        // 必须仍发 'stopped'，否则退出序列要白等 15 秒并跳过引擎清理。
+        config.control.send({'watcherError': error.toString()});
+        break;
+      }
     }
-    // TIMEOUT：无变化继续等；STOPPING：引擎退出中，等待终态或确认退出。
+  } finally {
+    config.control.send('stopped');
+    control.close();
   }
-  config.control.send('stopped');
-  control.close();
 }

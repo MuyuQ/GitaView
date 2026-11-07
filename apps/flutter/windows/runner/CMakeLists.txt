@@ -34,6 +34,9 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 # Add dependency libraries and include directories. Add any application-specific
 # dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
+# GvPlatform 直接实例化 flutter::PluginRegistrarWindows：其基类符号在
+# plugin 侧包装库（与插件相同的链接来源）。
+target_link_libraries(${BINARY_NAME} PRIVATE flutter_wrapper_plugin)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 # GvPlatform：托盘（shell32）、启动项注册表镜像（advapi32）、DPI（shcore）。
 target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib" "advapi32.lib" "shcore.lib")

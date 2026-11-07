@@ -129,6 +129,7 @@ class AppController extends ChangeNotifier {
   RelationFilter _selectedRelation = RelationFilter.all;
   String _query = '';
   String? _selectedRepoId;
+  bool _defaultGroupSeeded = false;
 
   // —— 主页状态 ——
   bool _refreshBusy = false;
@@ -277,6 +278,17 @@ class AppController extends ChangeNotifier {
     final generation = ++_requeryGeneration;
     try {
       // 两次查询：组 + 全部状态 → 筛选条计数与协调；组 + 当前状态 → 行。
+      final snapshot = await gateway.snapshotGet();
+      final settings = await gateway.settingsGet();
+      if (generation != _requeryGeneration) return;
+      if (!_acceptSnapshot(snapshot)) return;
+      // 默认分组播种（C# OnNavigatedTo 同源语义）：仅会话首次生效，
+      // 用户显式选择始终优先。
+      if (!_defaultGroupSeeded) {
+        _defaultGroupSeeded = true;
+        _selectedGroupId ??= settings.defaultGroupId;
+      }
+      // 两次查询：组 + 全部状态 → 筛选条计数与协调；组 + 当前状态 → 行。
       final chips = await gateway.viewQuery(ViewQuery(
         groupId: _selectedGroupId,
         relationFilter: RelationFilter.all,
@@ -287,10 +299,7 @@ class AppController extends ChangeNotifier {
         relationFilter: _selectedRelation,
         query: _query,
       ));
-      final snapshot = await gateway.snapshotGet();
-      final settings = await gateway.settingsGet();
       if (generation != _requeryGeneration) return;
-      if (!_acceptSnapshot(snapshot)) return;
 
       // 核心协调：所选组被删或状态在组内不存在 → 回退（同步本地选择）。
       _selectedGroupId = chips.effective.groupId;
@@ -307,6 +316,23 @@ class AppController extends ChangeNotifier {
       _loaded = true;
     } catch (_) {
       // 查询失败（含引擎停止中）：保留既有界面与操作状态，等待下一次推送。
+    }
+    notifyListeners();
+  }
+
+  /// 深链导航（C# NavigateFromProtocolAsync）：清空筛选与搜索 → 重新查询 →
+  /// 选中并展开目标仓库；目标不在列表（未知 / 已删 ID）保持总列表。
+  Future<void> navigateFromProtocol(String? repoId) async {
+    _selectedGroupId = null;
+    _selectedRelation = RelationFilter.all;
+    _query = '';
+    _selectedRepoId = null;
+    await requery();
+    if (repoId != null) {
+      _selectedRepoId = repoId;
+      for (final vm in _rows) {
+        vm.isExpanded = vm.id == repoId;
+      }
     }
     notifyListeners();
   }

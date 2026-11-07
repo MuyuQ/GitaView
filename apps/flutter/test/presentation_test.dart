@@ -493,6 +493,9 @@ void main() {
         ('gitaview-native://user@repo/my-repo', null),
         ('gitaview-native://repo:123/my-repo', null),
         ('https://repo/my-repo', null),
+        // 合法十六进制的非法 UTF-8 百分号序列：回总列表，绝不抛异常。
+        ('gitaview-native://repo/%FF', null),
+        ('gitaview-native://repo/%E4%B8', null),
         ('file:///C:/private/repo', null),
         ('not a URI', null),
         (null, null),

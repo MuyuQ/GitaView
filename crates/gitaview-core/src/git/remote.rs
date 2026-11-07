@@ -1,7 +1,13 @@
 //! origin URL 安全转换：仅 http/https 与 GitHub SSH 形式可转换为浏览器可打开的 URL。
 
 pub fn normalize_remote_url(raw: &str) -> Option<String> {
-    let value = raw.trim();
+    // 控制字符（含值内部空白）不允许进入“浏览器可打开”产物：不变量在
+    // 核心成立，不依赖每个宿主打开器的二次校验。
+    let trimmed = raw.trim();
+    if trimmed.chars().any(|c| c.is_control() || c == ' ') {
+        return None;
+    }
+    let value = trimmed;
     if value.is_empty() {
         return None;
     }

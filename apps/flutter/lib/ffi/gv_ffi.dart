@@ -295,8 +295,22 @@ final class GvEngine {
         throw GvCallException(status, result.errorCode);
       }
       final engine = GvEngine._(native, GvEngineHandle._(pointer));
-      engine.createData = result.expectData(EngineCreateData.decode);
-      return engine;
+      try {
+        engine.createData = result.expectData(EngineCreateData.decode);
+        return engine;
+      } catch (_) {
+        // 指针已到手但 envelope 解码失败：排空引擎（stop → wait → destroy），
+        // 不把已创建的原生引擎随异常丢弃。
+        try {
+          engine.requestStop();
+          if (engine.waitStopped(timeoutMs: 10000)) {
+            engine.destroy();
+          }
+        } catch (_) {
+          // 排空失败只能交给进程退出兜底；不能吞掉原始异常。
+        }
+        rethrow;
+      }
     } finally {
       malloc.free(input);
       malloc.free(engineOut);

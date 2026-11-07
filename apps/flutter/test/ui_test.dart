@@ -6,6 +6,8 @@
 // - 选中行操作面板的两段式确认流（Pull：确认 → 执行 → 结果反馈）；
 // - 空态（无仓库 / 无匹配）与全局失败横幅（失败保留历史行）；
 // - 设置页两分区渲染与刷新策略保存事务（expectedRevision）。
+import 'dart:convert';
+
 import 'package:fluent_ui/fluent_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gitaview/app_controller.dart';
@@ -301,38 +303,66 @@ final class FakeGateway implements EngineGateway {
   @override
   Future<ViewResult> viewQuery(ViewQuery query) async {
     queries.add(query);
-    // 模拟核心协调：组筛选按 groupId、状态筛选按 readState / relation 过滤行。
-    Iterable<RepoStatus> effective = query.groupId == null
+    // 模拟核心协调语义（gitaview-core view.rs）：
+    // - 所选组不在 groups（被删）→ effective.groupId 回 null；
+    // - 所选状态在组内无行 → effective.relationFilter 回 all；
+    // - 搜索 name / path / branch，lowercase 包含；搜索零结果不清空搜索。
+    final groupExists = query.groupId == null ||
+        groups.any((group) => group.id == query.groupId);
+    final effectiveGroupId = groupExists ? query.groupId : null;
+    Iterable<RepoStatus> scoped = effectiveGroupId == null
         ? rows
-        : rows.where((row) => row.groupId == query.groupId);
-    if (query.relationFilter == RelationFilter.error) {
-      effective =
-          effective.where((row) => row.readState == ReadState.error);
-    } else if (query.relationFilter != RelationFilter.all) {
-      final Relation wanted = switch (query.relationFilter) {
-        RelationFilter.synced => Relation.synced,
-        RelationFilter.localAhead => Relation.localAhead,
-        RelationFilter.remoteAhead => Relation.remoteAhead,
-        RelationFilter.diverged => Relation.diverged,
-        RelationFilter.noRemote => Relation.noRemote,
-        _ => Relation.synced,
-      };
-      effective = effective.where(
-          (row) => row.readState == ReadState.ok && row.relation == wanted);
+        : rows.where((row) => row.groupId == effectiveGroupId);
+    var effectiveFilter = query.relationFilter;
+    if (effectiveFilter != RelationFilter.all) {
+      final matches =
+          scoped.where((row) => _matchesFilter(row, effectiveFilter));
+      if (matches.isEmpty) {
+        effectiveFilter = RelationFilter.all;
+      } else {
+        scoped = matches;
+      }
+    }
+    final needle = query.query.trim().toLowerCase();
+    if (needle.isNotEmpty) {
+      scoped = scoped.where((row) =>
+          row.name.toLowerCase().contains(needle) ||
+          row.path.toLowerCase().contains(needle) ||
+          (row.branch ?? '').toLowerCase().contains(needle));
     }
     return ViewResult(
       sessionId: 'fx-session-001',
       stateRevision: 12,
       generation: 4,
       settingsRevision: 2,
-      effective: query,
+      effective: ViewQuery(
+        groupId: effectiveGroupId,
+        relationFilter: effectiveFilter,
+        query: query.query,
+      ),
       summaryCounts: counts,
       summaryCompact: const CompactCounts(
           synced: 2, syncable: 2, needsAttention: 2, noRemote: 2),
       groups: groups,
       statusCounts: counts,
-      rows: effective.toList(growable: false),
+      rows: scoped.toList(growable: false),
     );
+  }
+
+  static bool _matchesFilter(RepoStatus row, RelationFilter filter) {
+    if (filter == RelationFilter.error) {
+      return row.readState == ReadState.error;
+    }
+    final Relation? wanted = switch (filter) {
+      RelationFilter.synced => Relation.synced,
+      RelationFilter.localAhead => Relation.localAhead,
+      RelationFilter.remoteAhead => Relation.remoteAhead,
+      RelationFilter.diverged => Relation.diverged,
+      RelationFilter.noRemote => Relation.noRemote,
+      _ => null,
+    };
+    if (wanted == null) return true;
+    return row.readState == ReadState.ok && row.relation == wanted;
   }
 
   @override
@@ -345,6 +375,10 @@ final class FakeGateway implements EngineGateway {
           : const RepoTargetData(
               kind: RepoTargetKind.remote, value: 'https://example.com/api');
 }
+
+
+/// 测试专用占位：启动项状态文案在控制器默认值之外显式传入。
+const String _startupStateTextForTest = '无法读取开机启动状态，返回此页后重试。';
 
 // —— 测试工具 ——
 
@@ -519,7 +553,14 @@ void main() {
     controller.selectGroup('group-backend'); // 组内只有 diverged 行
     await tester.pumpAndSettle();
     expect(find.text('backend-api'), findsOneWidget); // 组内行可见
-    controller.selectRelation(RelationFilter.remoteAhead); // 组内无此关系
+    // 组内无此关系：核心协调把状态筛选回退为全部（行仍可见、chip 同步），
+    // 不产生空结果（C# RequeryAsync 消费 effective 的实际语义）。
+    controller.selectRelation(RelationFilter.remoteAhead);
+    await tester.pumpAndSettle();
+    expect(find.text('backend-api'), findsOneWidget);
+    expect(controller.selectedRelation, RelationFilter.all);
+    // 无匹配提示由搜索零结果触发（搜索零结果不清空搜索词）。
+    controller.setQuery('不存在的关键词');
     await tester.pumpAndSettle();
     expect(find.text('没有匹配的仓库，请调整筛选或搜索条件。'), findsOneWidget);
     expect(find.text('从第一个仓库开始'), findsNothing);
@@ -619,4 +660,73 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('设置已被修改'), findsNothing);
   });
+  test('组被删除：核心协调回退同步控制器选择', () async {
+    final gateway = FakeGateway(groups: [
+      const GroupCount(id: 'group-backend', name: '后端', count: 1),
+      const GroupCount(id: 'group-docs', name: '文档', count: 2),
+    ]);
+    final controller = _controller(gateway);
+    addTearDown(controller.dispose);
+    await controller.requery();
+    controller.selectGroup('group-docs');
+    await Future<void>.delayed(Duration.zero);
+    expect(controller.selectedGroupId, 'group-docs');
+
+    // 组随后被删除：核心 effective.groupId 回 null，控制器同步回全部。
+    gateway.groups.removeWhere((group) => group.id == 'group-docs');
+    await controller.requery();
+    expect(controller.selectedGroupId, isNull,
+        reason: '核心协调（组消失切回全部）应同步到控制器');
+  });
+
+  test('搜索词进入 viewQuery 并按结果过滤行', () async {
+    final gateway = FakeGateway();
+    final controller = _controller(gateway);
+    addTearDown(controller.dispose);
+    await controller.requery();
+    final baseline = gateway.queries.length;
+
+    controller.setQuery('backend');
+    await Future<void>.delayed(Duration.zero);
+    expect(gateway.queries.length, greaterThan(baseline));
+    expect(gateway.queries.last.query, 'backend');
+    expect(controller.rows.map((row) => row.id), ['repo-api'],
+        reason: '搜索命中 backend-api 一行（name lowercase 包含）');
+
+    // 搜索零结果不清空搜索词（核心协调语义）。
+    controller.setQuery('不存在的关键词');
+    await Future<void>.delayed(Duration.zero);
+    expect(gateway.queries.last.query, '不存在的关键词');
+    expect(controller.rows, isEmpty);
+    expect(controller.query, '不存在的关键词');
+  });
+
+  test('推送驱动 requery：revision 变化触发，同 revision 不重复', () async {
+    final events = ChangeNotifier();
+    final gateway = FakeGateway();
+    final controller = AppController(
+      gateway: gateway,
+      engineEvents: events,
+      startupStateText: _startupStateTextForTest,
+    );
+    addTearDown(controller.dispose);
+    await controller.requery();
+    final baseline = gateway.queries.length;
+
+    // 同 revision 的状态通知不重复查询。
+    events.notifyListeners();
+    await Future<void>.delayed(Duration.zero);
+    expect(gateway.queries.length, baseline);
+
+    // revision 变化 → 重新查询。
+    final newer =
+        AppSnapshot.decode((jsonDecode(jsonEncode(gateway.snapshot.toJson()))
+              ..['stateRevision'] = 13)
+            .cast<String, Object?>(), 'test');
+    gateway.snapshot = newer;
+    events.notifyListeners();
+    await Future<void>.delayed(Duration.zero);
+    expect(gateway.queries.length, greaterThan(baseline));
+  });
+
 }

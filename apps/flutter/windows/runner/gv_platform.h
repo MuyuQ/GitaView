@@ -67,6 +67,7 @@ class GvPlatform {
   NOTIFYICONDATAW notify_icon_ = {};
   UINT taskbar_created_message_ = 0;
   bool tray_added_ = false;
+  int re_register_attempts_ = 0;
 };
 
 }  // namespace gitaview

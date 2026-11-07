@@ -42,7 +42,14 @@ class ProtocolRoute {
     if (path.length < 2 || !path.startsWith('/') || path.substring(1).contains('/')) {
       return const ProtocolRoute(null);
     }
-    final String id = Uri.decodeComponent(path.substring(1));
+    final String id;
+    try {
+      id = Uri.decodeComponent(path.substring(1));
+    } on FormatException {
+      // 非法 UTF-8 百分号序列（如 %FF / 截断多字节）：回总列表，绝不抛异常
+      //（C# Uri.UnescapeDataString 对 %XX 不抛；Dart decodeComponent 会抛）。
+      return const ProtocolRoute(null);
+    }
     return ProtocolRoute(id.isEmpty ? null : id);
   }
 

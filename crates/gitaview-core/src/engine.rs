@@ -314,7 +314,15 @@ pub fn engine_create(config: EngineConfig) -> Result<EngineStartup, CoreError> {
     let handle = std::thread::Builder::new()
         .name("gitaview-refresh".into())
         .spawn(move || scan_loop(scan_inner))
-        .map_err(|_| CoreError::SettingsIo)?;
+        // 线程资源耗尽是极端路径：契约无专码，沿用 SETTINGS_IO 让启动失败
+        // 可恢复，但诊断里单独留痕以免误导按错误码排障的宿主。
+        .map_err(|error| {
+            diagnostics::error(
+                "engine.create.scan_thread",
+                format!("scan thread spawn failed: {error}"),
+            );
+            CoreError::SettingsIo
+        })?;
     *inner
         .scan_handle
         .lock()
@@ -611,6 +619,12 @@ struct InFlightGuard<'a> {
 
 impl Drop for InFlightGuard<'_> {
     fn drop(&mut self) {
+        // 递减 + 通知必须与 wait_stopped 的谓词评估同锁：若在锁外收尾，
+        // “评估者读到 in_flight == 1 → 收尾线程递减并通知（此时无人等待，
+        // 通知丢失）→ 评估者入睡到整个超时期满”的交错会伪报 TIMEOUT，
+        // 且停止后无后续通知来源、不会自愈。毒化容忍：Drop 不得 panic。
+        // 持锁完成递减与通知，保证与谓词评估互斥。
+        let _state = self.inner.lock_state();
         self.inner.in_flight.fetch_sub(1, Ordering::SeqCst);
         self.inner.changed.notify_all();
     }

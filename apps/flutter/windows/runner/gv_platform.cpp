@@ -12,6 +12,7 @@ namespace gitaview {
 namespace {
 
 constexpr UINT kTrayCallbackMessage = WM_APP + 1;
+constexpr UINT_PTR kReRegisterTimerId = 2;
 constexpr int kTrayIconId = 1;
 // 右键菜单项（与 C# TrayWindow 菜单一致：打开主程序 / 刷新 / 退出）。
 constexpr int kMenuOpenMain = 1;
@@ -113,9 +114,14 @@ GvPlatform::GvPlatform(flutter::PluginRegistrarWindows* registrar)
   window_class.lpszClassName = L"GitaViewTrayWindow";
   RegisterClassW(&window_class);
 
-  tray_window_ = CreateWindowExW(0, L"GitaViewTrayWindow", L"GitaView tray", 0,
-                                 0, 0, 0, 0, HWND_MESSAGE, nullptr,
-                                 GetModuleHandleW(nullptr), nullptr);
+  // 普通隐藏顶层窗口（不是 message-only）：Shell 回调与 TaskbarCreated
+  // 广播都只发给顶层窗口——message-only 窗口收不到，Explorer 重启后托盘
+  // 图标将永久丢失（C# TrayWindow.cs 同款约定）。不调用 ShowWindow。
+  tray_window_ =
+      CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                      L"GitaViewTrayWindow", L"GitaView tray", WS_OVERLAPPED,
+                      0, 0, 0, 0, nullptr, nullptr, GetModuleHandleW(nullptr),
+                      nullptr);
 }
 
 bool GvPlatform::EnsureTray() {
@@ -232,9 +238,24 @@ LRESULT CALLBACK GvPlatform::TrayWndProc(HWND window, UINT message,
 void GvPlatform::OnTrayMessage(HWND window, UINT message, WPARAM wparam,
                                LPARAM lparam) {
   if (message == taskbar_created_message_ && taskbar_created_message_ != 0) {
-    // Explorer 重启：托盘图标随任务栏重建，必须重新注册。
+    // Explorer 重启：托盘图标随任务栏重建，必须重新注册。NIM_ADD 在重建
+    // 瞬间可能失败：1 秒 × 5 次有界重试（C# ScheduleReRegisterRetry 同款）。
     tray_added_ = false;
-    EnsureTray();
+    re_register_attempts_ = 0;
+    if (!EnsureTray()) {
+      SetTimer(tray_window_, kReRegisterTimerId, 1000, nullptr);
+    }
+    return;
+  }
+  if (message == WM_TIMER && wparam == kReRegisterTimerId) {
+    if (tray_added_ || re_register_attempts_ >= 5) {
+      KillTimer(tray_window_, kReRegisterTimerId);
+      return;
+    }
+    re_register_attempts_++;
+    if (EnsureTray()) {
+      KillTimer(tray_window_, kReRegisterTimerId);
+    }
     return;
   }
   if (message != kTrayCallbackMessage) return;

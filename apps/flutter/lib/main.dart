@@ -230,33 +230,38 @@ class _GitaViewAppState extends State<GitaViewApp>
       // 非 Windows 开发环境同样启动引擎（共享核心在 macOS CI 有覆盖）。
       unawaited(widget.service.start().then((_) => controller.requery()));
     }
-    // 深链：冷启动请求缓存，首份快照就绪后派发；热请求立即派发。
+    // 深链：冷启动请求缓存，首份快照就绪后派发（setReady 在 _bootstrap /
+    // 首次快照时注册，见 _registerProtocolReady）；热请求立即派发。
     if (widget.coldStartLink != null) {
       _protocol.request(widget.coldStartLink);
     }
-    final subscription = widget.hotLinks.listen(_protocol.request);
-    // 深链回调：回总列表 = 状态页；具体仓库 = 状态页 + 展开该行。
+    // 热链接流本身与页面同生命周期；dispose 时一并取消。
+    _hotLinkSubscription = widget.hotLinks.listen(_protocol.request);
+  }
+
+  StreamSubscription<String>? _hotLinkSubscription;
+  bool _protocolReady = false;
+
+  /// 深链就绪：注册存在性查询与导航执行（引擎启动且首份快照可用之后；
+  /// 过早注册会把冷启动请求立即降级为总列表——C# 在 OnLaunched 末尾注册）。
+  void _registerProtocolReady() {
+    if (_protocolReady) return;
+    _protocolReady = true;
     _protocol.setReady(
       (repoId) =>
           widget.service.snapshot?.repos.any((repo) => repo.id == repoId) ??
           false,
       (route) {
         pageIndex.value = 0;
-        final id = route.repoId;
-        if (id != null) {
-          controller.toggleRow(id);
-        }
+        unawaited(controller.navigateFromProtocol(route.repoId));
       },
     );
-    // 热链接流本身与页面同生命周期；dispose 时一并取消。
-    _hotLinkSubscription = subscription;
   }
-
-  StreamSubscription<String>? _hotLinkSubscription;
 
   Future<void> _bootstrap() async {
     await widget.service.start();
     await controller.requery();
+    _registerProtocolReady();
     // 托盘注册：失败则回退"关闭 = 退出"（C# 托盘创建失败同样回退）。
     try {
       _trayAvailable = await widget.platform.ensureTray();
@@ -288,6 +293,8 @@ class _GitaViewAppState extends State<GitaViewApp>
         await _showMainWindow();
       case 2:
         await controller.refresh();
+        // C# RefreshFromTrayAsync：托盘刷新完成后主窗口可见。
+        await _showMainWindow();
       case 3:
         await _requestExit();
     }
@@ -319,6 +326,9 @@ class _GitaViewAppState extends State<GitaViewApp>
   }
 
   void _onServiceChanged() {
+    if (widget.service.snapshot != null) {
+      _registerProtocolReady();
+    }
     if (flyout.isVisible) {
       unawaited(flyout.push(widget.service.summary));
     }
