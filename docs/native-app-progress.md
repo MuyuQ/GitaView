@@ -14,6 +14,8 @@ CI 云端迭代（每次提交一跑，失败即修）：run2 暴露 C++ 编译�
 
 结论：Windows 构建链（C++ 编译 / cargo DLL / flutter build / makeappx 打包 + 清单校验 / 产物上传）云端验证完成；Dart 层 63 项 + Rust 147 项 + C# 95 项全绿。剩余未验证项全部需要 Windows 实机（GUI、托盘浮窗行为、签名安装与原位升级、单实例 / 深链 / 开机启动）——computer use 在 macOS 主机无可验 GUI 对象，不适用；验收门禁（实机）通过前 WinUI 宿主保留。
 
+收敛复审（同日，两个并行只读子代理）：全部修复项逐一验证正确（含 InFlightGuard 自死锁排查、毒化容忍、丢唤醒窗口闭合的论证），并新发现 6 项低危全部闭合——engine_service 退出外层超时 745s 覆盖内部最坏路径（730s < 735s 的窗口会 kill 阻塞中的 isolate）、_setState 的 disposed 守卫、深链就绪注册加快照非空前置（bootstrap 在 requery 后过早注册仍会降级冷启动深链）、托盘 owned 图标 DestroyIcon 生命周期（重注册与移除路径，共享图标不销毁）、normalize_remote_url 用 is_whitespace 闭合 NBSP/全角空格穿透、FakeGateway 搜索 haystack 补组名与控制器会话切换重置默认分组播种。CI run 7（commit eea594a）三 job 全绿复验通过。至此最近两轮审阅（深审 + 收敛）均以零未决问题收束。
+
 ### 第 62 轮记录
 
 2026-11-07 用户确认推进 Rust+Flutter 宿主迁移（先前已修订方案：手写 dart:ffi 对冻结 C ABI v2、Devolutions fork desktop_multi_window 浮窗第二窗口、fluent_ui 基座、ChangeNotifier 状态层、MSIX 身份 0.2.0.0 原位升级）。同轮按用户指示清除冗余与失效代码。
