@@ -14,6 +14,10 @@ CI 云端迭代（每次提交一跑，失败即修）：run2 暴露 C++ 编译�
 
 结论：Windows 构建链（C++ 编译 / cargo DLL / flutter build / makeappx 打包 + 清单校验 / 产物上传）云端验证完成；Dart 层 63 项 + Rust 147 项 + C# 95 项全绿。剩余未验证项全部需要 Windows 实机（GUI、托盘浮窗行为、签名安装与原位升级、单实例 / 深链 / 开机启动）——computer use 在 macOS 主机无可验 GUI 对象，不适用；验收门禁（实机）通过前 WinUI 宿主保留。
 
+**更正（同日稍后）**：上句"macOS 主机无可验 GUI 对象"已不再成立——为 Flutter 宿主脚手架 macOS runner 后，同一套真实引擎 + 完整 UI 可在 macOS 前台运行（`flutter run -d macos --debug --no-enable-impeller`，Skia；Impeller 在本机 Intel Iris Pro 上于 `PlatformView::NotifyCreated` 挂起，进程采样定位）。配套修复：`GvNative.load` 候选路径解析（env → 可执行目录 → 仓库 target 逐级上溯）、DebugProfile.entitlements 去 App Sandbox（开发构建加载容器外 dylib）、macOS 窗口初始化 / `open` 打开目标 / file_selector 接线。
+
+computer use 前台全流程实测（AX 驱动，16 张截图 target/ui-macos/，明细见验收文档 §2.2）：空态、原生面板添加仓库（绿色横幅 + 列表更新）、4 仓库主页面真实关系（远端领先 / 已同步 / 未比较 / 无远端）与分组种子、行操作面板禁用态正确、backend Fetch 完成、diverged Fetch 后未比较 → 分叉 ↑1 ↓1（chips 同步出现"分叉 1"）、docs-site Pull 两段式（琥珀"确认 Pull" + 警告文案 → 真实 pull → 关系翻转已同步）、backend 本地领先（shell 制造提交 → 刷新检测）→ Push 两段式 → 真实 push → 已同步、状态 chip 筛选（同步 → 2 行）、组合筛选（后端 + 全部 → 1/4，计数重算）、设置页 4 仓库 + 分组下拉、返回上下文保留、自动刷新 tick。未覆盖：搜索框键入（helper 键盘注入受限 + AX setValue 不触发 onChanged）、分组改归属、移除确认流、深浅色切换；Windows 独占能力仍待实机。
+
 收敛复审（同日，两个并行只读子代理）：全部修复项逐一验证正确（含 InFlightGuard 自死锁排查、毒化容忍、丢唤醒窗口闭合的论证），并新发现 6 项低危全部闭合——engine_service 退出外层超时 745s 覆盖内部最坏路径（730s < 735s 的窗口会 kill 阻塞中的 isolate）、_setState 的 disposed 守卫、深链就绪注册加快照非空前置（bootstrap 在 requery 后过早注册仍会降级冷启动深链）、托盘 owned 图标 DestroyIcon 生命周期（重注册与移除路径，共享图标不销毁）、normalize_remote_url 用 is_whitespace 闭合 NBSP/全角空格穿透、FakeGateway 搜索 haystack 补组名与控制器会话切换重置默认分组播种。CI run 7（commit eea594a）三 job 全绿复验通过。至此最近两轮审阅（深审 + 收敛）均以零未决问题收束。
 
 最终增量独立复审（eea594a..b96b52d，两个并行只读子代理）：Dart/Rust 四项与 C++/测试两项修复全部判定正确（745s 超时覆盖核算、disposed 守卫收益、protocol-ready 三触发点无死角、is_whitespace 字符类完备、HICON 销毁时机对 Shell 语义安全、FakeGateway 组名与 view.rs 等价），**缺陷级新问题为零**；附带的 3 条可选测试加强已全部落实（组名搜索用例、FakeGateway 失同步注释、会话切换重播种 + 非空选择保留语义固化测试，63 → 64 项）。
