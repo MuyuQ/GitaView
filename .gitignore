@@ -25,3 +25,7 @@ apps/windows/**/*.cer
 
 # ZCode 会话工作区
 .zcode/
+
+# Open Design 会话工作区（工具产物：.od-frames / .od-skills / .open-design；
+# 设计稿已入仓 design/preview/index.html）。新会话目录按 UUID 命名，需逐条添加。
+/b91adbd7-8277-4722-abb2-35a96178edb1/
