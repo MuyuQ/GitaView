@@ -1,10 +1,14 @@
 // UI 层 widget 测试：不触碰 FFI，用 FakeGateway（固定数据取自
 // contracts/native/v1/fixtures 的形状，见 contracts_test.dart）驱动
-// AppController，验证阶段 3c 的页面结构：
+// AppController，验证重设计后的页面结构：
 // - 筛选 chips 集合与顺序（复用 RepositoryFilterPresentation 的输出）；
-// - 表格行渲染与列序（状态 · 仓库 · 分组 · 分支 · 关系 · 差异 · 提示）；
+// - 表格行渲染与列序（仓库 · 分组 · 分支 · 状态胶囊 · 差异 · 展开箭头，
+//   6 列：状态点与关系合并为胶囊、提示并入仓库单元格第二行）；
+// - 关系 → 状态色映射（同步 green / 本地领先 teal / 远端领先 blue /
+//   分叉 amber / 读取失败 red / 无远端 slate）——本次语义变更的保护网；
 // - 选中行操作面板的两段式确认流（Pull：确认 → 执行 → 结果反馈）；
-// - 空态（无仓库 / 无匹配）与全局失败横幅（失败保留历史行）；
+// - 空态（无仓库 / 无匹配）、刷新失败（状态栏口径，保留历史行）与
+//   浅 / 深双主题渲染；
 // - 设置页两分区渲染与刷新策略保存事务（expectedRevision）。
 import 'dart:convert';
 
@@ -251,10 +255,39 @@ final class FakeGateway implements EngineGateway {
       throw const GvCallException(GvStatus.error, 'SETTINGS_CONFLICT');
     }
     savedWith = input;
+    // 与核心一致：repoGroups / repoAliases 覆盖列出的仓库，未列出的保持现状。
+    final repos = settings.repos
+        .map((repo) {
+          var next = repo;
+          for (final assignment in input.settings.repoGroups) {
+            if (assignment.repoId == repo.id) {
+              next = RepoSettings(
+                id: next.id,
+                name: next.name,
+                path: next.path,
+                groupId: assignment.groupId,
+                alias: next.alias,
+              );
+            }
+          }
+          for (final assignment in input.settings.repoAliases) {
+            if (assignment.repoId == repo.id) {
+              next = RepoSettings(
+                id: next.id,
+                name: next.name,
+                path: next.path,
+                groupId: next.groupId,
+                alias: assignment.alias,
+              );
+            }
+          }
+          return next;
+        })
+        .toList(growable: false);
     settings = SettingsData(
       schemaVersion: settings.schemaVersion,
       revision: settings.revision + 1,
-      repos: settings.repos,
+      repos: repos,
       groups: input.settings.groups,
       defaultGroupId: input.settings.defaultGroupId,
       refresh: input.settings.refresh,
@@ -443,39 +476,73 @@ void main() {
     );
     expect(controller.statusChips.first.selected, isTrue);
 
-    // 页面渲染出相同文案与“分组 / 状态”标签（“分组”同时是表格列头）。
+    // 页面渲染出相同文案与“分组 / 状态”标签（两者同时是表格列头）。
+    // chip 为名称 + 计数的 Text.rich（设计稿：计数 11.5 次要色），
+    // 用 findRichText 匹配整体文案。
     await tester.pumpWidget(_wrap(MainPage(controller: controller, onOpenSettings: () {})));
     await tester.pump();
     expect(find.text('分组'), findsNWidgets(2)); // 筛选条标签 + 表格列头
-    expect(find.text('状态'), findsOneWidget);
-    expect(find.text('全部分组 8'), findsOneWidget);
-    expect(find.text('读取失败 1'), findsOneWidget);
-    expect(find.text('未比较 2'), findsOneWidget);
+    expect(find.text('状态'), findsNWidgets(2)); // 筛选条标签 + 表格列头
+    expect(find.text('全部分组 8', findRichText: true), findsOneWidget);
+    expect(find.text('读取失败 1', findRichText: true), findsOneWidget);
+    expect(find.text('未比较 2', findRichText: true), findsOneWidget);
   });
 
-  testWidgets('表格行渲染与列序：表头 状态(空)·仓库·分组·分支·关系·差异·提示',
+  testWidgets('表格行渲染与列序：表头 仓库·分组·分支·状态·差异（6 列 + 展开箭头）',
       (tester) async {
     final gateway = FakeGateway();
     await _pumpMainPage(tester, gateway);
-    // 表头列序（第一列状态点无文字标签；“分组”另出现在筛选条标签）。
+    // 表头列序：状态点列与“关系”列合并为状态胶囊、“提示”并入仓库单元格
+    // （与 docs/native-app-ui-design.md §3 的偏差已记录）；“分组 / 状态”
+    // 另出现在筛选条标签。
     expect(find.text('仓库'), findsOneWidget);
     expect(find.text('分组'), findsNWidgets(2));
     expect(find.text('分支'), findsOneWidget);
-    expect(find.text('关系'), findsOneWidget);
+    expect(find.text('状态'), findsNWidgets(2));
     expect(find.text('差异'), findsOneWidget);
-    expect(find.text('提示'), findsOneWidget);
-    // 首行 = backend-api：分叉 + 双向计数（文字 + 数字并用）。
+    // 首行 = backend-api：状态胶囊（分叉）+ 差异列双向计数（文字 + 数字并用）。
     expect(find.text('backend-api'), findsOneWidget);
     expect(find.text('分叉'), findsOneWidget);
     expect(find.text('↑3 ↓2'), findsOneWidget);
-    // 错误行的提示列（ErrorText.forCode 映射）。
-    expect(find.text('读取失败'), findsOneWidget);
-    expect(find.text('Git 命令执行失败'), findsOneWidget);
+    // 错误行：状态胶囊沿用 statusLabel（“失败”），提示并入仓库单元格第二行
+    //（路径 + 提示同属一个 Text.rich，用 textContaining 匹配）。
+    expect(find.text('失败'), findsOneWidget);
+    expect(find.textContaining('Git 命令执行失败', findRichText: true),
+        findsOneWidget);
     // no_remote 行区分“无远端”。
     expect(find.text('无远端'), findsNWidgets(1));
-    // 底部摘要与刷新时间（N/M 前缀 + 紧凑口径）。
-    expect(find.text('8 个仓库 · 待同步 2 · 需关注 2 · 未比较 2'), findsOneWidget);
+    // 状态栏：默认口径（快捷键提示平台化，测试环境为 macOS）+ 刷新时间。
+    expect(find.text('⌘K 搜索 · 单击仓库行展开操作 · Esc 取消确认'),
+        findsOneWidget);
     expect(find.textContaining('刷新时间'), findsOneWidget);
+  });
+
+  testWidgets('搜索框：自绘输入区（不用 TextBox）、占位与快捷键提示',
+      (tester) async {
+    final gateway = FakeGateway();
+    await _pumpMainPage(tester, gateway);
+
+    // fluent_ui 的 TextBox 会在容器内部再画一层背景填充（默认 controlFillColorDefault，
+    // 悬停还会变浅）和一条底部前景描边（聚焦 2px 强调色下划线）；decoration 只能关掉
+    // 外框，关不掉这两层，胶囊里会出现“盒中盒 + 一条蓝线”。搜索框必须是自绘 EditableText。
+    expect(find.byType(EditableText), findsOneWidget);
+    expect(find.byType(TextBox), findsNothing);
+    expect(find.text('搜索仓库、路径或分支'), findsOneWidget);
+    expect(find.text('⌘K'), findsOneWidget);
+
+    // 输入后占位文案立即让位（占位由 _text 是否为空驱动，不依赖核心返回）。
+    await tester.enterText(find.byType(EditableText), 'api');
+    await tester.pump();
+    expect(find.text('搜索仓库、路径或分支'), findsNothing);
+    final field = tester.widget<EditableText>(find.byType(EditableText));
+    expect(field.controller.text, 'api');
+
+    // 窄窗（§8.3 最小内容区 640×480）：搜索框按剩余宽度收缩，不溢出、不裁掉 ⌘K。
+    await tester.binding.setSurfaceSize(const Size(640, 480));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('⌘K'), findsOneWidget);
   });
 
   testWidgets('选中行操作面板与 Pull 两段式确认流', (tester) async {
@@ -492,16 +559,18 @@ void main() {
     expect(find.text('Fetch'), findsOneWidget);
     expect(find.text('Push'), findsOneWidget);
 
-    // 第一段：只出确认，不调用 repoPull。
+    // 第一段：只出确认，不调用 repoPull。操作行按钮与确认框按钮都切换为
+    // “确认 Pull”（设计稿：两处同文案），确认框另有“取消确认”按钮。
     await tester.tap(find.text('Pull'));
     await tester.pump(const Duration(milliseconds: 150));
     expect(gateway.pullCalls, 0);
     expect(find.text('Pull 会修改当前仓库工作区，是否继续？'), findsOneWidget);
+    expect(find.text('再次点击「确认 Pull」执行，或取消返回。'), findsOneWidget);
     expect(find.text('取消确认'), findsOneWidget);
-    expect(find.text('确认 Pull'), findsOneWidget);
+    expect(find.text('确认 Pull'), findsNWidgets(2));
 
-    // 第二段：执行（confirmed=true），结果行反馈完成。
-    await tester.tap(find.text('确认 Pull'));
+    // 第二段：点确认框内的“确认 Pull”执行（confirmed=true），结果行反馈完成。
+    await tester.tap(find.text('确认 Pull').last);
     await tester.pump(const Duration(milliseconds: 150));
     expect(gateway.pullCalls, 1);
     expect(find.text('Pull 完成'), findsOneWidget);
@@ -543,8 +612,9 @@ void main() {
     expect(find.text('未知错误'), findsOneWidget);
   });
 
-  testWidgets('空态：无仓库显示引导；筛选无结果显示无匹配', (tester) async {
-    // 无仓库 → “从第一个仓库开始” + 添加仓库按钮，表格不出现。
+  testWidgets('空态：无仓库显示引导；筛选无结果显示无匹配；状态栏走筛选口径',
+      (tester) async {
+    // 无仓库 → “从第一个仓库开始” + 添加仓库 / 扫描目录按钮，表格不出现。
     final empty = FakeGateway(rows: const [], counts: _emptyCounts);
     final emptyController = _controller(empty);
     addTearDown(emptyController.dispose);
@@ -566,6 +636,8 @@ void main() {
     controller.selectGroup('group-backend'); // 组内只有 diverged 行
     await tester.pumpAndSettle();
     expect(find.text('backend-api'), findsOneWidget); // 组内行可见
+    // 状态栏筛选口径：组筛选后 1 / 8。
+    expect(find.text('已筛选 1 / 8 个仓库'), findsOneWidget);
     // 组内无此关系：核心协调把状态筛选回退为全部（行仍可见、chip 同步），
     // 不产生空结果（C# RequeryAsync 消费 effective 的实际语义）。
     controller.selectRelation(RelationFilter.remoteAhead);
@@ -575,11 +647,12 @@ void main() {
     // 无匹配提示由搜索零结果触发（搜索零结果不清空搜索词）。
     controller.setQuery('不存在的关键词');
     await tester.pumpAndSettle();
-    expect(find.text('没有匹配的仓库，请调整筛选或搜索条件。'), findsOneWidget);
+    expect(find.text('没有匹配的仓库'), findsOneWidget);
+    expect(find.text('请调整筛选或搜索条件。'), findsOneWidget);
     expect(find.text('从第一个仓库开始'), findsNothing);
   });
 
-  testWidgets('全局刷新失败：琥珀横幅出现且历史行保留（不依赖颜色）', (tester) async {
+  testWidgets('全局刷新失败：状态栏琥珀口径 + 历史行保留（不依赖颜色）', (tester) async {
     final gateway = FakeGateway(
       refreshState: RefreshState.failed,
       refreshError: const GvError('SETTINGS_IO', message: '无法读取设置'),
@@ -589,15 +662,155 @@ void main() {
     await controller.requery();
     await tester.pumpWidget(_wrap(MainPage(controller: controller, onOpenSettings: () {})));
     await tester.pump();
-    // 横幅文案（错误码映射自 ErrorText）。
-    expect(
-      find.text('刷新失败：设置读写失败（以下为最近一次成功读取的结果）'),
-      findsOneWidget,
-    );
-    // 历史行保留 + 底部摘要附加“刷新失败”。
+    // 状态栏左：刷新失败口径（不做大横幅，错误原因见浮窗失败提示块）。
+    expect(find.text('刷新失败 · 当前显示最近一次成功结果'), findsOneWidget);
+    // 历史行保留。
     expect(find.text('backend-api'), findsOneWidget);
-    expect(find.text('8 个仓库 · 待同步 2 · 需关注 2 · 未比较 2 · 刷新失败'),
-        findsOneWidget);
+  });
+
+  test('关系 → 状态色映射：逐关系校验 RepoRowVm.dot（本次语义变更的保护网）',
+      () async {
+    final gateway = FakeGateway();
+    final controller = _controller(gateway);
+    addTearDown(controller.dispose);
+    await controller.requery();
+    RepoRowVm rowOf(String id) =>
+        controller.rows.firstWhere((row) => row.id == id);
+    // 同步 → green；本地领先 → teal（新增）；远端领先 → blue（新增）；
+    // 分叉 → amber（原 red 改琥珀）；读取失败 → red；无远端 / 未比较 → slate。
+    expect(rowOf('repo-cli').dot, GvStatusColor.green,
+        reason: 'synced → green');
+    expect(rowOf('repo-mobile').dot, GvStatusColor.teal,
+        reason: 'localAhead → teal（新增）');
+    expect(rowOf('repo-docs').dot, GvStatusColor.blue,
+        reason: 'remoteAhead → blue（新增）');
+    expect(rowOf('repo-api').dot, GvStatusColor.amber,
+        reason: 'diverged → amber（原 red）');
+    expect(rowOf('repo-ci').dot, GvStatusColor.red, reason: 'error → red');
+    expect(rowOf('repo-legacy').dot, GvStatusColor.slate,
+        reason: 'noRemote（无远端）→ slate');
+    expect(rowOf('repo-notes').dot, GvStatusColor.slate,
+        reason: 'noRemote（未比较）→ slate');
+    // relationColor 与 dot 同映射（分叉 amber，不再 red）。
+    expect(rowOf('repo-cli').relationColor, GvStatusColor.green);
+    expect(rowOf('repo-mobile').relationColor, GvStatusColor.teal);
+    expect(rowOf('repo-docs').relationColor, GvStatusColor.blue);
+    expect(rowOf('repo-api').relationColor, GvStatusColor.amber);
+    expect(rowOf('repo-ci').relationColor, GvStatusColor.red);
+    expect(rowOf('repo-legacy').relationColor, GvStatusColor.slate);
+  });
+
+  test('别名：显示名 = 目录名（别名），搜索按别名命中由核心保证',
+      () async {
+    final gateway = FakeGateway();
+    final controller = _controller(gateway);
+    addTearDown(controller.dispose);
+    // 给 docs-site 设置别名（直接构造带别名的快照，走正常 requery 投影）。
+    final withAlias = gateway.rows
+        .map((row) => row.id == 'repo-docs'
+            ? RepoStatus(
+                id: row.id,
+                name: row.name,
+                path: row.path,
+                groupId: row.groupId,
+                readState: row.readState,
+                relation: row.relation,
+                branch: row.branch,
+                hasCommit: row.hasCommit,
+                hasOrigin: row.hasOrigin,
+                comparisonBranch: row.comparisonBranch,
+                ahead: row.ahead,
+                behind: row.behind,
+                remoteUrl: row.remoteUrl,
+                actions: row.actions,
+                alias: row.id == 'repo-docs'
+                    ? '文档站'
+                    : (row.id == 'repo-cli' ? 'cli-tools' : null),
+              )
+            : row)
+        .toList(growable: false);
+    gateway.rows.clear();
+    gateway.rows.addAll(withAlias);
+    gateway.snapshot = AppSnapshot.decode(
+        (jsonDecode(jsonEncode(gateway.snapshot.toJson()))
+              ..['repos'] = withAlias.map((r) => r.toJson()).toList())
+            .cast<String, Object?>(), 'test');
+    await controller.requery();
+    final docs = controller.rows.firstWhere((row) => row.id == 'repo-docs');
+    expect(docs.name, 'docs-site（文档站）',
+        reason: '显示名 = 目录名（别名）——别名以全角括号附在仓库名后');
+    final other = controller.rows.firstWhere((row) => row.id == 'repo-api');
+    expect(other.name, 'backend-api', reason: '无别名行显示名 = 目录名');
+    // 别名与目录名相同：不重复加括号。
+    final same = controller.rows.firstWhere((row) => row.id == 'repo-cli');
+    expect(same.name, 'cli-tools', reason: '别名 = 目录名时不加括号');
+  });
+
+  test('setRepoAlias：trim 后空 = 清除；同值不发送；保存走 repoAliases 事务',
+      () async {
+    final gateway = FakeGateway();
+    final controller = _controller(gateway);
+    addTearDown(controller.dispose);
+    await controller.loadSettings();
+    final repo = controller.settings!.repos
+        .firstWhere((element) => element.id == 'repo-docs');
+
+    // 设置别名（带首尾空白 → trim）。
+    await controller.setRepoAlias(repo, '  文档站  ');
+    expect(gateway.saveCalls, 1);
+    final savedAliases = gateway.savedWith!.settings.repoAliases;
+    expect(savedAliases.length, 1);
+    expect(savedAliases.single.repoId, 'repo-docs');
+    expect(savedAliases.single.alias, '文档站');
+
+    // 同值不发送。
+    final callsBefore = gateway.saveCalls;
+    await controller.setRepoAlias(gateway.settings.repos
+        .firstWhere((element) => element.id == 'repo-docs'), '文档站');
+    expect(gateway.saveCalls, callsBefore, reason: '同值不发送保存');
+
+    // 空白 = 清除（alias 传 null）。
+    await controller.setRepoAlias(gateway.settings.repos
+        .firstWhere((element) => element.id == 'repo-docs'), '   ');
+    expect(gateway.saveCalls, callsBefore + 1);
+    expect(
+        gateway.savedWith!.settings.repoAliases.single.alias, isNull);
+  });
+
+  testWidgets('浅 / 深两套主题渲染主页面：无异常（无 overflow）', (tester) async {
+    for (final brightness in Brightness.values) {
+      final gateway = FakeGateway();
+      final controller = _controller(gateway);
+      addTearDown(controller.dispose);
+      await controller.requery();
+      await tester.pumpWidget(FluentApp(
+        theme: FluentThemeData(brightness: brightness),
+        home: ScaffoldPage(
+          content: MainPage(controller: controller, onOpenSettings: () {}),
+        ),
+      ));
+      await tester.pump();
+      expect(tester.takeException(), isNull,
+          reason: '$brightness 主题渲染出现异常');
+    }
+  });
+
+  testWidgets('骨架屏：先显示真实表头（加载完成时表头不跳入）', (tester) async {
+    // 640×400 是最小窗口（main.dart minimumSize）：骨架屏在极矮视口下
+    // 也不能溢出。
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 2;
+    addTearDown(tester.view.reset);
+    final controller = _controller(FakeGateway());
+    addTearDown(controller.dispose);
+    // 不 requery：loaded 为 false，渲染骨架屏。
+    await tester.pumpWidget(
+        _wrap(MainPage(controller: controller, onOpenSettings: () {})));
+    await tester.pump();
+    // 表头文案来自 _TableHeader：仓库 / 差异 只在表头出现。
+    expect(find.text('仓库'), findsOneWidget);
+    expect(find.text('差异'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('设置页：两分区导航与仓库设置内容渲染', (tester) async {
@@ -610,6 +823,8 @@ void main() {
 
     // 分区导航 + 仓库设置内容。
     expect(find.text('仓库设置'), findsOneWidget);
+    // 标题栏徽标：文案必须与实际事务语义一致（只有刷新间隔走“保存”）。
+    expect(find.text('设置随改随存 · 刷新间隔需保存'), findsOneWidget);
     expect(find.text('常规设置'), findsOneWidget);
     expect(find.text('添加仓库'), findsOneWidget);
     expect(find.text('仓库列表'), findsOneWidget);
@@ -622,7 +837,8 @@ void main() {
     expect(find.text('后端'), findsWidgets);
     expect(find.text('文档'), findsWidgets);
 
-    // 切换到常规设置：刷新策略 / 默认分组 / 开机启动 / 安全规则。
+    // 切换到常规设置：刷新策略 / 默认分组 / 开机启动 / 安全规则辅助说明
+    // （操作确认按设计稿是 callout，无独立标题）。
     await tester.tap(find.text('常规设置'));
     await tester.pump(const Duration(milliseconds: 150));
     expect(find.text('自动刷新'), findsOneWidget);
@@ -630,9 +846,47 @@ void main() {
     expect(find.text('保存'), findsOneWidget);
     expect(find.text('默认分组'), findsOneWidget);
     expect(find.text('开机启动'), findsOneWidget);
-    expect(find.text('操作确认'), findsOneWidget);
+    // 默认分组只有一个分区级下拉，不再套“优先分组”设置行（避免重复标题层级）。
+    expect(find.text('优先分组'), findsNothing);
+    // 开机启动只读：标题行带“只读”标记，状态值落在独立设置行里。
+    expect(find.text('只读'), findsOneWidget);
+    expect(find.text('当前状态'), findsOneWidget);
+    expect(find.text(_startupStateTextForTest), findsOneWidget);
+    // 外观分区：主题三档（跟随系统 / 浅色 / 深色）。
+    expect(find.text('外观'), findsOneWidget);
+    expect(find.text('主题'), findsOneWidget);
+    expect(find.text('跟随系统'), findsOneWidget);
+    expect(find.text('浅色'), findsOneWidget);
+    expect(find.text('深色'), findsOneWidget);
     expect(find.text('Pull 会修改工作区，Push 会更新远端分支。每次执行前都需要确认。'),
         findsOneWidget);
+  });
+
+  testWidgets('外观：主题分段切换回调携带所选模式（宿主持久化由 UiPreferences 覆盖）',
+      (tester) async {
+    final gateway = FakeGateway();
+    final controller = _controller(gateway);
+    addTearDown(controller.dispose);
+    await controller.loadSettings();
+    ThemeMode? selected;
+    await tester.pumpWidget(_wrap(SettingsPage(
+      controller: controller,
+      onBack: () {},
+      themeMode: ThemeMode.system,
+      onThemeModeChanged: (mode) => selected = mode,
+    )));
+    await tester.tap(find.text('常规设置'));
+    await tester.pump(const Duration(milliseconds: 150));
+    // 外观分区在常规设置滚动区末尾：先滚入视野再点按。
+    await tester.ensureVisible(find.text('浅色'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('浅色'));
+    // HoverButton 按压态复位定时器需走完（与其他 fluent 控件测试同约定）。
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(selected, ThemeMode.light);
+    await tester.tap(find.text('深色'));
+    await tester.pump(const Duration(milliseconds: 150));
+    expect(selected, ThemeMode.dark);
   });
 
   testWidgets('设置页：刷新策略保存走 expectedRevision 事务；冲突出重载入口',

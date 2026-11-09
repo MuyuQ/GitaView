@@ -30,13 +30,19 @@ import 'presentation/settings_group_presentation.dart';
 import 'presentation/snapshot_version_gate.dart';
 
 /// 行内状态色（语义角色；页面映射到主题 token，不携带具体颜色）。
-enum GvStatusColor { green, amber, red, slate, ink, muted }
+///
+/// 2026-11 重设计的映射（docs/flutter-ui-redesign-plan.md §2.2）：
+/// 同步 green、本地领先 teal（新增）、远端领先 blue（新增）、分叉 amber
+/// （原红色改为琥珀）、读取失败 red、未比较 / 无远端 / 待读 slate。
+enum GvStatusColor { green, teal, blue, amber, red, slate, ink, muted }
 
 /// 表格行视图模型：按仓库身份保留，投影更新不丢失操作状态（C# RepoRowVm）。
 final class RepoRowVm {
   final String id;
   final String path;
 
+  /// 显示名：设置了别名且不同于目录名时为“目录名（别名）”，
+  /// 否则为仓库目录名。
   String name = '';
   String groupDisplay = '';
   String branch = '';
@@ -363,8 +369,12 @@ class AppController extends ChangeNotifier {
           row.id, () => RepoRowVm(id: row.id, path: row.path));
       final view = RepoStatusView.from(row);
       final group = row.groupId == null ? null : _groupNames[row.groupId!];
+      // 别名以（）附在目录名后（用户反馈）；别名与目录名相同则不加括号。
+      final alias = row.alias;
+      final hasAlias =
+          alias != null && alias.isNotEmpty && alias != row.name;
       vm
-        ..name = row.name
+        ..name = hasAlias ? '${row.name}（$alias）' : row.name
         ..groupDisplay = group ?? '—'
         ..branch = view.branch.isNotEmpty ? view.branch : '—'
         ..statusLabel = _statusLabelOf(view)
@@ -430,27 +440,30 @@ class AppController extends ChangeNotifier {
         _ => '',
       };
 
+  /// 状态 → 色角色（2026-11 重设计映射，见 [GvStatusColor] 说明）。
   static GvStatusColor _dotOf(RepoStatusView row) => switch (row.readState) {
         ReadState.pending => GvStatusColor.slate,
         ReadState.error => GvStatusColor.red,
         _ => switch (row.relation) {
             Relation.synced => GvStatusColor.green,
-            Relation.localAhead => GvStatusColor.amber,
-            Relation.remoteAhead => GvStatusColor.amber,
-            Relation.diverged => GvStatusColor.red,
+            Relation.localAhead => GvStatusColor.teal,
+            Relation.remoteAhead => GvStatusColor.blue,
+            Relation.diverged => GvStatusColor.amber,
             _ => GvStatusColor.slate,
           },
       };
 
+  /// 关系强调色：与 [_dotOf] 同映射（分叉 amber，不再 red）。
   static GvStatusColor _relationColorOf(RepoStatusView row) =>
       switch (row.readState) {
+        ReadState.pending => GvStatusColor.slate,
         ReadState.error => GvStatusColor.red,
-        ReadState.pending => GvStatusColor.muted,
         _ => switch (row.relation) {
-            Relation.diverged => GvStatusColor.red,
-            Relation.localAhead => GvStatusColor.amber,
-            Relation.remoteAhead => GvStatusColor.amber,
-            _ => GvStatusColor.ink,
+            Relation.synced => GvStatusColor.green,
+            Relation.localAhead => GvStatusColor.teal,
+            Relation.remoteAhead => GvStatusColor.blue,
+            Relation.diverged => GvStatusColor.amber,
+            _ => GvStatusColor.slate,
           },
       };
 
@@ -823,6 +836,26 @@ class AppController extends ChangeNotifier {
           GvMessage('移除失败', _messageOf(error), isError: true);
     }
     notifyListeners();
+  }
+
+  /// 设置 / 清除仓库别名（trim 后空 = 清除；同值不发送）。
+  Future<void> setRepoAlias(RepoSettings repo, String rawAlias) async {
+    final settings = _settings;
+    if (settings == null) return;
+    final trimmed = rawAlias.trim();
+    final next = trimmed.isEmpty ? null : trimmed;
+    if ((repo.alias ?? '') == (next ?? '')) return;
+    await _saveSettings(
+      SettingsEditRequest.forRepoAlias(settings, repo.id, next),
+      failureTitle: '修改别名失败',
+      onSuccess: () {
+        _settingsMessage = GvMessage(
+          next == null ? '已清除别名' : '已设置别名',
+          next ?? repo.name,
+          isError: false,
+        );
+      },
+    );
   }
 
   /// 修改仓库归属（C# OnRepoGroupChanged：回声事件被纯逻辑层丢弃）。
