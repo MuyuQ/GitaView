@@ -69,16 +69,18 @@
 | Windows 构建 | runner CMake 接 cargo 产出 gitaview_ffi.dll 随包安装；gv_platform C++ 插件编译（托盘 / LocalState / StartupTask 镜像 / openTarget） | 已验证（CI 编译）；运行行为待实机 |
 | MSIX 打包 | package-flutter-windows.ps1 无签名产物 13.3MB 上传（makeappx 清单校验通过；基名资产由 scale-200 生成，多尺度分辨率待评估） | 已验证（无签名打包）；0.1.5.27 → 0.2.0.0 原位替换、签名安装待实机（需测试证书） |
 | GUI 验收 | 主页面（筛选 / 表格 / 两段式确认）/ 设置页 / mica 背景 / 沉浸式标题栏 | 待验证（实机；macOS 主机无 GUI 可验对象，computer use 不适用） |
-| 托盘与浮窗 | Shell_NotifyIcon 注册 / TaskbarCreated 重注册（1s×5 重试）/ 左键浮窗定位 / 失焦收起 / 右键菜单 / 子窗口数据推送 | 待验证（实机） |
+| 托盘与浮窗 | Windows：Shell_NotifyIcon 注册 / TaskbarCreated 重注册（1s×5 重试）/ 左键浮窗定位 / 失焦收起 / 右键菜单 / 子窗口数据推送；macOS：菜单栏状态项 + 左键浮窗（fork 第二窗口）+ 右键系统菜单（同通道契约，见 §2.3） | Windows 部分待验证（实机）；macOS 已验证（开发构建，2026-11-09） |
 | 单实例与深链 | windows_single_instance 管道；gitaview-native:// 冷 / 热激活路由（未知 / 已删 ID 回总列表） | 待验证（实机） |
 | 开机启动 | StartupTask 注册表镜像读数与文案映射（best-effort，需与系统开关实测对齐） | 待验证（实机） |
+| ⚠️ 界面重设计双端分裂（2026-11-08） | Flutter 宿主已按 `design/preview/index.html` 落地重设计：状态色映射变更（本地领先 teal、远端领先 blue、分叉 red→amber、red 收窄为错误）、表格列序 7 列 → 6 列（状态点与关系合并为胶囊）、表面色去 alpha、工具栏 66 / 侧栏 196 / 浮窗 2×2 统计格。同日用户反馈追加（Flutter 已落地，契约新增 `alias` 字段 + settingsEditable 新增 `repoAliases`）：仓库别名（主界面列表显示"目录名（别名）"、浮窗显示名 = 别名优先、搜索命中别名）、路径收纳进展开面板、macOS 沉浸式标题栏（TitleBarStyle.hidden + 红绿灯内缩 + 工具栏拖拽）、主题切换（设置-外观三档分段控件，宿主本地 `ui-preferences.json` 持久化，不入契约；C# 宿主对应 LocalSettings 方向）。**WinUI 宿主（0.1.5.x）未同步**以上任何一项。`docs/native-app-ui-design.md` §3 / §4 / §8.2 已记录为共同设计的新基线 | 待办：WinUI 宿主同步改造（含 alias 契约字段）+ 双端一致性验收（迁移期间以 Flutter 宿主为准；Flutter 侧证据 `target/ui-redesign/`，macOS 开发构建 2026-11-08：浅 / 深 × 主界面 / 设置 / 展开确认 / 别名显示 / 窄 640 / 空库 / 无匹配 / 骨架屏，尺寸为窗口逻辑尺寸，非设计稿 §8.3 全矩阵） |
 
 ### 2.2 Flutter 宿主 macOS 开发构建前台实测（2026-11-07，computer use）
 
 > 范围与局限（如实标注）：这是 **macOS 开发构建**（`flutter run -d macos --debug
 > --no-enable-impeller`，Skia 软件路径）的界面实测——不是 Windows 实机验收，
-> 也不构成 macOS 应用打包/签名验收。托盘、浮窗第二窗口、单实例、深链、
-> 开机启动为 Windows 独占能力，不在本轮范围。Impeller 在本机 Intel Iris Pro
+> 也不构成 macOS 应用打包/签名验收。浮窗第二窗口、单实例、深链、开机启动为
+> Windows 独占能力，不在本轮范围；macOS 托盘（菜单栏状态项）已于 2026-11-09
+> 落地并在 §2.3 单独实测。Impeller 在本机 Intel Iris Pro
 > 上挂起（`PlatformView::NotifyCreated` 死等），Skia（`--no-enable-impeller`）
 > 正常——已确认为宿主环境限制。
 
@@ -111,6 +113,143 @@ computer use 前台实测结果（AX 驱动 + 截图，证据 target/ui-macos/�
 
 未在本轮覆盖：分组下拉改归属（界面存在）、移除仓库确认流、深色/浅色切换、
 错误路径横幅（无真实失败源）。Windows 独占能力仍以 §2.1 实机验收为准。
+
+### 2.3 Flutter 宿主 macOS 托盘（菜单栏状态项）开发构建实测（2026-11-09）
+
+> 范围与局限（如实标注）：macOS 开发构建（xcodebuild Debug，x86_64，Skia）的
+> 托盘 + 浮窗链路实测；不构成 macOS 打包/签名验收。点击用 CGEvent 在系统
+> 窗口列表报告的状态项 / 菜单项坐标合成（CUA 坐标绑定窗口栅格够不到菜单栏；
+> ZCode 辅助功能权限由用户授权后注入）——菜单弹出、菜单动作经
+> `gitaview/platform` 通道回传 Dart 的整条链路为真实代码路径。
+
+实现（第一层：托盘 + 系统菜单；第二层：浮窗。设计稿 §平台分工：macOS
+菜单栏与 Windows 托盘命令含义相同、菜单外观由系统负责）：
+
+- `apps/flutter/macos/Runner/GvPlatformPlugin.swift`：`gitaview/platform`
+  通道 macOS 侧实现——ensureTray（NSStatusItem，幂等）/ removeTray /
+  getTrayContext（图标矩形 + 所在屏幕工作区，左上原点物理像素 + backing
+  scale，契约同 Windows；混合 DPI 多屏跨屏换算待浮窗接入时精确化）；
+  点击分流同 Windows：左键 → onTrayLeftClick（浮窗开合），右键 → 临时挂
+  NSMenu + performClick（系统定位弹出；打开 GitaView / 刷新 / 分隔线 /
+  退出，动作整数 1/2/3 经 onTrayMenuAction 回传，与 Windows kMenu* 一致）；
+  styleFlyoutWindow（浮窗形态收尾，见下）；getSystemPaths /
+  getStartupTaskState / openTarget 回 NotImplemented。
+- 菜单栏图标：`assets/brand/gitaview-menubar.svg`（品牌分支字形 ÷8 单色模板
+  变体）→ 16px@1x / 32px@2x PNG 入 `MenuBarIcon.imageset`
+  （template-rendering-intent=template）。
+- main.dart：bootstrap 放宽到 macOS（引擎启动 + ensureTray + setHandlers）；
+  关闭拦截同 Windows（preventClose → MainWindowClosePolicy）；_showMainWindow
+  含 macOS（show + focus）；_requestExit macOS 分支（removeTray → 引擎优雅
+  停止 → exit(0)）。
+- macOS Runner 注册：MainFlutterWindow.awakeFromNib 手动注册（同 Windows
+  gv_platform 模式）；AppDelegate 增加 applicationShouldHandleReopen
+  （Dock 点击恢复主窗口）。
+
+实测结果（证据 target/ui-macos-tray/）：
+
+| 项 | 结果 |
+| --- | --- |
+| 注册与图标 | ensureTray 成功；状态项窗口（layer 25 "Item-0" 38×24）出现；菜单栏截图可见分支字形模板渲染正确（00-menubar-icon.png）；Hidden Bar 会将图标收纳到隐藏区（负 X），属该工具的正常行为 |
+| 点击弹菜单 | 点击状态项弹出系统菜单：打开 GitaView / 刷新 / 分隔线 / 退出，外观由系统渲染（01-menu-open.png） |
+| 打开 GitaView | 菜单动作回传 Dart 后窗口激活：lsappinfo front 显示 gitaview "(in front)"（02-open-main-window.png） |
+| 刷新 | 刷新时间 01:10:13 → 01:12:33，引擎真实重扫（03-after-refresh.png） |
+| 退出 | 菜单退出后进程干净退出、托盘图标同步消失；引擎日志 stop_request Running → Stopping（04-engine-exit.log.txt） |
+
+Dart 侧检查：flutter analyze 0 issue、73 项测试全绿。构建：xcodebuild
+Debug BUILD SUCCEEDED（本机验证）；`flutter build macos` / `flutter run`
+官方路径当前被宿主环境 CocoaPods 状态阻塞（Podfile.lock 由 1.17.0 生成，
+系统 Ruby 2.6 可装的最高 1.11.3；1.17 的 nkf 原生扩展在系统 Ruby +
+Xcode 15.2 SDK（缺 universal-darwin23 Ruby 头）下编译失败）——环境问题，
+与本次改动无关，改动前 pod 二进制已不可用。另注：失败的 pod install
+（1.11.3）会删掉 `Pods/Manifest.lock` 并把 Pods xcconfig 降级写入
+`DT_TOOLCHAIN_DIR`（Xcode 15 硬错误），导致 xcodebuild 跟着失效；现场
+恢复法：`cp Podfile.lock Pods/Manifest.lock` + 将 Pods xcconfig 中
+`DT_TOOLCHAIN_DIR` 替换为 `TOOLCHAIN_DIR`。
+
+待验项：
+
+- Cmd-Q / 应用菜单退出绕过优雅退出序列：applicationShouldTerminate 未拦截，
+  直接 terminate 跳过 Dart `_requestExit`（引擎 stop_request、removeTray）；
+  存储层原子写兜底，后果有限。待实现 Swift → Dart 终止桥（含 Dart 无响应
+  超时回退）后实测——第一层跟进项（review P1）。
+- 关闭 → 隐藏驻留（MainWindowClosePolicy macOS 分支）：本机开发构建无法
+  触发关闭请求——上游 nativeapi（window_manager 0.6 后端）对
+  TitleBarStyle.hidden 直接隐藏窗口控制按钮（红绿灯缺席，预先存在行为，
+  与托盘改动无关）；待窗口样式提供关闭入口或绑定关闭快捷键后实测。
+- Dock 点击恢复（applicationShouldHandleReopen）：已实现，未实测。
+- getTrayContext 定位上下文：已实现，无消费者（浮窗第二层接入时连同混合
+  DPI 多屏一起验证）。
+- 深浅色菜单栏外观：本机深色菜单栏已验证（模板渲染）；浅色菜单栏待验。
+
+与 Windows 的已接受差异：Windows 菜单设 SetMenuDefaultItem（默认项粗体 /
+回车触发），macOS 系统菜单无默认项概念——设计稿约定菜单外观由系统负责，
+不做等价实现。
+
+### 2.4 Flutter 宿主 macOS 托盘浮窗（第二窗口）开发构建实测（2026-11-09）
+
+> 范围与局限（如实标注）：同 §2.3 的开发构建与 CGEvent 合成点击方式；
+> 不构成打包/签名验收。浮窗复用 Windows 侧同一套 Dart 链路
+> （flyout_host / flyout_app / FlyoutWindowContent），macOS 仅适配窗口
+> 形态与坐标单位；**Windows 侧行为未回退**（平台分支外代码原样）。
+
+实现（方案 A：复用 desktop_multi_window fork 的 macOS 第二窗口，零依赖
+变化；fork 钉在 Devolutions@cbc8cf58）：
+
+- 坐标单位：定位纯逻辑输出物理像素（TrayFlyoutPresentation.position，
+  其"上方放不下翻转到下方"分支天然支持 macOS 顶部菜单栏图标）；
+  fork 的 macOS setFrame/getFrame 以左上原点逻辑点为单位——新增
+  `TrayFlyoutPresentation.nativeFrame` 按缩放除回（presentation_test
+  锁定），flyout_host / flyout_app._autoSize 按平台取单位。
+- 浮窗形态（`styleFlyoutWindow`）：fork 的 NSWindow 子类
+  desktop_multi_window.FlutterWindowInner 按运行时类名匹配，隐藏标题栏
+  按钮簇（保留窗口自带圆角与投影）、level = .floating；resizable(false)
+  / setMovable(false) 走 fork macOS 专属 Dart API（Windows 侧回
+  NotImplemented，故平台守护）。
+- 左键语义从"点击即菜单"改为与 Windows 一致（左键浮窗 / 右键菜单）。
+- **fork 行为适配（两处，均已实机定位）**：
+  1. `FlutterWindowInner.order` 覆写里的 hiddenSubWindowAtLaunch 会在
+     进程内首个子窗口首次 order 时强制隐藏（全局一次性防启动闪烁旗标）——
+     首 show 被吞，host 检测 isHidden 后补一次 show（旗标已消耗，幂等）；
+  2. 标题栏按钮簇在窗口首次上屏后才实例化，创建时隐藏无效——样式收尾
+     移到首次上屏后执行（仅一次）。
+- **双端状态同步修复**：子窗口失焦自藏（blur → hide）后 host 的 _visible
+  缓存过时，下一次左键 toggle 会走 hide 分支导致"打不开"——Windows 上
+  同样存在（此前未实机验证到）。修复：toggle 以 `isHidden()` 真实状态
+  为准，不再信任缓存。
+
+实测结果（证据 target/ui-macos-tray/）：
+
+| 项 | 结果 |
+| --- | --- |
+| 左键浮窗 | 弹出在图标右下（x=269 = 583+38−352 右对齐，y=32 = 菜单栏下 8px 间隙），2×2 统计 / 关注行（别名「文档站」优先）/ fly-note / 三按钮齐全，浮于普通窗口之上（layer 3 floating）、圆角与投影保留（10/11/12-*.png） |
+| 刷新按钮 | 浮窗时间 07:51:44 → 07:53:02，引擎真实重扫并推送（13-after-flyout-refresh.png） |
+| 打开按钮 | 浮窗收起 + 主窗口转前台（lsappinfo in front） |
+| 失焦收起 | 点击主窗口后浮窗隐藏（blur → hide） |
+| toggle 全循环 | 开 → 失焦收起 → 再开（修复路径）→ toggle 关，全部通过 |
+| Esc 收起 | Escape 键合成后浮窗隐藏 |
+| 右键菜单 | 左右键分流正确，系统菜单三项照旧（14-rightclick-menu.png） |
+| 退出按钮 | 浮窗退出 → 进程干净退出 + 引擎 stop_request 日志 |
+
+已知差异与待验项：
+
+- 激活式浮窗（方案 A）：打开浮窗会激活应用（fork show() 内
+  NSApp.activate，Spotlight 式）；不抢焦点的 NSPanel 形态留作后续打磨
+  （需 vendor/patch fork）。
+- 性能实测（2026-11-09，同机）：热开 114–147ms（含 ~60ms 合成点击开销）；
+  debug 冷首开 ~4.9s（子引擎懒启动 + JIT，AOT release 待实机复测）；
+  浮窗开 / 关空闲 CPU 均 0%；内存 debug ~514MB / release ~76MB（双引擎
+  debug 开销为主）。已做微优化：托盘菜单构建一次复用、首 show 的
+  isHidden 补偿检查门控到仅首开。
+- 全屏 Space 表现：fork 子窗口钉死 collectionBehavior
+  [.moveToActiveSpace, .fullScreenPrimary]，浮窗（level=.floating）在
+  原生全屏应用之上的呈现未实测；必要时补 .fullScreenAuxiliary。
+- fork setFrame 带 `animate: true`：浮窗每次定位有短动画，观感可接受；
+  fork 无关闭动画的 API。
+- 首次推送的 "FlutterPlatformMessageCreateResponseHandle" 警告（子引擎
+  懒启动竞态）：浮窗内容由 createWindow 参数携带的初始快照兜底，后续
+  推送正常；子引擎启动后未再复现。
+- 浅色模式浮窗、混合 DPI 多屏定位、浮窗在 Hidden Bar 收纳状态下的定位
+  回退，待后续验证。
 
 ## 3. Windows 主程序（源码 0.1.5.27，已安装 0.1.5.27）
 
