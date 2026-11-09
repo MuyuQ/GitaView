@@ -39,7 +39,9 @@ add_definitions(-DUNICODE -D_UNICODE)
 # of modifying this function.
 function(APPLY_STANDARD_SETTINGS TARGET)
   target_compile_features(${TARGET} PUBLIC cxx_std_17)
-  target_compile_options(${TARGET} PRIVATE /W4 /WX /wd"4100")
+  # 源码为 UTF-8（含中文注释）；不加 /utf-8 时中文区域（代码页 936）会按 GBK
+  # 误读并触发 C4819→/WX 失败。必须显式声明，保证任何系统区域都能构建。
+  target_compile_options(${TARGET} PRIVATE /W4 /WX /utf-8 /wd"4100")
   target_compile_options(${TARGET} PRIVATE /EHsc)
   target_compile_definitions(${TARGET} PRIVATE "_HAS_EXCEPTIONS=0")
   target_compile_definitions(${TARGET} PRIVATE "$<$<CONFIG:Debug>:_DEBUG>")

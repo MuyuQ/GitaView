@@ -73,7 +73,10 @@ foreach ($pair in $pairs) {
 }
 
 # 版本来自清单（发布迭代必须递增；同版本原位安装复用旧部署文件）。
-[xml]$manifest = Get-Content "$msixSource\Package.appxmanifest"
+# 清单是 UTF-8 无 BOM：Windows PowerShell 5.1 的 Get-Content 默认按系统 ANSI
+# 代码页解码（中文区域 = 936/GBK），中文 DisplayName 会被读坏导致 XML 解析失败；
+# CI 的 pwsh 7 默认 UTF-8 所以没暴露。显式指定 UTF8 保证任何区域一致。
+[xml]$manifest = Get-Content "$msixSource\Package.appxmanifest" -Raw -Encoding UTF8
 $version = $manifest.Package.Identity.Version
 $identityName = $manifest.Package.Identity.Name
 $outMsix = "$flutterProject\GitaView.Native_${version}_x64.msix"
