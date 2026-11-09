@@ -8,10 +8,15 @@
 // - 子窗口动作回调（flyoutAction）由 main.dart 的通道分发处理；
 // - 窗口尺寸 352 逻辑宽 × 估算高，底边在托盘上方（gap/翻转到下方的规则
 //   在 TrayFlyoutPresentation.position），子窗口按内容自校准高度。
+//
+// 坐标单位：定位纯逻辑输出物理像素；Windows 窗口 API 同单位原样使用，
+// macOS 的 desktop_multi_window fork setFrame/getFrame 以左上原点逻辑点
+// 为单位，经 TrayFlyoutPresentation.nativeFrame 除以缩放换算。
 library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'dart:ui' show Rect;
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
@@ -28,8 +33,15 @@ const double kFlyoutLogicalWidth = 352;
 const double kFlyoutEstimatedLogicalHeight = 420;
 
 final class FlyoutWindowHost {
+  FlyoutWindowHost({this.onWindowCreated});
+
+  /// 子窗口首次创建后的宿主侧收尾（macOS：styleFlyoutWindow 调整浮窗形态）。
+  final Future<void> Function()? onWindowCreated;
+
   WindowController? _window;
   bool _visible = false;
+  bool _styled = false;
+  bool _firstShowChecked = false;
 
   bool get isVisible => _visible;
 
@@ -38,7 +50,11 @@ final class FlyoutWindowHost {
     required TrayContext tray,
     required SummarySnapshot? summary,
   }) async {
-    if (_visible) {
+    // 以子窗口真实可见状态为准：子窗口失焦会自藏（flyout_app 监听 blur），
+    // 本地 _visible 缓存随之过时——若按缓存 toggle，下一次点击会走 hide
+    // 分支导致浮窗"打不开"（Windows / macOS 同款竞态）。
+    final bool hidden = _window == null || await _window!.isHidden();
+    if (!hidden) {
       await hide();
       return;
     }
@@ -50,8 +66,17 @@ final class FlyoutWindowHost {
     required TrayContext tray,
     required SummarySnapshot? summary,
   }) async {
-    _window ??= await DesktopMultiWindow.createWindow(
-        summary == null ? '' : jsonEncode(summary.toJson()));
+    if (_window == null) {
+      _window = await DesktopMultiWindow.createWindow(
+          summary == null ? '' : jsonEncode(summary.toJson()));
+      if (Platform.isMacOS) {
+        // 浮窗形态收尾仅 macOS 需要：fork 的 resizable/setMovable 是 macOS
+        // 专属方法（Windows 侧回 NotImplemented）；Windows 子窗口本身即为
+        // 无边框弹出窗。
+        await _window!.resizable(false);
+        await _window!.setMovable(false);
+      }
+    }
     final scale = tray.scale;
     final width = kFlyoutLogicalWidth * scale;
     final height = kFlyoutEstimatedLogicalHeight * scale;
@@ -62,10 +87,33 @@ final class FlyoutWindowHost {
       height.round(),
       scale,
     );
-    await _window!.setFrame(
-        Rect.fromLTWH(position.x.toDouble(), position.y.toDouble(), width, height));
+    final frame = TrayFlyoutPresentation.nativeFrame(
+      position: position,
+      width: width.round(),
+      height: height.round(),
+      scale: scale,
+      logicalUnits: Platform.isMacOS,
+    );
+    await _window!
+        .setFrame(Rect.fromLTWH(frame.x, frame.y, frame.width, frame.height));
     await _window!.show();
+    if (Platform.isMacOS && !_firstShowChecked) {
+      // fork 的 FlutterWindowInner 覆写 order：每个子窗口首次 order 会被
+      // hiddenSubWindowAtLaunch 强制隐藏一次（per-window 防启动闪烁旗标）。
+      // 首 show 被吞掉时补一次——旗标 per-window 只命中一次，后续 show
+      // 不再做 isHidden 往返。
+      _firstShowChecked = true;
+      if (await _window!.isHidden()) {
+        await _window!.show();
+      }
+    }
     _visible = true;
+    if (Platform.isMacOS && !_styled) {
+      // 标题栏按钮簇在窗口首次上屏后才实例化——创建时 standardWindowButton
+      // 链为空，隐藏无效；上屏后再收尾（仅一次，样式随窗口保持）。
+      await onWindowCreated?.call();
+      _styled = true;
+    }
     await push(summary);
   }
 
@@ -79,7 +127,7 @@ final class FlyoutWindowHost {
 
   Future<void> hide() async {
     final window = _window;
-    if (window == null || !_visible) return;
+    if (window == null) return;
     await window.hide();
     _visible = false;
   }

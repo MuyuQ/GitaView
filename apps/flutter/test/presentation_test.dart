@@ -14,12 +14,14 @@
 //   无远端 vs 未比较的区分；另补充 14 个错误码映射与 relationRow 全分支
 //   （C# 侧 ErrorTextFacts.cs 不存在，文案表来自 ErrorText.cs 本体）。
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gitaview/contracts/contracts.dart';
 import 'package:gitaview/presentation/error_text.dart';
 import 'package:gitaview/presentation/main_window_close_policy.dart';
 import 'package:gitaview/presentation/protocol_navigation.dart';
+import 'package:gitaview/presentation/ui_preferences.dart';
 import 'package:gitaview/presentation/repository_filter_presentation.dart';
 import 'package:gitaview/presentation/settings_edit_request.dart';
 import 'package:gitaview/presentation/settings_group_presentation.dart';
@@ -223,6 +225,30 @@ void main() {
           1,
         ),
         (x: 1924, y: 88),
+      );
+    });
+
+    test('nativeFrame：Windows 物理像素原样，macOS 按缩放除回逻辑点', () {
+      const position = (x: 1424, y: 48);
+      expect(
+        TrayFlyoutPresentation.nativeFrame(
+          position: position,
+          width: 500,
+          height: 300,
+          scale: 1.25,
+          logicalUnits: false,
+        ),
+        (x: 1424.0, y: 48.0, width: 500.0, height: 300.0),
+      );
+      expect(
+        TrayFlyoutPresentation.nativeFrame(
+          position: position,
+          width: 704,
+          height: 420,
+          scale: 2.0,
+          logicalUnits: true,
+        ),
+        (x: 712.0, y: 24.0, width: 352.0, height: 210.0),
       );
     });
   });
@@ -657,6 +683,33 @@ void main() {
       expect(view.behind, isNull);
       expect(view.hasOrigin, isNull);
       expect(view.hasCommit, isNull);
+    });
+  });
+
+  group('UiPreferences（宿主本地主题偏好）', () {
+    test('默认 system；保存后可读回；损坏文件回退 system', () async {
+      final dir = Directory.systemTemp.createTempSync('gv_ui_prefs');
+      addTearDown(() {
+        try {
+          dir.deleteSync(recursive: true);
+        } on FileSystemException {
+          // isolate 退出前目录占用可忽略。
+        }
+      });
+      final prefs = UiPreferences(dir);
+      expect(await prefs.loadThemeMode(), 'system', reason: '无文件回退 system');
+
+      await prefs.saveThemeMode('dark');
+      expect(await prefs.loadThemeMode(), 'dark');
+      await prefs.saveThemeMode('light');
+      expect(await prefs.loadThemeMode(), 'light');
+
+      // 损坏文件（非法 JSON / 未知取值）→ system。
+      File('${dir.path}/ui-preferences.json').writeAsStringSync('{broken');
+      expect(await prefs.loadThemeMode(), 'system');
+      File('${dir.path}/ui-preferences.json')
+          .writeAsStringSync('{"themeMode":"pink"}');
+      expect(await prefs.loadThemeMode(), 'system');
     });
   });
 }

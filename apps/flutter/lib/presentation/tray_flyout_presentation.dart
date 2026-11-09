@@ -109,6 +109,35 @@ abstract final class TrayFlyoutPresentation {
     return integral.isEven ? integral : integral + 1;
   }
 
+  /// 物理像素定位结果 → 宿主窗口 API 坐标（含宽高）。
+  ///
+  /// Windows：物理像素原样（Win32 MoveWindow 语义）；macOS：desktop_multi_window
+  /// fork 的 setFrame/getFrame 以左上原点逻辑点为单位，按所在屏缩放除回。
+  /// [position] 是 [TrayFlyoutPresentation.position] 的返回值；
+  /// [width] / [height] 是估算的物理宽高。
+  static ({double x, double y, double width, double height}) nativeFrame({
+    required ({int x, int y}) position,
+    required int width,
+    required int height,
+    required double scale,
+    required bool logicalUnits,
+  }) {
+    if (!logicalUnits) {
+      return (
+        x: position.x.toDouble(),
+        y: position.y.toDouble(),
+        width: width.toDouble(),
+        height: height.toDouble(),
+      );
+    }
+    return (
+      x: position.x / scale,
+      y: position.y / scale,
+      width: width / scale,
+      height: height / scale,
+    );
+  }
+
   /// C# `Math.Clamp(int, int, int)`；调用方保证 lower <= upper（与 C# 相同，
   /// 由 `Math.Max` 下界保护保证）。
   static int _clamp(int value, int lower, int upper) {

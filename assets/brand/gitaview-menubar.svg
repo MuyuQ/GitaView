@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <title>GitaView menu bar template icon</title>
+  <!-- gitaview.svg 分支字形（128 viewBox ÷ 8）的单色模板变体：左列节点 +
+       右上节点，曲线自右上汇入左列。黑色 + template 渲染，由系统适配
+       深浅菜单栏。栅格化 16px(@1x) / 32px(@2x) 入
+       apps/flutter/macos/Runner/Assets.xcassets/MenuBarIcon.imageset。 -->
+  <path d="M5.75 4.625V11.375M10.25 4.625V6.125C10.25 8.625 5.75 7.625 5.75 10.125" fill="none" stroke="#000000" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="5.75" cy="4.25" r="1.375" fill="#000000"/>
+  <circle cx="5.75" cy="11.75" r="1.375" fill="#000000"/>
+  <circle cx="10.25" cy="4.25" r="1.375" fill="#000000"/>
+</svg>

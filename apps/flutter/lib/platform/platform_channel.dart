@@ -1,6 +1,6 @@
-// Windows 平台通道封装：gv_platform C++ 插件（runner）+ 目录选择器。
+// 平台通道封装：托盘 / 路径 / 目录选择器。
 //
-// 对应 C# 宿主：
+// Windows：runner 的 gv_platform C++ 插件，对应 C# 宿主：
 // - TrayWindow.cs —— 托盘注册 / 图标矩形 / 左键回调 / 右键菜单动作回调；
 // - TrayFlyoutWindow 定位输入 —— 图标矩形 + 所在显示器工作区（物理像素）
 //   与 DPI 缩放（C# XamlRoot.RasterizationScale 的对应物）；
@@ -9,8 +9,10 @@
 // - Launcher / FolderPicker —— ShellExecute 打开目录 / 浏览器安全 URL；
 //   目录选择用 file_selector（Windows 实现为系统对话框）。
 //
-// 本通道封装 Windows runner 的 gv_platform 插件；main.dart 已用
-// Platform.isWindows 守护，macOS 走各自的系统路径（open / file_selector）。
+// macOS：同通道由 runner 的 GvPlatformPlugin.swift 实现托盘 + 浮窗子集
+// （菜单栏状态项：左键浮窗 / 右键系统菜单；LocalState / StartupTask /
+// openTarget 在 macOS 走各自的系统路径：open / file_selector）。
+// main.dart 按平台守护各方法；托盘 / 浮窗方法两端共用同一契约。
 library;
 
 import 'package:file_selector/file_selector.dart';
@@ -47,7 +49,8 @@ class GvPlatformChannel {
     return _channel.invokeMethod(method, arguments);
   }
 
-  /// 注册托盘回调。必须在 Windows 引擎就绪后调用一次。
+  /// 注册托盘回调。托盘注册成功后调用一次（两端共用：左键
+  /// onTrayLeftClick 开合浮窗，右键菜单动作经 onTrayMenuAction 回传）。
   void setHandlers({
     required Future<void> Function() onTrayLeftClick,
     required Future<void> Function(int action) onTrayMenuAction,
@@ -108,6 +111,12 @@ class GvPlatformChannel {
   Future<int> startupTaskState() async {
     final result = await invoke('getStartupTaskState');
     return (result as num?)?.toInt() ?? -1;
+  }
+
+  /// 浮窗子窗口样式（macOS 专属）：隐藏 fork 第二窗口的标题栏按钮簇并
+  /// 浮于普通窗口之上。Windows 浮窗样式由宿主窗口自负责，不要调用。
+  Future<void> styleFlyoutWindow() async {
+    await invoke('styleFlyoutWindow');
   }
 
   /// 打开目录 / 远端 URL（返回是否成功；失败时调用方反馈"未知错误"）。

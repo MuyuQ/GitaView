@@ -7,8 +7,9 @@
 //   协议激活 / 二次启动都只导航已有实例，不创建第二个引擎；
 // - 深链 gitaview-native://：冷启动请求缓存，就绪后经 ProtocolNavigation
 //   派发（未知 / 已删 ID 回总列表）；热请求立即派发；
-// - 托盘（gv_platform C++ 插件）：左键切换浮窗，右键菜单
-//   打开主程序 / 刷新 / 退出；托盘不可用时回退"关闭 = 退出"；
+// - 托盘（gitaview/platform 通道）：Windows = gv_platform C++ 插件，
+//   macOS = 菜单栏状态项（GvPlatformPlugin.swift）；两端左键开合浮窗、
+//   右键菜单（打开主程序 / 刷新 / 退出）；托盘不可用时同回退"关闭 = 退出"；
 // - 浮窗 = desktop_multi_window 第二窗口（flyout_app.dart 子 isolate）；
 // - 关闭策略接线 MainWindowClosePolicy：托盘可用 = 隐藏驻留，否则优雅退出；
 // - 页面用 IndexedStack 常驻组件树，等价 C# NavigationCacheMode=Required：
@@ -23,7 +24,7 @@ library;
 // ignore_for_file: deprecated_member_use
 
 import 'dart:async' show StreamController, StreamSubscription, unawaited;
-import 'dart:io' show Directory, Platform, Process;
+import 'dart:io' show Directory, File, Platform, Process, exit;
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:file_selector/file_selector.dart' show getDirectoryPath;
@@ -42,6 +43,7 @@ import 'flyout/flyout_host.dart';
 import 'platform/platform_channel.dart';
 import 'presentation/main_window_close_policy.dart';
 import 'presentation/protocol_navigation.dart';
+import 'presentation/ui_preferences.dart';
 import 'ui/main_page.dart';
 import 'ui/settings_page.dart';
 import 'ui/theme/tokens.dart';
@@ -105,6 +107,9 @@ Future<void> main(List<String> args) async {
       );
     } else {
       unawaited((() async {
+        // macOS 同样采用沉浸式标题栏（用户反馈）：系统标题条隐藏，红绿灯
+        // 覆盖在内容上（窗口按钮保留），拖拽走页面工具栏的 DragToMoveArea。
+        await wm.windowManager.setTitleBarStyle(wm.TitleBarStyle.hidden);
         // window_manager 会在初始化时隐藏窗口：macOS 上必须显式 show。
         await wm.windowManager.setSize(const Size(840, 520));
         await wm.windowManager.setMinimumSize(const Size(640, 400));
@@ -158,14 +163,30 @@ Future<void> main(List<String> args) async {
     }
   }
 
+  // —— 界面偏好（宿主本地持久化；主题不入 settings.json 契约）——
+  final uiPreferences =
+      UiPreferences(Directory(_uiPreferencesRoot(dataDirectory)));
+  final initialThemeMode = switch (await uiPreferences.loadThemeMode()) {
+    'light' => ThemeMode.light,
+    'dark' => ThemeMode.dark,
+    _ => ThemeMode.system,
+  };
+
   runApp(GitaViewApp(
     service: service,
     platform: platform,
     coldStartLink: coldStartLink,
     hotLinks: hotLinks.stream,
     startupStateText: startupText,
+    uiPreferences: uiPreferences,
+    initialThemeMode: initialThemeMode,
   ));
 }
+
+/// 界面偏好文件所在根：数据目录（`<root>/data`）的上一级。
+String _uiPreferencesRoot(String dataDirectory) => dataDirectory.isEmpty
+    ? _resolveAppDataRoot().path
+    : File(dataDirectory).parent.path;
 
 /// 非 Windows 开发环境的数据根（保证绝对路径且可写）。
 Directory _resolveAppDataRoot() {
@@ -191,6 +212,10 @@ class GitaViewApp extends StatefulWidget {
   final Stream<String> hotLinks;
   final String startupStateText;
 
+  /// 宿主本地 UI 偏好（主题持久化；不入 settings.json 契约）。
+  final UiPreferences uiPreferences;
+  final ThemeMode initialThemeMode;
+
   const GitaViewApp({
     super.key,
     required this.service,
@@ -198,6 +223,8 @@ class GitaViewApp extends StatefulWidget {
     required this.coldStartLink,
     required this.hotLinks,
     required this.startupStateText,
+    required this.uiPreferences,
+    required this.initialThemeMode,
   });
 
   @override
@@ -231,7 +258,38 @@ class _GitaViewAppState extends State<GitaViewApp>
   /// 页面索引：0 = 状态明细，1 = 设置（托盘菜单 / 深链也可切换）。
   final ValueNotifier<int> pageIndex = ValueNotifier<int>(0);
 
-  late final FlyoutWindowHost flyout = FlyoutWindowHost();
+  /// 主题模式（设置页「外观」切换；宿主本地持久化）。
+  ThemeMode get themeMode => _themeMode;
+
+  late ThemeMode _themeMode = widget.initialThemeMode;
+
+  /// 切换主题并持久化；Windows 下 mica 背景跟随生效后的明暗。
+  Future<void> setThemeMode(ThemeMode mode) async {
+    if (_themeMode == mode) return;
+    setState(() => _themeMode = mode);
+    await widget.uiPreferences.saveThemeMode(
+        switch (mode) {
+          ThemeMode.light => 'light',
+          ThemeMode.dark => 'dark',
+          ThemeMode.system => 'system',
+        },
+    );
+    if (Platform.isWindows) {
+      unawaited(_applyMica(
+          mode == ThemeMode.system
+              ? SchedulerBinding
+                  .instance.platformDispatcher.platformBrightness
+              : (mode == ThemeMode.dark ? Brightness.dark : Brightness.light),
+      ));
+    }
+  }
+
+  late final FlyoutWindowHost flyout = FlyoutWindowHost(
+    // macOS：子窗口创建后由宿主插件调浮窗形态收尾；Windows 子窗口本身
+    // 即无边框弹出窗，无需调整。
+    onWindowCreated:
+        Platform.isMacOS ? widget.platform.styleFlyoutWindow : null,
+  );
   final ProtocolNavigation _protocol = ProtocolNavigation();
   bool _exitRequested = false;
   bool _trayAvailable = false;
@@ -242,18 +300,19 @@ class _GitaViewAppState extends State<GitaViewApp>
     WidgetsBinding.instance.addObserver(this);
     // 浮窗推送跟随与深链就绪与平台无关；Windows 专属通道见下方分支。
     widget.service.addListener(_onServiceChanged);
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isMacOS) {
       // 先拦截系统关闭，交给 MainWindowClosePolicy 决定隐藏还是退出
-      // （对应 C# AppWindow.Closing → HandleMainWindowClose）。
+      // （对应 C# AppWindow.Closing → HandleMainWindowClose；macOS 托盘
+      // 驻留时红绿灯关闭同样隐藏，不可用时策略转优雅退出）。
       wm.windowManager.setPreventClose(true).then((_) {
         wm.windowManager.addListener(_CloseInterceptor(this));
       });
       // 引擎启动 + 托盘 + 深链就绪（对应 C# App.OnLaunched 序列）。
       unawaited(_bootstrap());
-      // 子窗口动作回传（打开 / 刷新 / 退出）。
+      // 子窗口动作回传（打开 / 刷新 / 退出），两端共用同一浮窗链路。
       DesktopMultiWindow.setMethodHandler(_onFlyoutAction);
     } else {
-      // 非 Windows 开发环境同样启动引擎（共享核心在 macOS CI 有覆盖）。
+      // 其余平台（Linux 开发）同样启动引擎（共享核心在 macOS CI 有覆盖）。
       unawaited(widget.service.start().then((_) {
         return controller.requery();
       }).then((_) => _registerProtocolReady()));
@@ -292,10 +351,13 @@ class _GitaViewAppState extends State<GitaViewApp>
     await widget.service.start();
     await controller.requery();
     _registerProtocolReady();
-    // 托盘注册：失败则回退"关闭 = 退出"（C# 托盘创建失败同样回退）。
+    // 托盘注册（Windows = gv_platform，macOS = 菜单栏状态项）：失败则回退
+    // "关闭 = 退出"（C# 托盘创建失败同样回退）。点击语义两端一致：左键
+    // onTrayLeftClick 开合浮窗，右键系统菜单。Exception 而非仅
+    // PlatformException：通道无 handler 时 invokeMethod 抛 MissingPluginException。
     try {
       _trayAvailable = await widget.platform.ensureTray();
-    } on PlatformException {
+    } on Exception {
       _trayAvailable = false;
     }
     if (_trayAvailable) {
@@ -311,8 +373,9 @@ class _GitaViewAppState extends State<GitaViewApp>
     final context = widget.platform.trayContext();
     try {
       await flyout.toggle(tray: await context, summary: widget.service.summary);
-    } on PlatformException {
-      // 托盘上下文短暂不可读：忽略本次点击。
+    } on Exception {
+      // 托盘上下文短暂不可读 / 子窗口通道异常（createWindow 失败抛
+      // MissingPluginException 等）：忽略本次点击。
     }
   }
 
@@ -348,7 +411,7 @@ class _GitaViewAppState extends State<GitaViewApp>
   }
 
   Future<void> _showMainWindow() async {
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isMacOS) {
       await wm.windowManager.show();
       await wm.windowManager.focus();
     }
@@ -373,11 +436,11 @@ class _GitaViewAppState extends State<GitaViewApp>
     }
   }
 
-  /// 优雅退出：移除托盘与浮窗 → 停止引擎 → 销毁窗口（C# App.RequestExit 序列）。
+  /// 优雅退出：移除托盘与浮窗 → 停止引擎 → 结束进程（C# App.RequestExit 序列）。
   Future<void> _requestExit() async {
     if (_exitRequested) return;
     _exitRequested = true;
-    if (Platform.isWindows) {
+    if (Platform.isWindows || Platform.isMacOS) {
       unawaited(widget.platform.removeTray());
       await flyout.dispose();
       DesktopMultiWindow.setMethodHandler(null);
@@ -386,6 +449,9 @@ class _GitaViewAppState extends State<GitaViewApp>
     await widget.service.requestExit();
     if (Platform.isWindows) {
       await wm.windowManager.destroy();
+    } else if (Platform.isMacOS) {
+      // 引擎已优雅停止、托盘已移除；macOS 无"关窗即退出"语义，直接收尾。
+      exit(0);
     }
   }
 
@@ -404,7 +470,7 @@ class _GitaViewAppState extends State<GitaViewApp>
   Widget build(BuildContext context) {
     return FluentApp(
       title: 'GitaView',
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
       home: _HomeShell(state: this),
@@ -536,7 +602,7 @@ class _PageHostState extends State<_PageHost> {
             MainPage(
               controller: controller,
               onOpenSettings: () => widget.state.pageIndex.value = 1,
-              dragToolbar: Platform.isWindows,
+              dragToolbar: Platform.isWindows || Platform.isMacOS,
               captionBar: Platform.isWindows
                   ? wm.WindowCaption(
                       brightness: FluentTheme.of(context).brightness,
@@ -547,6 +613,8 @@ class _PageHostState extends State<_PageHost> {
             SettingsPage(
               controller: controller,
               onBack: () => widget.state.pageIndex.value = 0,
+              themeMode: widget.state.themeMode,
+              onThemeModeChanged: widget.state.setThemeMode,
             ),
           ],
         );

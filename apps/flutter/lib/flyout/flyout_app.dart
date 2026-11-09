@@ -14,6 +14,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:desktop_multi_window/desktop_multi_window.dart';
 import 'package:fluent_ui/fluent_ui.dart';
@@ -174,16 +175,20 @@ class _FlyoutScaffoldState extends State<_FlyoutScaffold> {
     if (contentContext == null || !mounted) return;
     final logicalHeight = contentContext.size?.height;
     if (logicalHeight == null || logicalHeight <= 0) return;
-    final physicalHeight = logicalHeight * View.of(context).devicePixelRatio;
+    // 窗口 API 单位：macOS（fork）为左上原点逻辑点，直接用逻辑高；
+    // Windows 为物理像素，按设备像素比放大。
+    final nativeHeight = Platform.isMacOS
+        ? logicalHeight
+        : logicalHeight * View.of(context).devicePixelRatio;
     final controller = WindowController.fromWindowId(widget.windowId);
     final frame = await controller.getFrame();
-    if ((frame.height - physicalHeight).abs() < 1.0) return;
-    // 底边保持不动，高度收缩 / 扩张到实际内容高度（物理像素）。
+    if ((frame.height - nativeHeight).abs() < 1.0) return;
+    // 底边保持不动，高度收缩 / 扩张到实际内容高度。
     await controller.setFrame(Rect.fromLTWH(
       frame.left,
-      frame.bottom - physicalHeight,
+      frame.bottom - nativeHeight,
       frame.width,
-      physicalHeight,
+      nativeHeight,
     ));
   }
 }
