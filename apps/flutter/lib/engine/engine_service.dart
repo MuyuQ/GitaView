@@ -556,6 +556,12 @@ SettingsSaveInput _parseSettingsSave(Map<String, Object?> args) {
             groupId: assignment['groupId'] as String?,
           ))
       .toList();
+  final repoAliases = (settings['repoAliases'] as List<Object?>? ?? const [])
+      .map((assignment) => RepoAliasAssignment(
+            repoId: (assignment as Map<String, Object?>)['repoId']! as String,
+            alias: assignment['alias'] as String?,
+          ))
+      .toList();
   final refreshRaw = settings['refresh']! as Map<String, Object?>;
   return SettingsSaveInput(
     expectedRevision: expectedRevision,
@@ -567,6 +573,7 @@ SettingsSaveInput _parseSettingsSave(Map<String, Object?> args) {
         intervalMinutes: refreshRaw['intervalMinutes']! as int,
       ),
       repoGroups: repoGroups,
+      repoAliases: repoAliases,
     ),
   );
 }

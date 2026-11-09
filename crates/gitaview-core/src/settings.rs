@@ -37,6 +37,10 @@ pub struct RepoSettings {
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_id: Option<String>,
+    /// 用户设置的显示别名（帮助快速识别）。空 / 空白 = 未设置；
+    /// 界面在设置时显示别名，未设置时显示目录名。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
 }
 
 impl RepoSettings {
@@ -81,7 +85,7 @@ impl Default for SettingsData {
 }
 
 /// settings_save 可编辑字段的完整快照：分组列表（增删改）、仓库归属覆盖、
-/// 默认分组与刷新偏好。不包含仓库增删与路径。
+/// 仓库别名覆盖、默认分组与刷新偏好。不包含仓库增删与路径。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SettingsEditable {
@@ -92,6 +96,9 @@ pub struct SettingsEditable {
     /// 仅覆盖列出的仓库的归属；未列出的仓库保持现状。
     #[serde(default)]
     pub repo_groups: Vec<RepoGroupAssignment>,
+    /// 仅覆盖列出的仓库的别名；未列出的仓库保持现状。null = 清除别名。
+    #[serde(default)]
+    pub repo_aliases: Vec<RepoAliasAssignment>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +108,31 @@ pub struct RepoGroupAssignment {
     /// null = 未分组。
     #[serde(default)]
     pub group_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RepoAliasAssignment {
+    pub repo_id: String,
+    /// null / 空白 = 清除别名。
+    #[serde(default)]
+    pub alias: Option<String>,
+}
+
+/// 别名上限（字符数）。超限 → INVALID_ARGUMENT。
+pub const ALIAS_MAX_CHARS: usize = 64;
+
+/// 规范化别名输入：去除首尾空白；空白串 = 未设置（None）。
+fn normalize_alias(raw: Option<&str>) -> Result<Option<String>, CoreError> {
+    let Some(raw) = raw else { return Ok(None) };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.chars().count() > ALIAS_MAX_CHARS {
+        return Err(CoreError::InvalidArgument);
+    }
+    Ok(Some(trimmed.to_string()))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -235,6 +267,15 @@ impl SettingsService {
                     .clone()
                     .filter(|id| candidate.groups.iter().any(|group| group.id == *id));
             }
+            for assignment in &editable.repo_aliases {
+                let repo = candidate
+                    .repos
+                    .iter_mut()
+                    .find(|repo| repo.id == assignment.repo_id)
+                    .ok_or(CoreError::InvalidArgument)?;
+                // 别名规范化：去首尾空白、空白 = 清除、超长拒绝。
+                repo.alias = normalize_alias(assignment.alias.as_deref())?;
+            }
             // 参照完整性对全部仓库生效：删除分组时设置页只提交空 repoGroups，
             // 未列出的仓库也不能保留指向已删分组的悬挂归属。
             for repo in &mut candidate.repos {
@@ -285,6 +326,7 @@ impl SettingsService {
                     .to_string(),
                 path: canonical.to_string_lossy().into_owned(),
                 group_id: group_id.map(str::to_string),
+                alias: None,
             };
             let mut candidate = current.clone();
             candidate.repos.push(record.clone());
@@ -467,5 +509,128 @@ mod tests {
             "appearance": { "allowWidgetDrag": true }
         });
         assert!(serde_json::from_value::<SettingsData>(legacy_widget).is_err());
+    }
+
+    #[test]
+    fn save_applies_repo_aliases_with_normalization_and_validation() {
+        fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+            let dir = std::env::temp_dir().join(format!(
+                "{name}_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&dir).unwrap();
+            dir
+        }
+        let temp = unique_temp_dir("gitaview_settings_alias");
+        let service = SettingsService::open(&temp).unwrap().service;
+        // 先放一个仓库（直接注入内存态，路径校验不在本测试范围）。
+        service
+            .mutate(|current| {
+                let mut candidate = current.clone();
+                candidate.repos.push(RepoSettings {
+                    id: "repo-1".into(),
+                    name: "docs-site".into(),
+                    path: "/sample/docs-site".into(),
+                    group_id: None,
+                    alias: None,
+                });
+                Ok(candidate)
+            })
+            .unwrap();
+        let revision = service.get().revision;
+
+        // 设置别名：去除首尾空白；空串 = 清除；未知仓库 / 超长拒绝。
+        let saved = service
+            .save(SettingsSaveInput {
+                expected_revision: revision,
+                settings: SettingsEditable {
+                    groups: service.get().groups.clone(),
+                    default_group_id: service.get().default_group_id.clone(),
+                    refresh: service.get().refresh,
+                    repo_groups: vec![],
+                    repo_aliases: vec![RepoAliasAssignment {
+                        repo_id: "repo-1".into(),
+                        alias: Some("  文档站  ".into()),
+                    }],
+                },
+            })
+            .unwrap();
+        assert_eq!(saved.repos[0].alias.as_deref(), Some("文档站"));
+        assert_eq!(saved.revision, revision + 1);
+
+        // 空白别名 = 清除。
+        let cleared = service
+            .save(SettingsSaveInput {
+                expected_revision: saved.revision,
+                settings: SettingsEditable {
+                    groups: saved.groups.clone(),
+                    default_group_id: saved.default_group_id.clone(),
+                    refresh: saved.refresh,
+                    repo_groups: vec![],
+                    repo_aliases: vec![RepoAliasAssignment {
+                        repo_id: "repo-1".into(),
+                        alias: Some("   ".into()),
+                    }],
+                },
+            })
+            .unwrap();
+        assert_eq!(cleared.repos[0].alias, None);
+
+        // 未知仓库 → INVALID_ARGUMENT。
+        let error = service
+            .save(SettingsSaveInput {
+                expected_revision: cleared.revision,
+                settings: SettingsEditable {
+                    groups: cleared.groups.clone(),
+                    default_group_id: cleared.default_group_id.clone(),
+                    refresh: cleared.refresh,
+                    repo_groups: vec![],
+                    repo_aliases: vec![RepoAliasAssignment {
+                        repo_id: "repo-missing".into(),
+                        alias: Some("x".into()),
+                    }],
+                },
+            })
+            .unwrap_err();
+        assert!(matches!(error, CoreError::InvalidArgument));
+
+        // 超长别名 → INVALID_ARGUMENT。
+        let long = "长".repeat(ALIAS_MAX_CHARS + 1);
+        let error = service
+            .save(SettingsSaveInput {
+                expected_revision: cleared.revision,
+                settings: SettingsEditable {
+                    groups: cleared.groups.clone(),
+                    default_group_id: cleared.default_group_id.clone(),
+                    refresh: cleared.refresh,
+                    repo_groups: vec![],
+                    repo_aliases: vec![RepoAliasAssignment {
+                        repo_id: "repo-1".into(),
+                        alias: Some(long),
+                    }],
+                },
+            })
+            .unwrap_err();
+        assert!(matches!(error, CoreError::InvalidArgument));
+    }
+
+    #[test]
+    fn settings_save_input_deserializes_repo_aliases_from_camel_case_json() {
+        // 与 Dart 端 SettingsSaveInput.toJson 的形状逐字段一致（FFI 输入）。
+        let json = r#"{"expectedRevision":2,"settings":{"groups":[{"id":"g1","name":"工作"}],"defaultGroupId":null,"refresh":{"enabled":true,"intervalMinutes":15},"repoGroups":[],"repoAliases":[{"repoId":"repo-1","alias":"文档站"}]}}"#;
+        let input: SettingsSaveInput =
+            serde_json::from_str(json).expect("repoAliases camelCase 反序列化必须成功");
+        let aliases = &input.settings.repo_aliases;
+        assert_eq!(aliases.len(), 1);
+        assert_eq!(aliases[0].repo_id, "repo-1");
+        assert_eq!(aliases[0].alias.as_deref(), Some("文档站"));
+        // alias 缺省 = null（清除）。
+        let json_cleared = r#"{"expectedRevision":3,"settings":{"groups":[],"refresh":{"enabled":false,"intervalMinutes":5},"repoAliases":[{"repoId":"repo-1"}]}}"#;
+        let cleared: SettingsSaveInput = serde_json::from_str(json_cleared).unwrap();
+        assert_eq!(cleared.settings.repo_aliases[0].alias, None);
     }
 }

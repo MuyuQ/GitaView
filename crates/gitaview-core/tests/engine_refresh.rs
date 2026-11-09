@@ -462,6 +462,7 @@ fn assert_config_change_preserves_failed_refresh(change: &str) {
                         default_group_id: settings.default_group_id,
                         refresh: settings.refresh,
                         repo_groups: vec![],
+                        repo_aliases: vec![],
                     },
                 })
                 .unwrap();
@@ -579,6 +580,7 @@ fn resume_coalesces_into_single_request_and_manual_mode_stays_manual() {
                     interval_minutes: 5,
                 },
                 repo_groups: vec![],
+                repo_aliases: vec![],
             },
         })
         .unwrap();
@@ -953,6 +955,7 @@ fn pending_rows_carry_configured_group_before_first_scan() {
                 default_group_id: None,
                 refresh: gitaview_core::model::RefreshPolicy::default(),
                 repo_groups: Vec::new(),
+                repo_aliases: Vec::new(),
             },
         })
         .unwrap();
@@ -1002,6 +1005,7 @@ fn delete_group_with_empty_assignments_clears_all_dangling_ownership() {
                 default_group_id: Some("g".into()),
                 refresh: gitaview_core::model::RefreshPolicy::default(),
                 repo_groups: Vec::new(),
+                repo_aliases: Vec::new(),
             },
         })
         .unwrap();
@@ -1022,6 +1026,7 @@ fn delete_group_with_empty_assignments_clears_all_dangling_ownership() {
                 default_group_id: None,
                 refresh: gitaview_core::model::RefreshPolicy::default(),
                 repo_groups: Vec::new(),
+                repo_aliases: Vec::new(),
             },
         })
         .unwrap();

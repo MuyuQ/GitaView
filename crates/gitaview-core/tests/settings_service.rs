@@ -45,6 +45,7 @@ fn editable(groups: Vec<GroupSettings>) -> SettingsEditable {
         default_group_id: None,
         refresh: RefreshPolicy::default(),
         repo_groups: Vec::new(),
+        repo_aliases: Vec::new(),
     }
 }
 
@@ -110,6 +111,7 @@ fn save_requires_expected_revision_and_persists_editable_fields() {
                 repo_id: "repo".into(),
                 group_id: Some("g2".into()),
             }],
+            repo_aliases: vec![],
         },
     };
     let saved = service.save(input).unwrap();
@@ -386,6 +388,7 @@ fn group_rules_normalize_deletions_and_default_group() {
                     repo_id: "repo".into(),
                     group_id: Some("g1".into()),
                 }],
+                repo_aliases: vec![],
             },
         })
         .unwrap();
@@ -402,6 +405,7 @@ fn group_rules_normalize_deletions_and_default_group() {
                     repo_id: "repo".into(),
                     group_id: Some("g1".into()),
                 }],
+                repo_aliases: vec![],
             },
         })
         .unwrap();
@@ -444,6 +448,7 @@ fn save_rejects_unknown_repo_and_refresh_out_of_range() {
                     repo_id: "ghost".into(),
                     group_id: None,
                 }],
+                repo_aliases: vec![],
             },
         }),
         Err(CoreError::InvalidArgument)
@@ -461,6 +466,7 @@ fn save_rejects_unknown_repo_and_refresh_out_of_range() {
                         interval_minutes: interval,
                     },
                     repo_groups: vec![],
+                    repo_aliases: vec![],
                 },
             }),
             Err(CoreError::InvalidArgument),
@@ -581,6 +587,7 @@ fn repeated_mutations_do_not_lose_completed_writes() {
                 default_group_id: Some("g2".into()),
                 refresh: RefreshPolicy::default(),
                 repo_groups: vec![],
+                repo_aliases: vec![],
             },
         })
         .unwrap();

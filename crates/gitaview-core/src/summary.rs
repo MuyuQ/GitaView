@@ -101,7 +101,8 @@ pub fn project_summary(snapshot: &AppSnapshot) -> SummarySnapshot {
         if attention_rank(repo.read_state, repo.relation).is_some() {
             attention.push(SummaryRepo {
                 id: repo.id.clone(),
-                name: repo.name.clone(),
+                // 别名优先：浮窗行与主界面展示同一显示名。
+                name: repo.alias.clone().unwrap_or_else(|| repo.name.clone()),
                 read_state: repo.read_state,
                 relation: repo.relation,
                 error_code: repo.error.as_ref().map(|error| error.code.clone()),
@@ -398,5 +399,18 @@ mod tests {
         assert_eq!(summary.refresh_error_code.as_deref(), Some("SETTINGS_IO"));
         assert_eq!(summary.counts.remote_ahead, 1);
         assert_eq!(summary.attention.len(), 1);
+    }
+
+    #[test]
+    fn attention_rows_prefer_alias_over_name() {
+        let mut row = repo(
+            "repo-docs",
+            "docs-site",
+            ReadState::Ok,
+            Some(Relation::RemoteAhead),
+        );
+        row.alias = Some("文档站".into());
+        let summary = project_summary(&snapshot(vec![row]));
+        assert_eq!(summary.attention[0].name, "文档站");
     }
 }

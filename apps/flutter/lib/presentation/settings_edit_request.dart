@@ -33,6 +33,14 @@ abstract final class SettingsEditRequest {
       _capture(current, current.groups, current.defaultGroupId,
           [RepoGroupAssignment(repoId: repoId, groupId: groupId)]);
 
+  /// 修改单个仓库别名：仅携带这一条别名覆盖（null = 清除）。
+  static SettingsSaveInput forRepoAlias(
+    SettingsData current,
+    String repoId,
+    String? alias,
+  ) =>
+      _captureAlias(current, [RepoAliasAssignment(repoId: repoId, alias: alias)]);
+
   /// 组装保存输入。groups 与 assignments 都做快照复制（对应 C# 的 `[.. groups]`）：
   /// 请求拥有自己的候选列表，调用方随后修改原列表不影响已构造的请求。
   static SettingsSaveInput _capture(
@@ -48,6 +56,22 @@ abstract final class SettingsEditRequest {
           defaultGroupId: defaultGroupId,
           refresh: current.refresh,
           repoGroups: List.of(assignments),
+        ),
+      );
+
+  /// 组装别名保存输入（分组 / 归属保持当前值）。
+  static SettingsSaveInput _captureAlias(
+    SettingsData current,
+    List<RepoAliasAssignment> assignments,
+  ) =>
+      SettingsSaveInput(
+        expectedRevision: current.revision,
+        settings: SettingsEditable(
+          groups: List.of(current.groups),
+          defaultGroupId: current.defaultGroupId,
+          refresh: current.refresh,
+          repoGroups: const [],
+          repoAliases: List.of(assignments),
         ),
       );
 }

@@ -152,6 +152,7 @@ mod tests {
             name: id.into(),
             path: path.to_string_lossy().into_owned(),
             group_id: None,
+            alias: None,
         }
     }
 

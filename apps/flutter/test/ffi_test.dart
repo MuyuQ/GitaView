@@ -109,7 +109,7 @@ void main() {
     expect(() => engine.settingsGet(), throwsA(isA<StateError>()));
   });
 
-  test('settings_save 保存可编辑字段并拒绝过期 revision', () {
+  test('settings_save 保存可编辑字段并拒绝过期 revision', () async {
     final base = _tempDir('settings');
     final engine = _createEngine(native, base);
 
@@ -143,6 +143,39 @@ void main() {
         ),
       ),
     );
+
+    // repoAliases 往返（真实 dylib）：先经 repo_add 注入真实仓库
+    //（repo_groups / repo_aliases 引用未知仓库 = INVALID_ARGUMENT），
+    // 再设置别名 → 重读 → 清除。
+    final repoRoot = _tempDir('settings-repos');
+    final repoPath = await _createUnbornRepo(repoRoot.path, 'docs-site');
+    final added = engine.repoAdd(path: repoPath);
+    final repoId = added.repo.id;
+
+    final withAlias = engine.settingsSave(SettingsSaveInput(
+      expectedRevision: added.settingsRevision,
+      settings: SettingsEditable(
+        groups: const [GroupSettings(id: 'g1', name: '工作')],
+        refresh: const RefreshPolicy(enabled: true, intervalMinutes: 15),
+        repoAliases: [
+          RepoAliasAssignment(repoId: repoId, alias: '  文档站  '),
+        ],
+      ),
+    ));
+    expect(withAlias.repos.firstWhere((r) => r.id == repoId).alias, '文档站',
+        reason: '别名 trim 后经真实 FFI 往返保留');
+    final cleared = engine.settingsSave(SettingsSaveInput(
+      expectedRevision: withAlias.revision,
+      settings: SettingsEditable(
+        groups: const [GroupSettings(id: 'g1', name: '工作')],
+        refresh: const RefreshPolicy(enabled: true, intervalMinutes: 15),
+        repoAliases: [
+          RepoAliasAssignment(repoId: repoId, alias: null),
+        ],
+      ),
+    ));
+    expect(cleared.repos.firstWhere((r) => r.id == repoId).alias, isNull,
+        reason: 'alias null = 清除');
   });
 
   test('非法数据目录路径被拒绝（INVALID_ARGUMENT）', () {

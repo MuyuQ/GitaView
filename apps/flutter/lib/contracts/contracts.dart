@@ -277,6 +277,9 @@ class RepoStatus {
   final String name;
   final String path;
   final String? groupId;
+
+  /// 用户设置的显示别名；null = 未设置（界面回退到 name）。
+  final String? alias;
   final ReadState readState;
   final Relation? relation;
   final String? branch;
@@ -296,6 +299,7 @@ class RepoStatus {
     required this.readState,
     required this.actions,
     this.groupId,
+    this.alias,
     this.relation,
     this.branch,
     this.hasCommit,
@@ -314,6 +318,7 @@ class RepoStatus {
       {'id', 'name', 'path', 'readState', 'actions'},
       {
         'groupId',
+        'alias',
         'relation',
         'branch',
         'hasCommit',
@@ -331,6 +336,7 @@ class RepoStatus {
       name: _string(map['name'], '$context.name'),
       path: _string(map['path'], '$context.path'),
       groupId: _optString(map, 'groupId', context),
+      alias: _optString(map, 'alias', context),
       readState: ReadState.parse(map['readState'], '$context.readState'),
       relation: map['relation'] == null
           ? null
@@ -705,16 +711,26 @@ class RepoSettings {
   final String path;
   final String? groupId;
 
-  const RepoSettings({required this.id, required this.name, required this.path, this.groupId});
+  /// 用户设置的显示别名；null = 未设置。
+  final String? alias;
+
+  const RepoSettings({
+    required this.id,
+    required this.name,
+    required this.path,
+    this.groupId,
+    this.alias,
+  });
 
   factory RepoSettings.decode(Object? json, String context) {
     final map = _map(json, context);
-    _checkKeys(map, {'id', 'name', 'path'}, {'groupId'}, context);
+    _checkKeys(map, {'id', 'name', 'path'}, {'groupId', 'alias'}, context);
     return RepoSettings(
       id: _string(map['id'], '$context.id'),
       name: _string(map['name'], '$context.name'),
       path: _string(map['path'], '$context.path'),
       groupId: _optString(map, 'groupId', context),
+      alias: _optString(map, 'alias', context),
     );
   }
 }
@@ -796,18 +812,31 @@ class RepoGroupAssignment {
       };
 }
 
-/// settings_save 可编辑字段：分组列表（增删改）、归属覆盖、默认分组与刷新偏好。
+/// 单仓库别名覆盖（null / 空白 = 清除）。
+class RepoAliasAssignment {
+  final String repoId;
+  final String? alias;
+
+  const RepoAliasAssignment({required this.repoId, this.alias});
+
+  Map<String, Object?> toJson() => {'repoId': repoId, 'alias': alias};
+}
+
+/// settings_save 可编辑字段：分组列表（增删改）、归属覆盖、别名覆盖、
+/// 默认分组与刷新偏好。
 class SettingsEditable {
   final List<GroupSettings> groups;
   final String? defaultGroupId;
   final RefreshPolicy refresh;
   final List<RepoGroupAssignment> repoGroups;
+  final List<RepoAliasAssignment> repoAliases;
 
   const SettingsEditable({
     required this.groups,
     required this.refresh,
     this.defaultGroupId,
     this.repoGroups = const [],
+    this.repoAliases = const [],
   });
 
   Map<String, Object?> toJson() => {
@@ -815,6 +844,7 @@ class SettingsEditable {
         'defaultGroupId': defaultGroupId,
         'refresh': refresh.toJson(),
         'repoGroups': repoGroups.map((assignment) => assignment.toJson()).toList(),
+        'repoAliases': repoAliases.map((assignment) => assignment.toJson()).toList(),
       };
 }
 
@@ -1173,6 +1203,7 @@ extension RepoStatusJson on RepoStatus {
         'name': name,
         'path': path,
         if (groupId != null) 'groupId': groupId,
+        if (alias != null) 'alias': alias,
         'readState': readState.wire,
         'relation': relation?.wire,
         'branch': branch,
@@ -1268,6 +1299,7 @@ extension RepoSettingsJson on RepoSettings {
         'name': name,
         'path': path,
         'groupId': groupId,
+        'alias': alias,
       };
 }
 

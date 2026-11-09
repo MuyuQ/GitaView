@@ -189,6 +189,7 @@ pub fn query_view(
             }
             let haystacks = [
                 Some(repo.name.to_lowercase()),
+                repo.alias.as_ref().map(|a| a.to_lowercase()),
                 Some(repo.path.to_lowercase()),
                 repo.branch.as_ref().map(|b| b.to_lowercase()),
                 group_name_of(repo).map(|name| name.to_lowercase()),
@@ -240,6 +241,7 @@ pub fn query_view(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{RefreshPolicy, RefreshProgress, RefreshState};
 
     #[test]
     fn relation_filter_serializes_snake_case() {
@@ -266,5 +268,64 @@ mod tests {
         assert_eq!(query.query, "");
         let json = serde_json::to_value(&query).unwrap();
         assert_eq!(json["relationFilter"], "all");
+    }
+
+    #[test]
+    fn search_matches_alias_and_original_name() {
+        // 契约允许 repo 带用户别名；搜索必须同时命中别名与原始目录名。
+        let mut row = RepoStatus::pending("repo-docs", "docs-site", "/sample/docs-site");
+        row.alias = Some("文档站".into());
+        row.read_state = ReadState::Ok;
+        row.relation = Some(Relation::Synced);
+        let snapshot = AppSnapshot {
+            schema_version: 1,
+            session_id: "s".into(),
+            generation: 1,
+            state_revision: 1,
+            settings_revision: 1,
+            attempted_at_ms: None,
+            last_success_at_ms: None,
+            refresh_state: RefreshState::Ready,
+            refresh_error: None,
+            refresh_policy: RefreshPolicy::default(),
+            refresh: RefreshProgress {
+                is_refreshing: false,
+                requested_request_id: 0,
+                completed_request_id: 0,
+            },
+            repos: vec![row],
+        };
+        let groups: Vec<GroupSettings> = Vec::new();
+
+        let by_alias = query_view(
+            &snapshot,
+            &groups,
+            ViewQuery {
+                query: "文档".into(),
+                ..ViewQuery::default()
+            },
+        );
+        assert_eq!(by_alias.rows.len(), 1, "按别名命中");
+        let by_original = query_view(
+            &snapshot,
+            &groups,
+            ViewQuery {
+                query: "docs-site".into(),
+                ..ViewQuery::default()
+            },
+        );
+        assert_eq!(by_original.rows.len(), 1, "按原始目录名命中");
+        // 行的 name 保持原始名，alias 单独携带（显示名由界面投影）。
+        assert_eq!(by_alias.rows[0].name, "docs-site");
+        assert_eq!(by_alias.rows[0].alias.as_deref(), Some("文档站"));
+        let miss = query_view(
+            &snapshot,
+            &groups,
+            ViewQuery {
+                query: "不存在的关键词".into(),
+                ..ViewQuery::default()
+            },
+        );
+        assert!(miss.rows.is_empty());
     }
 }

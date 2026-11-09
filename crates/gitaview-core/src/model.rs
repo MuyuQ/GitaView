@@ -129,6 +129,9 @@ pub struct RepoStatus {
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_id: Option<String>,
+    /// 用户设置的显示别名（无别名 = 缺省 / null，界面回退到 name）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
     pub read_state: ReadState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relation: Option<Relation>,
@@ -164,6 +167,7 @@ impl RepoStatus {
             name: name.into(),
             path: path.into(),
             group_id: None,
+            alias: None,
             read_state: ReadState::Pending,
             relation: None,
             branch: None,

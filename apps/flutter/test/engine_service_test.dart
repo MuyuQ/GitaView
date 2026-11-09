@@ -118,6 +118,30 @@ void main() {
     expect(summary.counts.noRemote, 1);
     expect(summary.counts.closesOverTotal, isTrue);
 
+    // 别名（repoAliases）经双 isolate 管道往返：保存 → 快照行 / 视图行 /
+    // Summary 关注行都携带别名（管道 toJson 曾丢失该字段，回归锁定）。
+    final withAlias = await service.settingsSave(SettingsSaveInput(
+      expectedRevision: saved.revision + 1,
+      settings: SettingsEditable(
+        groups: [const GroupSettings(id: 'g1', name: '工作')],
+        refresh: const RefreshPolicy(enabled: true, intervalMinutes: 5),
+        repoAliases: [
+          RepoAliasAssignment(repoId: added.repo.id, alias: '管道别名'),
+        ],
+      ),
+    ));
+    expect(
+        withAlias.repos.single.alias, '管道别名', reason: 'settingsGet 管道');
+    final snapAfterAlias = await service.snapshotGet();
+    expect(snapAfterAlias.repos.single.alias, '管道别名',
+        reason: 'snapshot 管道（曾丢失 alias 的回归点）');
+    final viewAfterAlias =
+        await service.viewQuery(const ViewQuery(groupId: 'g1'));
+    expect(viewAfterAlias.rows.single.alias, '管道别名', reason: '视图行管道');
+    // Summary 行显示名 = 别名优先由核心投影（Rust 单测
+    // attention_rows_prefer_alias_over_name 覆盖）；本仓库 no_remote
+    // 不进关注列表，这里只断言 counts 正常。
+
     // 未确认 Pull 被拒。
     await expectLater(
       service.repoPull(added.repo.id, confirmed: false),

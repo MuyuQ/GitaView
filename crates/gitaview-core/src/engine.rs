@@ -425,6 +425,7 @@ fn build_snapshot(state: &EngineState, session_id: &str) -> AppSnapshot {
             Some(row) if row.path == record.path => {
                 let mut row = row.clone();
                 row.name = record.name.clone();
+                row.alias = record.alias.clone();
                 row.path = record.path.clone();
                 row.group_id = record.group_id.clone();
                 row
@@ -433,6 +434,7 @@ fn build_snapshot(state: &EngineState, session_id: &str) -> AppSnapshot {
                 // 未采集或身份不符：pending 行按当前配置投影，未知 Git 字段为空，
                 // 网络动作不可用。
                 let mut row = RepoStatus::pending(&record.id, &record.name, &record.path);
+                row.alias = record.alias.clone();
                 row.group_id = record.group_id.clone();
                 row
             }
@@ -1081,6 +1083,7 @@ mod admission_tests {
                     interval_minutes: settings.refresh.interval_minutes,
                 },
                 repo_groups: vec![],
+                repo_aliases: vec![],
             },
         };
         let sink = diagnostics::block_sink_for_test();
