@@ -35,7 +35,8 @@ import '../presentation/repository_filter_presentation.dart' as filter;
 import 'theme/tokens.dart';
 
 /// 搜索快捷键标签（平台化：macOS ⌘K / Windows Ctrl+K）。
-String get _searchShortcutLabel => Platform.isMacOS ? '⌘K' : 'Ctrl+K';
+/// 公开给测试复用（CI 双平台跑同一套断言，不得硬编码单平台文案）。
+String get searchShortcutLabel => Platform.isMacOS ? '⌘K' : 'Ctrl+K';
 
 /// 主状态页。
 class MainPage extends StatelessWidget {
@@ -528,7 +529,7 @@ class _SearchBoxState extends State<_SearchBox> {
                     border: Border.all(color: colors.line),
                   ),
                   child: Text(
-                    _searchShortcutLabel,
+                    searchShortcutLabel,
                     style: GvTextStyles.mono(colors.muted, size: 11),
                   ),
                 ),
@@ -1799,7 +1800,7 @@ class _StatusBar extends StatelessWidget {
       left = '已筛选 $filtered / $total 个仓库';
     } else {
       left =
-          '$_searchShortcutLabel 搜索 · 单击仓库行展开操作 · Esc 取消确认';
+          '$searchShortcutLabel 搜索 · 单击仓库行展开操作 · Esc 取消确认';
     }
     return Container(
       height: 42,

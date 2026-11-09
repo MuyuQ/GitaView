@@ -511,8 +511,9 @@ void main() {
         findsOneWidget);
     // no_remote 行区分“无远端”。
     expect(find.text('无远端'), findsNWidgets(1));
-    // 状态栏：默认口径（快捷键提示平台化，测试环境为 macOS）+ 刷新时间。
-    expect(find.text('⌘K 搜索 · 单击仓库行展开操作 · Esc 取消确认'),
+    // 状态栏：默认口径（快捷键提示随宿主平台，与 MainPage.searchShortcutLabel
+    // 同一来源，CI 在 Windows 上为 Ctrl+K）+ 刷新时间。
+    expect(find.text('$searchShortcutLabel 搜索 · 单击仓库行展开操作 · Esc 取消确认'),
         findsOneWidget);
     expect(find.textContaining('刷新时间'), findsOneWidget);
   });
@@ -528,7 +529,7 @@ void main() {
     expect(find.byType(EditableText), findsOneWidget);
     expect(find.byType(TextBox), findsNothing);
     expect(find.text('搜索仓库、路径或分支'), findsOneWidget);
-    expect(find.text('⌘K'), findsOneWidget);
+    expect(find.text(searchShortcutLabel), findsOneWidget);
 
     // 输入后占位文案立即让位（占位由 _text 是否为空驱动，不依赖核心返回）。
     await tester.enterText(find.byType(EditableText), 'api');
@@ -537,12 +538,12 @@ void main() {
     final field = tester.widget<EditableText>(find.byType(EditableText));
     expect(field.controller.text, 'api');
 
-    // 窄窗（§8.3 最小内容区 640×480）：搜索框按剩余宽度收缩，不溢出、不裁掉 ⌘K。
+    // 窄窗（§8.3 最小内容区 640×480）：搜索框按剩余宽度收缩，不溢出、不裁掉快捷键提示。
     await tester.binding.setSurfaceSize(const Size(640, 480));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pump();
     expect(tester.takeException(), isNull);
-    expect(find.text('⌘K'), findsOneWidget);
+    expect(find.text(searchShortcutLabel), findsOneWidget);
   });
 
   testWidgets('选中行操作面板与 Pull 两段式确认流', (tester) async {
