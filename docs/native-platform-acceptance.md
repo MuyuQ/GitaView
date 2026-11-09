@@ -57,22 +57,32 @@
 | FFI 输出参数前置校验（S03） | 已验证（测试） | create（null reply / null engine_out）不启动引擎不建目录；save null reply revision 不变；生命周期 null-reply 特例明确 |
 | 删除与网络操作交错安全（S05） | 已验证（测试） | 屏障暂停"已定位未拿槽"→移除→恢复：REPO_NOT_FOUND，Git 不启动 |
 
-## 2.1 Flutter 宿主（0.2.0.0，第 62 轮新增；全部待验证项如实列出）
+## 2.1 Flutter 宿主（0.2.0.0，第 62 轮新增）
 
-> 2026-11-07 启动迁移：Rust 核心 + Flutter 宿主（apps/flutter）。以下均**未验证**，
-> 不是已完成项——列在此处是待验清单，不是通过记录。
+> 2026-11-07 启动迁移：Rust 核心 + Flutter 宿主（apps/flutter）。
+> 2026-11-10 第 64 轮完成 Windows 实机首轮验收（本机 zh-CN Windows 11 26H2，
+> RTX 5060 Ti；方法 = computer use AX 树驱动 + 消息注入 + 引擎日志，像素级
+> 截取受本机 MPO/串流环境限制，见 §2.4 环境备注）。各条状态见下表；
+> 标注"待用户复核"的项为注入通道无法覆盖的部分，不是已通过。
 
 | 项 | 范围 | 状态 |
 | --- | --- | --- |
 | Dart 层 | flutter analyze 零问题；63 项测试全绿（契约 fixture 与 Rust 同源、真实 dylib FFI 全链路、双 isolate 引擎服务、8 个纯逻辑类、11 项 widget/控制器测试） | 已验证（macOS 开发机 + CI macos-core，2026-11-07） |
 | CI 全链 | native-ci 三 job 全绿（run 6，commit 149f8f9）：windows C# 全链、windows-flutter（Dart 真实 DLL 测试 → Release 构建 → makeappx 无签名 MSIX + 清单校验 → 双产物上传）、macos Rust + Dart 层；第 62-63 轮经 6 轮迭代修复（registrar API、shellscalingapi、窄化转换、wstring 编码、包装库链接、托盘窗口类型、makeappx 基名资产、两处测试竞态） | 已验证（云端构建链，2026-11-07） |
-| Windows 构建 | runner CMake 接 cargo 产出 gitaview_ffi.dll 随包安装；gv_platform C++ 插件编译（托盘 / LocalState / StartupTask 镜像 / openTarget） | 已验证（CI 编译）；运行行为待实机 |
-| MSIX 打包 | package-flutter-windows.ps1 无签名产物 13.3MB 上传（makeappx 清单校验通过；基名资产由 scale-200 生成，多尺度分辨率待评估） | 已验证（无签名打包）；0.1.5.27 → 0.2.0.0 原位替换、签名安装待实机（需测试证书） |
-| GUI 验收 | 主页面（筛选 / 表格 / 两段式确认）/ 设置页 / mica 背景 / 沉浸式标题栏 | 待验证（实机；macOS 主机无 GUI 可验对象，computer use 不适用） |
-| 托盘与浮窗 | Windows：Shell_NotifyIcon 注册 / TaskbarCreated 重注册（1s×5 重试）/ 左键浮窗定位 / 失焦收起 / 右键菜单 / 子窗口数据推送；macOS：菜单栏状态项 + 左键浮窗（fork 第二窗口）+ 右键系统菜单（同通道契约，见 §2.3） | Windows 部分待验证（实机）；macOS 已验证（开发构建，2026-11-09） |
-| 单实例与深链 | windows_single_instance 管道；gitaview-native:// 冷 / 热激活路由（未知 / 已删 ID 回总列表） | 待验证（实机） |
+| Windows 构建 | runner CMake 接 cargo 产出 gitaview_ffi.dll 随包安装；gv_platform C++ 插件编译（托盘 / LocalState / StartupTask 镜像 / openTarget） | 已验证（CI + zh-CN 实机：2026-11-10 修复 CMake 缺 `/utf-8`——中文区域下 MSVC 按 ANSI 误读 UTF-8 中文注释触发 C4819→/WX 必炸，commit 5923254；本机 Release + Debug 双配置构建通过） |
+| MSIX 打包 | package-flutter-windows.ps1 无签名产物 13.3MB 上传（makeappx 清单校验通过；基名资产由 scale-200 生成，多尺度分辨率待评估） | 已验证（2026-11-10 实机签名打包 + 安装：脚本补 `-Encoding UTF8` 修复 PS 5.1 中文区域读坏清单，commit 5923254；测试证书 C909CB45 签名，0.1.5.27 → 0.2.0.0 原位升级与卸载重装均通过，LocalState 用户数据保留/恢复验证） |
+| GUI 验收 | 主页面（筛选 / 表格 / 两段式确认）/ 设置页 / mica 背景 / 沉浸式标题栏 | 已验证（2026-11-10 实机，AX 树驱动，computer use）：筛选 chip 生效（本地领先 → 仅 GitaView 行，全部恢复）、行展开操作面板（Push/Pull/Fetch/远端/打开目录，本地领先正确提供 Push）、两段式确认态与「取消确认」按钮回退、搜索键入过滤（"gita" → 仅 GitaView 行）、设置页完整渲染（分组管理 + 11 仓库 + 别名 + 两分区）。像素级视觉（mica 观感 / 颜色 / 字体渲染）待用户肉眼复核——本机截取通道（GDI / PrintWindow / 窗口级 API）对 D3D 内容盲区（MPO/串流环境，Electron 应用同现象），非应用缺陷 |
+| 托盘与浮窗 | Windows：Shell_NotifyIcon 注册 / TaskbarCreated 重注册（1s×5 重试）/ 左键浮窗定位 / 失焦收起 / 右键菜单 / 子窗口数据推送；macOS：菜单栏状态项 + 左键浮窗（fork 第二窗口）+ 右键系统菜单（同通道契约，见 §2.3） | Windows 部分已验证（2026-11-10 实机，消息注入驱动）：托盘回调（WM_APP+1）→ 左键浮窗创建并按托盘图标定位（任务栏右下角）、摘要实时推送正确（1 待推送 / 0 待拉取 / 0 需关注 / 0 未比较，与仓库真实状态一致）、「打开 GitaView」前置主窗口并收起浮窗、左键多次开合正常。右键菜单与失焦收起待用户实机复核（注入通道会污染模态菜单状态）；TaskbarCreated / Explorer 重启恢复待实机 |
+| 单实例与深链 | windows_single_instance 管道；gitaview-native:// 冷 / 热激活路由（未知 / 已删 ID 回总列表） | 已验证（2026-11-10 实机）：第二实例启动后参数经管道转交首实例并自行退出（进程数恒为 1）；冷启动深链 `gitaview-native://repo/<id>` 正确清筛选并展开目标仓库（操作面板出现）；热深链（运行中第二实例）切换展开目标（GitaView → AegisOTA）。URL 格式注意：host 必须为 `repo`（`open/repo/<id>` 形式会被拒回总列表，与 C# 解析一致） |
 | 开机启动 | StartupTask 注册表镜像读数与文案映射（best-effort，需与系统开关实测对齐） | 待验证（实机） |
 | ⚠️ 界面重设计双端分裂（2026-11-08） | Flutter 宿主已按 `design/preview/index.html` 落地重设计：状态色映射变更（本地领先 teal、远端领先 blue、分叉 red→amber、red 收窄为错误）、表格列序 7 列 → 6 列（状态点与关系合并为胶囊）、表面色去 alpha、工具栏 66 / 侧栏 196 / 浮窗 2×2 统计格。同日用户反馈追加（Flutter 已落地，契约新增 `alias` 字段 + settingsEditable 新增 `repoAliases`）：仓库别名（主界面列表显示"目录名（别名）"、浮窗显示名 = 别名优先、搜索命中别名）、路径收纳进展开面板、macOS 沉浸式标题栏（TitleBarStyle.hidden + 红绿灯内缩 + 工具栏拖拽）、主题切换（设置-外观三档分段控件，宿主本地 `ui-preferences.json` 持久化，不入契约；C# 宿主对应 LocalSettings 方向）。**WinUI 宿主（0.1.5.x）未同步**以上任何一项。`docs/native-app-ui-design.md` §3 / §4 / §8.2 已记录为共同设计的新基线 | 待办：WinUI 宿主同步改造（含 alias 契约字段）+ 双端一致性验收（迁移期间以 Flutter 宿主为准；Flutter 侧证据 `target/ui-redesign/`，macOS 开发构建 2026-11-08：浅 / 深 × 主界面 / 设置 / 展开确认 / 别名显示 / 窄 640 / 空库 / 无匹配 / 骨架屏，尺寸为窗口逻辑尺寸，非设计稿 §8.3 全矩阵） |
+
+### 2.1.1 2026-11-10 Windows 实机验收环境备注（第 64 轮）
+
+- **截取通道盲区**：本机（挂 GameViewer / MuMu / Honor 三个虚拟显示适配器 + 串流会话）下，GDI `CopyFromScreen`、`PrintWindow(PW_RENDERFULLCONTENT)` 与 computer use 窗口级截取对 **D3D 交换链内容一律取不到**（Win32 标题栏正常），表现为 Flutter 窗口"全白"、Electron 窗口"全黑"。经桌面复制 API 独占冲突、引擎适配器查询（确认为 RTX 5060 Ti 物理卡）、dxdiag、事件日志（无 TDR）等多路排查定性为环境假象，非应用缺陷。像素级视觉验收只能由用户肉眼完成。
+- **中文 IME 吞键**：zh-CN 拼音输入法在合成态吞掉字母与 Esc。自动化键入需绕过 IME（直投 `WM_CHAR`）；系统级 SendKeys / SendInput 对合成态不可靠。应用键盘链路本身正常（WM_CHAR 键入过滤生效）。Esc 取消确认 / Ctrl+K 聚焦搜索两条快捷键的实机复核待用户完成（widget 逻辑有单测覆盖的仅限控制器状态机，键事件分发无自动化覆盖）。
+- **退出路径告警**：浮窗「退出」后进程干净退出（无残留窗口 / 进程），Debug 运行时日志可见一次 `Dart_EnterIsolate expects there to be no current isolate` 告警（watcher isolate 的原生回调与引擎销毁竞态，JIT 运行时输出）。不阻断退出，留作后续收敛项。
+- **验收方法学**：托盘回调 = `PostMessage(GitaViewTrayWindow, WM_APP+1 /*0x8001*/, 0, WM_LBUTTONUP)`；自动化键入 = 直投 `WM_CHAR` 到 FLUTTERVIEW；多实例并存时必须按 pid 精确锁定目标窗口（曾因此产生"二次打开失效"的假象，单进程下多次开合复验正常）。
 
 ### 2.2 Flutter 宿主 macOS 开发构建前台实测（2026-11-07，computer use）
 

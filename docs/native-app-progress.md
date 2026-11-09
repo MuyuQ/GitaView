@@ -2,9 +2,27 @@
 
 > 2026-10-30 清理说明：旧客户端已从当前源码树移除。本文保留原生改造的历史方案或检查记录；旧源码路径、“保留旧工程”和旧发布命令不再适用。当前目录、命令与平台状态以 [原生架构说明](native-architecture.md) 和仓库 README 为准。
 
-更新日期：2026-11-07（第 63 轮，全项目详细审阅并迭代 native-ci 至三 job 全绿：Windows 构建链云端验证完成，双无签名产物上传；实机 GUI / 签名安装 / 托盘浮窗行为仍待验证）。
+更新日期：2026-11-10（第 64 轮，Windows 实机首轮验收：zh-CN 构建链修复 + 签名安装 + computer use 功能验收；像素级视觉与键盘快捷键留待用户复核）。
+
+### 第 64 轮记录（Windows 实机首轮验收 + zh-CN 构建链修复）
+
+2026-11-10。目标：Windows 端实机完善——本机构建、签名安装、computer use 实机验收，修到无新问题。
+
+**构建链 zh-CN 修复（commit 5923254，两项均为实机复现 + 修复验证）**：① `windows/CMakeLists.txt` 补 `/utf-8`——源码含 UTF-8 中文注释，中文区域（代码页 936）下 MSVC 按 ANSI 误读触发 C4819，`/WX` 升级为错误导致 Flutter 宿主 C++ 层编译必炸（CI 英文区域默认 UTF-8 一直掩盖）；② `package-flutter-windows.ps1` 的 `Get-Content` 补 `-Raw -Encoding UTF8`——清单是 UTF-8 无 BOM，Windows PowerShell 5.1 默认按系统 ANSI 解码，中文 DisplayName 读坏致 XML 解析失败（CI 的 pwsh 7 默认 UTF-8 未暴露）。
+
+**本机环境补齐**：安装 Flutter SDK 3.47.9 stable（对齐 CI 与 `.metadata`）；VS 2022 17.14 无 VS 自带 CMake（Flutter 硬依赖其固定路径，UAC 提权被拒后改走免管理员路径：pub get 的插件符号链接用 junction 预建绕过 Developer Mode 要求，CMake 用 Android SDK 自带 3.22.1 驱动 VS 生成器，`generated_config.cmake` 按 flutter_tools 模板手写，构建命令与 flutter 工具逐条等价：configure → `--build --config Release --target INSTALL`）。
+
+**白屏定性（环境假象，非应用缺陷）**：首测主窗口"全白"，逐层排除——打包层（未打包同样白）、Mica/acrylic（跳过后仍白）、Impeller（`ImpellerSwitch::Disabled` 回退 Skia 仍白）、DXGI 适配器（引擎确认用 RTX 5060 Ti 物理卡）、消息泵与子窗口布局（正常）、GDI 栈（dxdiag 无问题、无 TDR）。最终以对照实验定性：Electron 应用（用户日常在用）经同一截取通道同样"全黑"——本机 MPO/串流环境使 GDI/PrintWindow/窗口级截取对 D3D 内容盲区，像素级视觉验收只能由用户肉眼完成。已写入验收文档 §2.1.1（含 `WM_CHAR` 绕 IME 键入、`WM_APP+1` 托盘消息注入等方法学）。
+
+**实机验收（0.2.0.0 签名安装后，AX 树 + 消息注入 + 引擎日志）**：0.1.5.27 → 0.2.0.0 原位升级与卸载重装通过（LocalState 备份/恢复验证，重装会清包数据）；主页面筛选（本地领先 → 仅 GitaView 行，真实反映未推送提交）、行展开操作面板（本地领先正确提供 Push）、两段式确认与取消、搜索键入过滤（"gita" → 仅 GitaView）、设置页全量渲染、外部分组注入 + 重启加载、托盘浮窗（出现 / 按托盘图标定位 / 摘要 1 待推送 0 待拉取 0 需关注与真实状态一致 / 打开主窗口并收起 / 多次开合）、单实例（第二实例转发后退出，进程数恒 1）、冷深链展开目标仓库 + 热深链切换展开目标（GitaView → AegisOTA）、浮窗「退出」干净退出。全部记录进验收文档 §2.1，遗留：像素视觉 / Esc・Ctrl+K 快捷键 / 右键菜单 / 失焦收起 / TaskbarCreated 恢复 / 开机启动 → 用户实机复核（§2.1.1 环境备注说明通道限制）。
+
+**其他观察**：浮窗「退出」时 Debug 运行时日志一次 `Dart_EnterIsolate` 告警（watcher 原生回调与引擎销毁竞态，不阻断退出，留作收敛项）；上游同期已修平台相关测试断言（f4ccc80，本机复跑 74/74 全绿）。
+
+验证：Rust 152 + C# 95 + 契约 6/6 + Dart analyze 零问题 + Dart 74/74；本机 Release/Debug 双配置构建、签名打包、安装、冒烟全通过。
 
 ### 第 63 轮记录（全项目审阅）
+
+按用户要求做全项目详细审阅（两个并行深审子代理 + 本机脚本 / CI / 清单 / 文档复查），并提交推送触发 native-ci 云端验证，共迭代 6 轮至三 job 全绿（run 6，commit 149f8f9，产物 gitaview-native-windows-dev 65MB + gitaview-flutter-windows-dev 13.3MB）。
 
 按用户要求做全项目详细审阅（两个并行深审子代理 + 本机脚本 / CI / 清单 / 文档复查），并提交推送触发 native-ci 云端验证，共迭代 6 轮至三 job 全绿（run 6，commit 149f8f9，产物 gitaview-native-windows-dev 65MB + gitaview-flutter-windows-dev 13.3MB）。
 
