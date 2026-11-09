@@ -155,13 +155,21 @@ class _FlyoutScaffoldState extends State<_FlyoutScaffold> {
             // 内容高度随关注列表变化：每帧后校准窗口高度。
             SchedulerBinding.instance
                 .addPostFrameCallback((_) => unawaited(_autoSize()));
-            return KeyedSubtree(
-              key: _contentKey,
-              child: FlyoutWindowContent(
-                summary: summary,
-                onOpen: () => widget.onOpen(),
-                onRefresh: () => widget.onRefresh(),
-                onExit: () => widget.onExit(),
+            // 测量点必须收缩到内容真实高度：Navigator 页给的是撑满窗口的
+            // 紧约束，直接量 KeyedSubtree 会量到窗口高度，校准恒为空操作
+            // （表现为窗口比内容高出一截的底部空白）。Align heightFactor:1
+            // 让被测框 = 内容自然高度，宽度仍撑满。
+            return Align(
+              alignment: Alignment.topCenter,
+              heightFactor: 1,
+              child: KeyedSubtree(
+                key: _contentKey,
+                child: FlyoutWindowContent(
+                  summary: summary,
+                  onOpen: () => widget.onOpen(),
+                  onRefresh: () => widget.onRefresh(),
+                  onExit: () => widget.onExit(),
+                ),
               ),
             );
           },
@@ -183,10 +191,11 @@ class _FlyoutScaffoldState extends State<_FlyoutScaffold> {
     final controller = WindowController.fromWindowId(widget.windowId);
     final frame = await controller.getFrame();
     if ((frame.height - nativeHeight).abs() < 1.0) return;
-    // 底边保持不动，高度收缩 / 扩张到实际内容高度。
+    // 顶边保持不动：浮窗顶边锚在托盘图标下方（TrayFlyoutPresentation.position
+    // 已选好不越出工作区的位置），高度只向下伸缩到实际内容高度。
     await controller.setFrame(Rect.fromLTWH(
       frame.left,
-      frame.bottom - nativeHeight,
+      frame.top,
       frame.width,
       nativeHeight,
     ));
