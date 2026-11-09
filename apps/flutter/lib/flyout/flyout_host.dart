@@ -71,10 +71,15 @@ final class FlyoutWindowHost {
           summary == null ? '' : jsonEncode(summary.toJson()));
       if (Platform.isMacOS) {
         // 浮窗形态收尾仅 macOS 需要：fork 的 resizable/setMovable 是 macOS
-        // 专属方法（Windows 侧回 NotImplemented）；Windows 子窗口本身即为
-        // 无边框弹出窗。
+        // 专属方法（Windows 侧回 NotImplemented）。
         await _window!.resizable(false);
         await _window!.setMovable(false);
+      } else if (Platform.isWindows) {
+        // fork 在 Windows 用 WS_OVERLAPPEDWINDOW 创建子窗口——带标准标题栏
+        // （最小化/最大化/关闭），托盘弹出窗不该有这些。showTitleBar(false)
+        // 走 fork 的 WM_NCCALCSIZE 隐藏分支去除系统边框（RustDesk 式无边框）；
+        // 关闭走浮窗内「退出」，隐藏走失焦与托盘开合。
+        await _window!.showTitleBar(false);
       }
     }
     final scale = tray.scale;
