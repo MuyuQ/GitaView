@@ -18,6 +18,8 @@
 
 **其他观察**：浮窗「退出」时 Debug 运行时日志一次 `Dart_EnterIsolate` 告警（watcher 原生回调与引擎销毁竞态，不阻断退出，留作收敛项）；上游同期已修平台相关测试断言（f4ccc80，本机复跑 74/74 全绿）。
 
+**用户视频反馈修复（e91b060，同日）**：托盘浮窗带标准 Windows 标题栏（最小化/最大化/关闭）——fork 在 Windows 用 WS_OVERLAPPEDWINDOW 创建子窗口，原注释「Windows 子窗口本身即为无边框弹出窗」是按 macOS 假设写的、不成立。修复 = 宿主创建浮窗后调用 fork 自带 `WindowController.showTitleBar(false)`（其 WM_NCCALCSIZE 隐藏分支去系统边框，RustDesk 式）。重装后实机复核：浮窗无边框渲染，内容自品牌头部开始；analyze 零问题、74/74 全绿。AX 树残留的关闭/最大化/最小化元素为无边框模式下不可达的系统菜单影子（fork 保留窗口样式仅隐藏非客户区渲染），Narrator 覆盖待后续评估。
+
 验证：Rust 152 + C# 95 + 契约 6/6 + Dart analyze 零问题 + Dart 74/74；本机 Release/Debug 双配置构建、签名打包、安装、冒烟全通过。
 
 ### 第 63 轮记录（全项目审阅）
