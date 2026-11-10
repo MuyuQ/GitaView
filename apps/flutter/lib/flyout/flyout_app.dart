@@ -22,6 +22,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 
 import '../contracts/contracts.dart';
+import '../presentation/tray_flyout_presentation.dart';
 import '../ui/flyout_window.dart';
 
 SummarySnapshot? _decodeSummary(String? json) {
@@ -185,11 +186,18 @@ class _FlyoutScaffoldState extends State<_FlyoutScaffold> {
     if (logicalHeight == null || logicalHeight <= 0) return;
     // 窗口 API 单位：macOS（fork）为左上原点逻辑点，直接用逻辑高；
     // Windows 为物理像素，按设备像素比放大。
-    final nativeHeight = Platform.isMacOS
-        ? logicalHeight
-        : logicalHeight * View.of(context).devicePixelRatio;
+    final dpr = View.of(context).devicePixelRatio;
+    final nativeHeight = Platform.isMacOS ? logicalHeight : logicalHeight * dpr;
     final controller = WindowController.fromWindowId(widget.windowId);
     final frame = await controller.getFrame();
+    if (Platform.isWindows) {
+      // 宿主未定位（宽度还是 fork 默认 1280）时跳过：x/y 可能是 fork 默认
+      // 起点，按它回写会把浮窗钉在屏角。show() 末尾的 summary 推送会再触发
+      // 一轮校准，最终一定按宿主定位后的帧收敛。
+      final expectedWidth =
+          TrayFlyoutPresentation.flyoutLogicalWidth * dpr;
+      if ((frame.width - expectedWidth).abs() > 2.0) return;
+    }
     if ((frame.height - nativeHeight).abs() < 1.0) return;
     // 顶边保持不动：浮窗顶边锚在托盘图标下方（TrayFlyoutPresentation.position
     // 已选好不越出工作区的位置），高度只向下伸缩到实际内容高度。

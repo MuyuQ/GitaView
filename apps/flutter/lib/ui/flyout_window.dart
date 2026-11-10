@@ -47,7 +47,7 @@ class FlyoutWindowContent extends StatelessWidget {
     final refreshState = snapshot?.refreshState ?? RefreshState.pending;
     final attention = snapshot?.attention ?? const <SummaryRepo>[];
     return Container(
-      width: 352,
+      width: TrayFlyoutPresentation.flyoutLogicalWidth,
       color: colors.flyoutTint,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -91,50 +91,50 @@ class FlyoutWindowContent extends StatelessWidget {
               ],
             ),
           ),
-          // 待处理列表 / 空态（超过 300px 滚动）。
-          Flexible(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 300),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
-                child: attention.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 22, 8, 28),
-                        child: Text(
-                          snapshot == null
-                              ? '正在读取仓库状态…'
-                              : TrayFlyoutPresentation.emptyMessage(
-                                  counts, refreshState),
-                          textAlign: TextAlign.center,
-                          style: GvTextStyles.subtitle(colors.muted)
-                              .copyWith(fontSize: 12.5, height: 1.65),
-                        ),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final item in attention)
-                            _AttentionRow(item: item, colors: colors),
-                          if (counts.noRemote > 0) ...[
-                            const SizedBox(height: 8),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 8),
-                              child: _DashedDivider(color: colors.lineSoft),
-                            ),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(8, 9, 8, 4),
-                              child: Text(
-                                '另有 ${counts.noRemote} 个仓库未配置远端，未计入待处理。',
-                                style: GvTextStyles.subtitle(colors.muted)
-                                    .copyWith(height: 1.5),
-                              ),
-                            ),
-                          ],
-                        ],
+          // 待处理列表 / 空态：取自然高度，超过 bodyMaxLogicalHeight 内部
+          // 滚动（浮窗总高由 _autoSize 按内容实测，此处的 max 只约束长列表；
+          // 不用 Flexible——它在 Column.min 里会吸收剩余空间，把内容撑到
+          // 窗口高，导致实测失准与多余滚动条）。
+          ConstrainedBox(
+            constraints: BoxConstraints(
+                maxHeight: TrayFlyoutPresentation.bodyMaxLogicalHeight),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+              child: attention.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 22, 8, 28),
+                      child: Text(
+                        snapshot == null
+                            ? '正在读取仓库状态…'
+                            : TrayFlyoutPresentation.emptyMessage(
+                                counts, refreshState),
+                        textAlign: TextAlign.center,
+                        style: GvTextStyles.subtitle(colors.muted)
+                            .copyWith(fontSize: 12.5, height: 1.65),
                       ),
-              ),
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final item in attention)
+                          _AttentionRow(item: item, colors: colors),
+                        if (counts.noRemote > 0) ...[
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: _DashedDivider(color: colors.lineSoft),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 9, 8, 4),
+                            child: Text(
+                              '另有 ${counts.noRemote} 个仓库未配置远端，未计入待处理。',
+                              style: GvTextStyles.subtitle(colors.muted)
+                                  .copyWith(height: 1.5),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
             ),
           ),
           // 底部操作区：右对齐安静按钮（上缘 lineSoft）。

@@ -25,11 +25,8 @@ import '../contracts/contracts.dart';
 import '../platform/platform_channel.dart' show TrayContext;
 import '../presentation/tray_flyout_presentation.dart';
 
-/// 浮窗逻辑宽度（与 FlyoutWindowContent 的 352 内容宽一致）。
-const double kFlyoutLogicalWidth = 352;
-
 /// 估算逻辑高度：头部 + 摘要 + 关注列表若干行 + 按钮行。
-/// 子窗口会按内容自校准；这里只决定首帧定位。
+/// 子窗口按内容自校准（flyout_app _autoSize）；这里只决定首帧定位。
 const double kFlyoutEstimatedLogicalHeight = 420;
 
 final class FlyoutWindowHost {
@@ -83,7 +80,7 @@ final class FlyoutWindowHost {
       }
     }
     final scale = tray.scale;
-    final width = kFlyoutLogicalWidth * scale;
+    final width = TrayFlyoutPresentation.flyoutLogicalWidth * scale;
     final height = kFlyoutEstimatedLogicalHeight * scale;
     final position = TrayFlyoutPresentation.position(
       tray.workArea,

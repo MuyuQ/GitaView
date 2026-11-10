@@ -38,6 +38,14 @@ class FlyoutBounds {
 
 /// 托盘浮窗展示逻辑（C# 静态类的对应物）。
 abstract final class TrayFlyoutPresentation {
+  /// 浮窗逻辑宽度：宿主开窗与浮窗内容共用同一来源。400 对齐 C# 版
+  /// TrayFlyoutWindow 的内容宽（352 为视觉稿初值，用户实测过窄，
+  /// 2026-11-10 放宽）。
+  static const double flyoutLogicalWidth = 400;
+
+  /// 待处理列表 / 空态的最大逻辑高度：超过即内部滚动，浮窗不再长高。
+  static const double bodyMaxLogicalHeight = 300;
+
   /// 浮窗空态文案。所有分支都必须给出可操作或可理解的中文说明，
   /// 不依赖颜色表达状态。
   static String emptyMessage(SummaryCounts counts, RefreshState refreshState) {
